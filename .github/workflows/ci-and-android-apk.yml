@@ -35,7 +35,10 @@ jobs:
           distribution: "temurin"
           java-version: "21"
       - run: npm ci
-      - run: npx cap sync android
+      - name: Sync Capacitor Android with Vercel Production URL
+        env:
+          NEXT_PUBLIC_APP_URL: ${{ vars.NEXT_PUBLIC_APP_URL || 'https://vitalpulse-ten.vercel.app' }}
+        run: npx cap sync android
       - name: Build Debug APK with Gradle
         working-directory: android
         run: |
