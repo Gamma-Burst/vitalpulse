@@ -167,6 +167,12 @@ export function OnboardingWizard({
   const [dailyStepGoal, setDailyStepGoal] = useState<number>(
     initialProfile.dailyStepGoal || 8000
   );
+  const [dailyWaterGoalMl, setDailyWaterGoalMl] = useState<number | undefined>(
+    initialProfile.dailyWaterGoalMl
+  );
+  const [waterGoalDraft, setWaterGoalDraft] = useState<string>(
+    initialProfile.dailyWaterGoalMl ? String(initialProfile.dailyWaterGoalMl) : ""
+  );
   const [fastingProtocol, setFastingProtocol] = useState<FastingProtocolId>(
     initialProfile.preferredFasting || "16_8"
   );
@@ -184,34 +190,44 @@ export function OnboardingWizard({
   );
 
   const previewProfile: UserProfile = useMemo(
-    () => ({
-      ...initialProfile,
-      name: name.trim() || "Mon profil",
-      sex,
-      age: Math.round(parseBoundedNumber(ageInput, initialProfile.age || 34, 12, 100)),
-      heightCm: Math.round(parseBoundedNumber(heightInput, initialProfile.heightCm || 175, 120, 230)),
-      weightKg: parseBoundedNumber(weightInput, initialProfile.weightKg || 78, 35, 250),
-      targetWeightKg: parseBoundedNumber(
-        targetWeightInput,
-        initialProfile.targetWeightKg || 72,
-        35,
-        250
-      ),
-      waistCm: Number(waistCm) > 40 ? Number(waistCm) : undefined,
-      primaryGoal,
-      specialMode,
-      weeklyPaceKg:
-        primaryGoal === "maintenance"
-          ? 0
-          : primaryGoal === "muscle_gain"
-            ? Math.abs(weeklyPaceKg) || 0.2
-            : -Math.abs(weeklyPaceKg || 0.4),
-      activityProfile,
-      dailyStepGoal,
-      preferredFasting: fastingProtocol,
-      onboardingCompleted: true,
-      isDemoProfile: false,
-    }),
+    () => {
+      const parsedWaist = Number(waistCm.replace(",", "."));
+      return {
+        ...initialProfile,
+        name: name.trim() || "Mon profil",
+        sex,
+        age: Math.round(parseBoundedNumber(ageInput, initialProfile.age || 34, 12, 100)),
+        heightCm: Math.round(parseBoundedNumber(heightInput, initialProfile.heightCm || 175, 120, 230)),
+        weightKg: parseBoundedNumber(weightInput, initialProfile.weightKg || 78, 35, 250),
+        targetWeightKg: parseBoundedNumber(
+          targetWeightInput,
+          initialProfile.targetWeightKg || 72,
+          35,
+          250
+        ),
+        waistCm:
+          Number.isFinite(parsedWaist) && parsedWaist >= 42 && parsedWaist <= 190
+            ? +parsedWaist.toFixed(1)
+            : undefined,
+        primaryGoal,
+        specialMode,
+        weeklyPaceKg:
+          primaryGoal === "maintenance"
+            ? 0
+            : primaryGoal === "muscle_gain"
+              ? Math.abs(weeklyPaceKg) || 0.2
+              : -Math.abs(weeklyPaceKg || 0.4),
+        activityProfile,
+        dailyStepGoal: Math.max(1500, Math.min(30000, Math.round(dailyStepGoal || 8000))),
+        dailyWaterGoalMl:
+          typeof dailyWaterGoalMl === "number" && Number.isFinite(dailyWaterGoalMl)
+            ? Math.max(1000, Math.min(4500, Math.round(dailyWaterGoalMl)))
+            : undefined,
+        preferredFasting: fastingProtocol,
+        onboardingCompleted: true,
+        isDemoProfile: false,
+      };
+    },
     [
       initialProfile,
       name,
@@ -226,6 +242,7 @@ export function OnboardingWizard({
       weeklyPaceKg,
       activityProfile,
       dailyStepGoal,
+      dailyWaterGoalMl,
       fastingProtocol,
     ]
   );
@@ -415,7 +432,7 @@ export function OnboardingWizard({
 
                 {specialMode === "ketogenic" && (
                   <div className="mt-2.5 rounded-2xl border border-amber-400/35 bg-amber-500/10 p-3 text-[11px] leading-relaxed text-amber-100">
-                    <strong>Mode Cétogène activé :</strong> glucides plafonnés autour de 25–35 g/j, hydratation renforcée (~40 mL/kg) et recettes frigo adaptées. Avis médical indispensable en cas de grossesse, diabète traité (insuline / iSGLT2) ou insuffisance rénale/hépatique.
+                    <strong>Mode Cétogène activé :</strong> glucides plafonnés autour de 25–35 g/j, hydratation ajustée (environ 33 mL/kg normalisé, plafonnée à 3 500 mL) et recettes frigo adaptées. Avis médical indispensable en cas de grossesse, diabète traité (insuline / iSGLT2) ou insuffisance rénale/hépatique.
                   </div>
                 )}
               </div>
@@ -575,6 +592,15 @@ export function OnboardingWizard({
                     placeholder="Ex. 84"
                     value={waistCm}
                     onChange={(e) => setWaistCm(sanitizeDecimalInput(e.target.value))}
+                    onBlur={() => {
+                      if (!waistCm.trim()) return;
+                      const parsed = Number(waistCm.replace(",", "."));
+                      if (Number.isFinite(parsed)) {
+                        setWaistCm(String(+Math.max(42, Math.min(190, parsed)).toFixed(1)));
+                      } else {
+                        setWaistCm("");
+                      }
+                    }}
                     className="mt-1 w-full rounded-xl border border-slate-500/25 bg-slate-900/60 px-3 py-2 text-sm text-white tabular-nums"
                   />
                 </div>
@@ -639,22 +665,129 @@ export function OnboardingWizard({
                 ))}
               </div>
 
-              <div>
-                <label className="text-xs font-semibold text-slate-400">
-                  Objectif de pas quotidien :{" "}
-                  <span className="font-bold text-white tabular-nums">
-                    {dailyStepGoal.toLocaleString("fr-FR")} pas/j
-                  </span>
-                </label>
+              <div className="space-y-2 rounded-2xl border border-slate-500/20 bg-slate-900/40 p-3.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <label className="text-xs font-semibold text-slate-300">
+                    Objectif de pas quotidien :{" "}
+                    <span className="font-bold text-white tabular-nums">
+                      {dailyStepGoal.toLocaleString("fr-FR")} pas/j
+                    </span>
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    aria-label="Objectif de pas quotidien"
+                    value={String(dailyStepGoal)}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/[^\d]/g, "");
+                      if (!raw) return;
+                      setDailyStepGoal(Math.min(30000, Number(raw)));
+                    }}
+                    onBlur={() =>
+                      setDailyStepGoal((prev) => Math.max(1500, Math.min(30000, prev || 8000)))
+                    }
+                    className="w-24 rounded-lg border border-slate-600 bg-slate-950 px-2.5 py-1 text-right text-xs font-bold text-white tabular-nums"
+                  />
+                </div>
                 <input
                   type="range"
-                  min={4000}
-                  max={14000}
+                  min={2500}
+                  max={16000}
                   step={500}
-                  value={dailyStepGoal}
+                  value={Math.max(2500, Math.min(16000, dailyStepGoal))}
                   onChange={(e) => setDailyStepGoal(Number(e.target.value))}
-                  className="mt-2 w-full accent-emerald-400"
+                  className="w-full accent-emerald-400"
                 />
+                <div className="flex flex-wrap gap-1.5">
+                  {[5000, 7500, 8000, 10000, 12000].map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setDailyStepGoal(preset)}
+                      className={`rounded-lg border px-2 py-1 text-[11px] font-bold tabular-nums ${
+                        dailyStepGoal === preset
+                          ? "border-emerald-400 bg-emerald-500/20 text-emerald-200"
+                          : "border-slate-700 text-slate-400 hover:border-emerald-400/50"
+                      }`}
+                    >
+                      {preset.toLocaleString("fr-FR")}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-2 rounded-2xl border border-sky-400/25 bg-sky-500/5 p-3.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-xs font-semibold text-slate-300">
+                    Hydratation quotidienne cible <InfoTip term="hydration_efsa" /> :{" "}
+                    <strong className="text-sky-300 tabular-nums">
+                      {metrics.targets.waterMl} mL/j
+                    </strong>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDailyWaterGoalMl(undefined);
+                      setWaterGoalDraft("");
+                    }}
+                    className={`rounded-lg border px-2 py-0.5 text-[11px] font-bold ${
+                      dailyWaterGoalMl === undefined
+                        ? "border-sky-400 bg-sky-500/20 text-sky-200"
+                        : "border-slate-700 text-slate-400 hover:border-sky-400"
+                    }`}
+                  >
+                    Auto EFSA ({metrics.autoWaterMl} mL)
+                  </button>
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {[1500, 2000, 2500, 3000].map((ml) => (
+                    <button
+                      key={ml}
+                      type="button"
+                      onClick={() => {
+                        setDailyWaterGoalMl(ml);
+                        setWaterGoalDraft(String(ml));
+                      }}
+                      className={`rounded-lg border px-2.5 py-1 text-[11px] font-bold tabular-nums ${
+                        dailyWaterGoalMl === ml
+                          ? "border-sky-400 bg-sky-500/25 text-sky-100"
+                          : "border-slate-700 text-slate-300 hover:border-sky-400/50"
+                      }`}
+                    >
+                      {ml} mL
+                    </button>
+                  ))}
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    placeholder={`Auto ${metrics.autoWaterMl}`}
+                    aria-label="Objectif eau quotidien en millilitres"
+                    value={waterGoalDraft}
+                    onChange={(e) => {
+                      const clean = e.target.value.replace(/[^\d]/g, "");
+                      setWaterGoalDraft(clean);
+                      if (!clean) {
+                        setDailyWaterGoalMl(undefined);
+                        return;
+                      }
+                      const n = Number(clean);
+                      if (n >= 1000 && n <= 4500) {
+                        setDailyWaterGoalMl(Math.round(n));
+                      }
+                    }}
+                    onBlur={() => {
+                      if (!waterGoalDraft.trim()) {
+                        setDailyWaterGoalMl(undefined);
+                        return;
+                      }
+                      const n = Number(waterGoalDraft);
+                      const clamped = Math.max(1000, Math.min(4500, Math.round(n || metrics.autoWaterMl)));
+                      setDailyWaterGoalMl(clamped);
+                      setWaterGoalDraft(String(clamped));
+                    }}
+                    className="w-24 rounded-lg border border-slate-600 bg-slate-950 px-2.5 py-1 text-right text-xs font-bold text-white tabular-nums"
+                  />
+                </div>
               </div>
 
               <div>

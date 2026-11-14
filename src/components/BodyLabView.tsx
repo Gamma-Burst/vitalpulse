@@ -167,6 +167,7 @@ export function BodyLabView({
 }: BodyLabViewProps) {
   const [subTab, setSubTab] = useState<BodyLabSubTab>(initialSubTab);
   const [measSheetOpen, setMeasSheetOpen] = useState(false);
+  const [measError, setMeasError] = useState<string | null>(null);
   const [bloodSheetOpen, setBloodSheetOpen] = useState(false);
   const [photoSheetOpen, setPhotoSheetOpen] = useState(false);
 
@@ -212,29 +213,72 @@ export function BodyLabView({
     [measurements, profile]
   );
 
-  function handleAddMeasurement(e: React.FormEvent) {
+  function handleAddMeasurement(e: React.FormEvent): boolean {
     e.preventDefault();
-    const num = (v: string) => {
-      const parsed = Number(v.replace(",", "."));
-      return Number.isFinite(parsed) && parsed > 0 ? +parsed.toFixed(1) : undefined;
+    const parseOpt = (
+      raw: string,
+      label: string,
+      min: number,
+      max: number
+    ): { val?: number; err?: string } => {
+      const cleaned = raw.trim().replace(",", ".");
+      if (!cleaned) return { val: undefined };
+      const parsed = Number(cleaned);
+      if (!Number.isFinite(parsed) || parsed < min || parsed > max) {
+        return { err: `${label} doit être compris entre ${min} et ${max}.` };
+      }
+      return { val: +parsed.toFixed(1) };
     };
+
+    const checks = [
+      parseOpt(mWeight, "Poids (kg)", 30, 250),
+      parseOpt(mWaist, "Tour de taille (cm)", 42, 190),
+      parseOpt(mHips, "Hanches (cm)", 50, 200),
+      parseOpt(mChest, "Poitrine (cm)", 55, 200),
+      parseOpt(mShoulders, "Épaules (cm)", 70, 200),
+      parseOpt(mNeck, "Cou (cm)", 22, 70),
+      parseOpt(mThigh, "Cuisse (cm)", 28, 120),
+      parseOpt(mArm, "Bras (cm)", 16, 70),
+      parseOpt(mCalf, "Mollet (cm)", 20, 70),
+    ];
+
+    const firstErr = checks.find((c) => c.err)?.err;
+    if (firstErr) {
+      setMeasError(firstErr);
+      return false;
+    }
+
+    const [weightKg, waistCm, hipsCm, chestCm, shouldersCm, neckCm, thighCm, armCm, calfCm] =
+      checks.map((c) => c.val);
+
+    if (
+      [weightKg, waistCm, hipsCm, chestCm, shouldersCm, neckCm, thighCm, armCm, calfCm].every(
+        (v) => v === undefined
+      )
+    ) {
+      setMeasError("Renseignez au moins une mesure valide.");
+      return false;
+    }
+
+    setMeasError(null);
     const entry: BodyMeasurementEntry = {
       id: `bm-${Date.now()}`,
       dateKey: mDate || todayDateKey,
       createdAt: new Date().toISOString(),
-      weightKg: num(mWeight),
-      waistCm: num(mWaist),
-      hipsCm: num(mHips),
-      chestCm: num(mChest),
-      shouldersCm: num(mShoulders),
-      neckCm: num(mNeck),
-      thighCm: num(mThigh),
-      armCm: num(mArm),
-      calfCm: num(mCalf),
+      weightKg,
+      waistCm,
+      hipsCm,
+      chestCm,
+      shouldersCm,
+      neckCm,
+      thighCm,
+      armCm,
+      calfCm,
       note: mNote.trim() || undefined,
     };
     onSaveMeasurement(entry);
     setMNote("");
+    return true;
   }
 
   // ---------------- 2. BILAN SANGUIN ----------------
@@ -548,11 +592,17 @@ export function BodyLabView({
           >
             <form
               onSubmit={(e) => {
-                handleAddMeasurement(e);
-                setMeasSheetOpen(false);
+                if (handleAddMeasurement(e)) {
+                  setMeasSheetOpen(false);
+                }
               }}
               className="space-y-3"
             >
+              {measError && (
+                <div className="rounded-xl border border-rose-500/40 bg-rose-500/15 px-3 py-2 text-xs font-medium text-rose-200">
+                  {measError}
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-2.5 text-xs">
                 <label className="space-y-1">
@@ -567,99 +617,100 @@ export function BodyLabView({
                 <label className="space-y-1">
                   <span className="text-slate-300">Poids (kg)</span>
                   <input
-                    type="number"
-                    step="0.1"
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="30–250"
                     value={mWeight}
-                    onChange={(e) => setMWeight(e.target.value)}
-                    className="w-full rounded-lg bg-slate-900 border border-slate-700 px-2.5 py-2 text-white"
+                    onChange={(e) => setMWeight(e.target.value.replace(/[^\d.,]/g, ""))}
+                    className="w-full rounded-lg bg-slate-900 border border-slate-700 px-2.5 py-2 text-white tabular-nums"
                   />
                 </label>
                 <label className="space-y-1">
                   <span className="text-emerald-300 font-medium">Tour de taille (cm)</span>
                   <input
-                    type="number"
-                    step="0.1"
+                    type="text"
+                    inputMode="decimal"
                     placeholder="88.0"
                     value={mWaist}
-                    onChange={(e) => setMWaist(e.target.value)}
-                    className="w-full rounded-lg bg-slate-900 border border-emerald-500/40 px-2.5 py-2 text-white"
+                    onChange={(e) => setMWaist(e.target.value.replace(/[^\d.,]/g, ""))}
+                    className="w-full rounded-lg bg-slate-900 border border-emerald-500/40 px-2.5 py-2 text-white tabular-nums"
                   />
                 </label>
                 <label className="space-y-1">
                   <span className="text-sky-300 font-medium">Hanches (cm)</span>
                   <input
-                    type="number"
-                    step="0.1"
+                    type="text"
+                    inputMode="decimal"
                     placeholder="99.5"
                     value={mHips}
-                    onChange={(e) => setMHips(e.target.value)}
-                    className="w-full rounded-lg bg-slate-900 border border-slate-700 px-2.5 py-2 text-white"
+                    onChange={(e) => setMHips(e.target.value.replace(/[^\d.,]/g, ""))}
+                    className="w-full rounded-lg bg-slate-900 border border-slate-700 px-2.5 py-2 text-white tabular-nums"
                   />
                 </label>
                 <label className="space-y-1">
                   <span className="text-slate-300">Poitrine (cm)</span>
                   <input
-                    type="number"
-                    step="0.1"
+                    type="text"
+                    inputMode="decimal"
                     placeholder="101.5"
                     value={mChest}
-                    onChange={(e) => setMChest(e.target.value)}
-                    className="w-full rounded-lg bg-slate-900 border border-slate-700 px-2.5 py-2 text-white"
+                    onChange={(e) => setMChest(e.target.value.replace(/[^\d.,]/g, ""))}
+                    className="w-full rounded-lg bg-slate-900 border border-slate-700 px-2.5 py-2 text-white tabular-nums"
                   />
                 </label>
                 <label className="space-y-1">
                   <span className="text-pink-300">Cou (cm · US Navy)</span>
                   <input
-                    type="number"
-                    step="0.1"
+                    type="text"
+                    inputMode="decimal"
                     placeholder="38.8"
                     value={mNeck}
-                    onChange={(e) => setMNeck(e.target.value)}
-                    className="w-full rounded-lg bg-slate-900 border border-slate-700 px-2.5 py-2 text-white"
+                    onChange={(e) => setMNeck(e.target.value.replace(/[^\d.,]/g, ""))}
+                    className="w-full rounded-lg bg-slate-900 border border-slate-700 px-2.5 py-2 text-white tabular-nums"
                   />
                 </label>
                 <label className="space-y-1">
                   <span className="text-slate-300">Épaules (cm)</span>
                   <input
-                    type="number"
-                    step="0.1"
+                    type="text"
+                    inputMode="decimal"
                     placeholder="117.5"
                     value={mShoulders}
-                    onChange={(e) => setMShoulders(e.target.value)}
-                    className="w-full rounded-lg bg-slate-900 border border-slate-700 px-2.5 py-2 text-white"
+                    onChange={(e) => setMShoulders(e.target.value.replace(/[^\d.,]/g, ""))}
+                    className="w-full rounded-lg bg-slate-900 border border-slate-700 px-2.5 py-2 text-white tabular-nums"
                   />
                 </label>
                 <label className="space-y-1">
                   <span className="text-slate-300">Cuisse (cm)</span>
                   <input
-                    type="number"
-                    step="0.1"
+                    type="text"
+                    inputMode="decimal"
                     placeholder="58.0"
                     value={mThigh}
-                    onChange={(e) => setMThigh(e.target.value)}
-                    className="w-full rounded-lg bg-slate-900 border border-slate-700 px-2.5 py-2 text-white"
+                    onChange={(e) => setMThigh(e.target.value.replace(/[^\d.,]/g, ""))}
+                    className="w-full rounded-lg bg-slate-900 border border-slate-700 px-2.5 py-2 text-white tabular-nums"
                   />
                 </label>
                 <label className="space-y-1">
                   <span className="text-slate-300">Bras (cm)</span>
                   <input
-                    type="number"
-                    step="0.1"
+                    type="text"
+                    inputMode="decimal"
                     placeholder="35.0"
                     value={mArm}
-                    onChange={(e) => setMArm(e.target.value)}
-                    className="w-full rounded-lg bg-slate-900 border border-slate-700 px-2.5 py-2 text-white"
+                    onChange={(e) => setMArm(e.target.value.replace(/[^\d.,]/g, ""))}
+                    className="w-full rounded-lg bg-slate-900 border border-slate-700 px-2.5 py-2 text-white tabular-nums"
                   />
                 </label>
                 <label className="space-y-1">
                   <span className="text-slate-300">Mollet (cm)</span>
                   <input
-                    type="number"
-                    step="0.1"
+                    type="text"
+                    inputMode="decimal"
                     placeholder="38.2"
                     value={mCalf}
-                    onChange={(e) => setMCalf(e.target.value)}
-                    className="w-full rounded-lg bg-slate-900 border border-slate-700 px-2.5 py-2 text-white"
+                    onChange={(e) => setMCalf(e.target.value.replace(/[^\d.,]/g, ""))}
+                    className="w-full rounded-lg bg-slate-900 border border-slate-700 px-2.5 py-2 text-white tabular-nums"
                   />
                 </label>
               </div>

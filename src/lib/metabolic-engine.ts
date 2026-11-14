@@ -35,9 +35,16 @@ const ACTIVITY_MAINTENANCE_MULTIPLIERS: Record<ActivityProfile, number> = {
  * - BMR Mifflin-St Jeor + plancher de sécurité médicale
  */
 export function computeAnthropometrics(profile: UserProfile): AnthropometricReport {
-  const heightM = Math.max(1.2, profile.heightCm / 100);
-  const weightKg = Math.max(30, profile.weightKg);
-  const age = Math.max(10, Math.min(110, profile.age));
+  const safeHeightCm = Math.max(
+    120,
+    Math.min(230, Number.isFinite(profile.heightCm) ? profile.heightCm : 170)
+  );
+  const heightM = safeHeightCm / 100;
+  const weightKg = Math.max(
+    30,
+    Math.min(250, Number.isFinite(profile.weightKg) ? profile.weightKg : 75)
+  );
+  const age = Math.max(10, Math.min(110, Number.isFinite(profile.age) ? profile.age : 35));
 
   const bmi = +(weightKg / (heightM * heightM)).toFixed(1);
   let bmiCategoryFr = "Corpulence normale (OMS)";
@@ -47,8 +54,14 @@ export function computeAnthropometrics(profile: UserProfile): AnthropometricRepo
   else if (bmi < 35) bmiCategoryFr = "Obésité modérée Classe I (OMS)";
   else bmiCategoryFr = "Obésité élevée Classe II+ (OMS)";
 
-  const waistCm = profile.waistCm && profile.waistCm > 40 ? profile.waistCm : null;
-  const wthr = waistCm ? +(waistCm / profile.heightCm).toFixed(2) : null;
+  const waistCm =
+    profile.waistCm &&
+    Number.isFinite(profile.waistCm) &&
+    profile.waistCm >= 42 &&
+    profile.waistCm <= 190
+      ? profile.waistCm
+      : null;
+  const wthr = waistCm ? +(waistCm / safeHeightCm).toFixed(2) : null;
 
   let wthrStatusFr: string | null = null;
   if (wthr !== null) {
@@ -76,8 +89,8 @@ export function computeAnthropometrics(profile: UserProfile): AnthropometricRepo
   if (waistCm !== null) {
     const rawRfm =
       profile.sex === "male"
-        ? 64 - 20 * (profile.heightCm / waistCm)
-        : 76 - 20 * (profile.heightCm / waistCm);
+        ? 64 - 20 * (safeHeightCm / waistCm)
+        : 76 - 20 * (safeHeightCm / waistCm);
     rfmPct = +Math.max(5, Math.min(60, rawRfm)).toFixed(1);
     rfmMethodLabel = "RFM validé (Woolcott 2018 — taille + tour de taille)";
   } else {
@@ -95,7 +108,7 @@ export function computeAnthropometrics(profile: UserProfile): AnthropometricRepo
 
   // Mifflin-St Jeor (1990)
   const bmrRaw =
-    10 * weightKg + 6.25 * profile.heightCm - 5 * age + (profile.sex === "male" ? 5 : -161);
+    10 * weightKg + 6.25 * safeHeightCm - 5 * age + (profile.sex === "male" ? 5 : -161);
   const bmrKcal = Math.max(950, Math.round(bmrRaw));
   const estimatedMaintenanceKcal = Math.round(
     bmrKcal * ACTIVITY_MAINTENANCE_MULTIPLIERS[profile.activityProfile]
@@ -109,36 +122,63 @@ export function computeAnthropometrics(profile: UserProfile): AnthropometricRepo
     profile.sex === "male" ? 1500 : 1200,
     Math.round(bmrKcal * 0.85)
   );
-  const safetyFloorApplied = !minorSafetyLock && uncappedTarget < clinicalFloor;
-  const targetIntakeKcal = minorSafetyLock
+  const autoTargetIntakeKcal = minorSafetyLock
     ? estimatedMaintenanceKcal
     : Math.max(clinicalFloor, Math.min(estimatedMaintenanceKcal + 600, uncappedTarget));
+  const hasCalorieOverride =
+    !minorSafetyLock &&
+    typeof profile.dailyCalorieGoalOverride === "number" &&
+    Number.isFinite(profile.dailyCalorieGoalOverride);
+  const targetIntakeKcal = hasCalorieOverride
+    ? Math.max(clinicalFloor, Math.min(4500, Math.round(profile.dailyCalorieGoalOverride!)))
+    : autoTargetIntakeKcal;
+  const safetyFloorApplied =
+    !minorSafetyLock &&
+    (hasCalorieOverride
+      ? profile.dailyCalorieGoalOverride! < clinicalFloor
+      : uncappedTarget < clinicalFloor);
 
-  const referenceMass =
+  const idealBmi25Kg = 25 * heightM * heightM;
+  const baseReferenceMass =
     (profile.primaryGoal === "fat_loss" || profile.primaryGoal === "rebalancing") &&
     profile.targetWeightKg < weightKg
-      ? Math.max(45, (weightKg + profile.targetWeightKg) / 2)
+      ? Math.max(45, (weightKg + Math.max(35, profile.targetWeightKg)) / 2)
       : weightKg;
+  const espenAdjustedKg = idealBmi25Kg + 0.4 * Math.max(0, weightKg - idealBmi25Kg);
+  const referenceMass =
+    weightKg > idealBmi25Kg * 1.2
+      ? Math.min(baseReferenceMass, espenAdjustedKg)
+      : baseReferenceMass;
 
   let proteinG: number;
   let fatG: number;
   let carbsG: number;
   let fiberG: number;
-  let waterMl = Math.round(weightKg * 35); // EFSA ~35 mL/kg
+  // Hydratation EFSA : ~20 % provient des aliments et le tissu adipeux (> IMC 25) est peu hydraté
+  const hydrationRefKg =
+    weightKg <= idealBmi25Kg
+      ? weightKg
+      : idealBmi25Kg + 0.25 * (weightKg - idealBmi25Kg);
+  const mlPerKg = profile.specialMode === "ketogenic" && !minorSafetyLock ? 33 : 30;
+  const rawAutoWaterMl = Math.round((hydrationRefKg * mlPerKg) / 50) * 50;
+  const autoWaterMl = Math.max(1500, Math.min(3500, rawAutoWaterMl));
+  const waterMl =
+    typeof profile.dailyWaterGoalMl === "number" && Number.isFinite(profile.dailyWaterGoalMl)
+      ? Math.max(1000, Math.min(4500, Math.round(profile.dailyWaterGoalMl)))
+      : autoWaterMl;
   let sodiumMaxMg = profile.specialMode === "cardio_low_sodium" ? 1500 : 2000; // OMS < 5g sel/j
 
   if (profile.specialMode === "ketogenic" && !minorSafetyLock) {
-    proteinG = Math.round(referenceMass * 1.65);
+    proteinG = Math.max(50, Math.min(220, Math.round(referenceMass * 1.65)));
     carbsG = Math.max(20, Math.min(35, Math.round((targetIntakeKcal * 0.06) / 4)));
     fatG = Math.max(
       50,
       Math.round(Math.max(360, targetIntakeKcal - proteinG * 4 - carbsG * 4) / 9)
     );
     fiberG = profile.sex === "male" ? 26 : 24;
-    waterMl = Math.round(weightKg * 40);
     sodiumMaxMg = 2300;
   } else if (profile.specialMode === "rebalancing" || profile.primaryGoal === "rebalancing") {
-    proteinG = Math.round(referenceMass * 1.6);
+    proteinG = Math.max(50, Math.min(220, Math.round(referenceMass * 1.6)));
     fatG = Math.max(45, Math.round((targetIntakeKcal * 0.3) / 9));
     carbsG = Math.round(Math.max(200, targetIntakeKcal - proteinG * 4 - fatG * 9) / 4);
     fiberG = profile.sex === "male" ? 34 : 30;
@@ -150,7 +190,7 @@ export function computeAnthropometrics(profile: UserProfile): AnthropometricRepo
           ? 1.75
           : 1.55;
 
-    proteinG = Math.round(referenceMass * proteinPerKg);
+    proteinG = Math.max(50, Math.min(220, Math.round(referenceMass * proteinPerKg)));
     fatG = Math.max(45, Math.round((targetIntakeKcal * 0.28) / 9));
     const remainingCarbsKcal = Math.max(200, targetIntakeKcal - proteinG * 4 - fatG * 9);
     carbsG = Math.round(remainingCarbsKcal / 4);
@@ -169,9 +209,12 @@ export function computeAnthropometrics(profile: UserProfile): AnthropometricRepo
     athleticCoherenceNote,
     bmrKcal,
     estimatedMaintenanceKcal,
+    autoTargetIntakeKcal,
     targetIntakeKcal,
+    clinicalFloorKcal: clinicalFloor,
     safetyFloorApplied,
     minorSafetyLock,
+    autoWaterMl,
     targets: {
       proteinG,
       carbsG,
@@ -185,7 +228,7 @@ export function computeAnthropometrics(profile: UserProfile): AnthropometricRepo
       "NICE CG189 (2022) & HAS — Ratio Tour de Taille / Taille (< 0,50)",
       "JAMA Network Open (2024) — Body Roundness Index (BRI)",
       "ANSES & ESPEN — Apports Protéiques & Fibres (30 g/j)",
-      "EFSA — Hydratation de référence & Mifflin-St Jeor",
+      "EFSA — Hydratation ajustée & Mifflin-St Jeor",
     ],
   };
 }
@@ -286,7 +329,7 @@ export function computeDailyEnergyBalance(params: {
   );
 
   // Déduplication stricte des pas inclus dans des séances enregistrées
-  const rawSteps = stepLog?.steps ?? 0;
+  const rawSteps = Math.max(0, Math.min(100000, Math.round(stepLog?.steps ?? 0)));
   let overlapStepsDeducted = 0;
   let workoutMinutes = 0;
   let netWorkoutsKcal = 0;
@@ -298,9 +341,17 @@ export function computeDailyEnergyBalance(params: {
   }
 
   const effectiveNeatSteps = Math.max(0, rawSteps - overlapStepsDeducted);
-  const strideM = (profile.heightCm / 100) * 0.415;
+  const safeHeightCm = Math.max(
+    120,
+    Math.min(230, Number.isFinite(profile.heightCm) ? profile.heightCm : 170)
+  );
+  const safeWeightKg = Math.max(
+    30,
+    Math.min(250, Number.isFinite(profile.weightKg) ? profile.weightKg : 75)
+  );
+  const strideM = (safeHeightCm / 100) * 0.415;
   const stepDistanceKm = +((rawSteps * strideM) / 1000).toFixed(2);
-  const netStepsKcal = Math.round(effectiveNeatSteps * 0.04 * (profile.weightKg / 70));
+  const netStepsKcal = Math.round(effectiveNeatSteps * 0.04 * (safeWeightKg / 70));
 
   const nonAmbulatoryNeatKcal = Math.round(
     anthro.bmrKcal * ACTIVITY_NEAT_FACTORS[profile.activityProfile]
@@ -347,7 +398,7 @@ export function computeDailyEnergyBalance(params: {
     targetIntakeKcal: anthro.targetIntakeKcal,
     remainingToTargetKcal,
     statusFr,
-    waterMl: waterLog?.milliliters ?? 0,
+    waterMl: Math.max(0, Math.min(10000, Math.round(waterLog?.milliliters ?? 0))),
     mealsCount: dayMeals.length,
   };
 }

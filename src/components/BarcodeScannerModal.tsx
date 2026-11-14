@@ -34,6 +34,7 @@ export function BarcodeScannerModal({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [product, setProduct] = useState<BarcodeProductPayload | null>(null);
   const [grams, setGrams] = useState(100);
+  const [gramsDraft, setGramsDraft] = useState("100");
   const [mealType, setMealType] = useState<MealType>("snack");
   const [cameraActive, setCameraActive] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -79,6 +80,7 @@ export function BarcodeScannerModal({
         triggerLightHaptic();
         setProduct(json);
         setGrams(100);
+        setGramsDraft("100");
       }
     } catch {
       setErrorMsg("Impossible de joindre la base code-barres pour le moment.");
@@ -181,16 +183,18 @@ export function BarcodeScannerModal({
         vitDUg: 0,
       },
       novaGroup: product.novaGroup,
-      glycemicLoad: Math.round((carbsG - fiberG * 0.4) * 0.45),
+      glycemicLoad: Math.max(0, Math.round((carbsG - fiberG * 0.4) * 0.45)),
       satietyScore: Math.max(25, Math.min(92, Math.round(proteinG * 2 + fiberG * 3 + 35))),
       healthScore:
         product.nutriScore === "A"
-          ? 88
+          ? 90
           : product.nutriScore === "B"
-            ? 74
+            ? 76
             : product.nutriScore === "C"
               ? 58
-              : 40,
+              : product.nutriScore === "D"
+                ? 44
+                : 30,
       items: [
         {
           name: product.productName,
@@ -323,19 +327,47 @@ export function BarcodeScannerModal({
               </div>
             </div>
 
-            <div>
+            <div className="space-y-2">
               <div className="flex items-center justify-between text-xs">
                 <span className="text-slate-300">Quantité consommée :</span>
-                <span className="font-bold text-white tabular-nums">{grams} g</span>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    aria-label="Quantité en grammes"
+                    value={gramsDraft}
+                    onChange={(e) => {
+                      const clean = e.target.value.replace(/[^\d]/g, "");
+                      setGramsDraft(clean);
+                      if (!clean) return;
+                      const n = Number(clean);
+                      if (n >= 5 && n <= 1000) {
+                        setGrams(Math.round(n));
+                      }
+                    }}
+                    onBlur={() => {
+                      const n = Number(gramsDraft);
+                      const clamped = Math.max(5, Math.min(1000, Math.round(n || grams || 100)));
+                      setGrams(clamped);
+                      setGramsDraft(String(clamped));
+                    }}
+                    className="w-16 rounded-lg border border-slate-600 bg-slate-950 px-2 py-1 text-right font-bold text-white tabular-nums"
+                  />
+                  <span className="font-bold text-white">g</span>
+                </div>
               </div>
               <input
                 type="range"
                 min={15}
                 max={350}
                 step={5}
-                value={grams}
-                onChange={(e) => setGrams(Number(e.target.value))}
-                className="mt-2 w-full accent-emerald-400"
+                value={Math.min(350, Math.max(15, grams))}
+                onChange={(e) => {
+                  const val = Number(e.target.value);
+                  setGrams(val);
+                  setGramsDraft(String(val));
+                }}
+                className="w-full accent-emerald-400"
               />
             </div>
 

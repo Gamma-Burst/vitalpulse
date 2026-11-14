@@ -146,6 +146,15 @@ export interface ParsedWearableSnapshot {
 /**
  * Parseur universel pour imports Apple Santé XML, Samsung Health CSV/JSON, Garmin ou Fitbit JSON.
  */
+function toBoundedPositive(raw: unknown, min: number, max: number): number | undefined {
+  if (raw === null || raw === undefined || typeof raw === "boolean") return undefined;
+  const normalized = typeof raw === "string" ? raw.trim().replace(",", ".") : raw;
+  if (normalized === "") return undefined;
+  const num = Number(normalized);
+  if (!Number.isFinite(num) || num <= 0 || num < min || num > max) return undefined;
+  return num;
+}
+
 export function parseWearableExportText(
   fileName: string,
   content: string
@@ -153,26 +162,99 @@ export function parseWearableExportText(
   const lower = fileName.toLowerCase();
   const trimmed = content.trim();
 
-  // 1. Apple Santé export.xml
+  // 1. Apple Santé export.xml — regrouper par startDate (YYYY-MM-DD) pour ne jamais sommer plusieurs années
   if (lower.endsWith(".xml") || trimmed.includes("<HealthData") || trimmed.includes("HKQuantityTypeIdentifier")) {
-    let steps = 0;
-    const stepRegex = /HKQuantityTypeIdentifierStepCount"[^>]*value="(\d+(?:\.\d+)?)"/g;
+    const stepsByDate = new Map<string, number>();
+    const kcalByDate = new Map<string, number>();
+    let lastValidWeight: number | undefined;
+    let lastWeightDate = "";
+    let lastValidHr: number | undefined;
+    let lastHrDate = "";
+    let matchedRecordTags = 0;
+
+    const recordRegex = /<Record\b([^>]*?)(?:\/>|>)/gi;
     let m: RegExpExecArray | null;
-    while ((m = stepRegex.exec(trimmed)) !== null) {
-      steps += Number(m[1]);
+    while ((m = recordRegex.exec(trimmed)) !== null) {
+      matchedRecordTags += 1;
+      const attrs = m[1];
+      const typeMatch = attrs.match(/\btype="([^"]+)"/i);
+      const valMatch = attrs.match(/\bvalue="([^"]+)"/i);
+      if (!typeMatch || !valMatch) continue;
+      const recType = typeMatch[1];
+      const dateMatch = attrs.match(/\bstartDate="(\d{4}-\d{2}-\d{2})/i);
+      const dateKey = dateMatch ? dateMatch[1] : "undated";
+
+      if (recType === "HKQuantityTypeIdentifierStepCount") {
+        const v = toBoundedPositive(valMatch[1], 1, 65000);
+        if (v !== undefined) {
+          stepsByDate.set(dateKey, (stepsByDate.get(dateKey) ?? 0) + v);
+        }
+      } else if (recType === "HKQuantityTypeIdentifierActiveEnergyBurned") {
+        const v = toBoundedPositive(valMatch[1], 1, 6000);
+        if (v !== undefined) {
+          kcalByDate.set(dateKey, (kcalByDate.get(dateKey) ?? 0) + v);
+        }
+      } else if (recType === "HKQuantityTypeIdentifierBodyMass") {
+        const v = toBoundedPositive(valMatch[1], 30, 250);
+        if (v !== undefined && (dateKey === "undated" || dateKey >= lastWeightDate)) {
+          lastValidWeight = +v.toFixed(1);
+          if (dateKey !== "undated") lastWeightDate = dateKey;
+        }
+      } else if (recType === "HKQuantityTypeIdentifierHeartRate") {
+        const v = toBoundedPositive(valMatch[1], 30, 240);
+        if (v !== undefined && (dateKey === "undated" || dateKey >= lastHrDate)) {
+          lastValidHr = Math.round(v);
+          if (dateKey !== "undated") lastHrDate = dateKey;
+        }
+      }
     }
-    const weightMatch = trimmed.match(/HKQuantityTypeIdentifierBodyMass"[^>]*value="(\d+(?:\.\d+)?)"/);
-    const hrMatch = trimmed.match(/HKQuantityTypeIdentifierHeartRate"[^>]*value="(\d+(?:\.\d+)?)"/);
-    let activeKcal = 0;
-    const kcalRegex = /HKQuantityTypeIdentifierActiveEnergyBurned"[^>]*value="(\d+(?:\.\d+)?)"/g;
-    while ((m = kcalRegex.exec(trimmed)) !== null) {
-      activeKcal += Number(m[1]);
+
+    const pickLatestSum = (map: Map<string, number>, maxVal: number): number | undefined => {
+      if (map.size === 0) return undefined;
+      const datedKeys = [...map.keys()].filter((k) => k !== "undated").sort();
+      const targetKey = datedKeys.length > 0 ? datedKeys[datedKeys.length - 1] : "undated";
+      const total = map.get(targetKey);
+      return total !== undefined && total > 0 ? Math.min(maxVal, Math.round(total)) : undefined;
+    };
+
+    let steps = pickLatestSum(stepsByDate, 65000);
+    let activeKcal = pickLatestSum(kcalByDate, 6000);
+
+    // Fallback si XML simplifié sans balise <Record ...>
+    if (matchedRecordTags === 0) {
+      let rawSteps = 0;
+      const stepRegex = /HKQuantityTypeIdentifierStepCount"[^>]*value="(\d+(?:\.\d+)?)"/g;
+      while ((m = stepRegex.exec(trimmed)) !== null) {
+        const v = toBoundedPositive(m[1], 1, 65000);
+        if (v !== undefined) rawSteps += v;
+      }
+      steps = rawSteps > 0 ? Math.min(65000, Math.round(rawSteps)) : undefined;
+
+      let rawKcal = 0;
+      const kcalRegex = /HKQuantityTypeIdentifierActiveEnergyBurned"[^>]*value="(\d+(?:\.\d+)?)"/g;
+      while ((m = kcalRegex.exec(trimmed)) !== null) {
+        const v = toBoundedPositive(m[1], 1, 6000);
+        if (v !== undefined) rawKcal += v;
+      }
+      activeKcal = rawKcal > 0 ? Math.min(6000, Math.round(rawKcal)) : undefined;
+
+      const weightMatches = [...trimmed.matchAll(/HKQuantityTypeIdentifierBodyMass"[^>]*value="(\d+(?:\.\d+)?)"/g)];
+      for (const wm of weightMatches) {
+        const v = toBoundedPositive(wm[1], 30, 250);
+        if (v !== undefined) lastValidWeight = +v.toFixed(1);
+      }
+      const hrMatches = [...trimmed.matchAll(/HKQuantityTypeIdentifierHeartRate"[^>]*value="(\d+(?:\.\d+)?)"/g)];
+      for (const hm of hrMatches) {
+        const v = toBoundedPositive(hm[1], 30, 240);
+        if (v !== undefined) lastValidHr = Math.round(v);
+      }
     }
+
     return {
-      steps: steps > 0 ? Math.round(steps) : undefined,
-      activeKcal: activeKcal > 0 ? Math.round(activeKcal) : undefined,
-      weightKg: weightMatch ? +Number(weightMatch[1]).toFixed(1) : undefined,
-      heartRateBpm: hrMatch ? Math.round(Number(hrMatch[1])) : undefined,
+      steps,
+      activeKcal,
+      weightKg: lastValidWeight,
+      heartRateBpm: lastValidHr,
       sourceLabel: "Import Apple Santé XML",
     };
   }
@@ -182,16 +264,28 @@ export function parseWearableExportText(
     try {
       const parsed = JSON.parse(trimmed) as Record<string, unknown> | Array<Record<string, unknown>>;
       const obj = Array.isArray(parsed) ? parsed[parsed.length - 1] ?? {} : parsed;
-      const stepsRaw = obj.steps ?? obj.step_count ?? obj.totalSteps ?? obj.dailySteps;
-      const kcalRaw = obj.activeKcal ?? obj.activeKilocalories ?? obj.calories ?? obj.calorie;
-      const weightRaw = obj.weightKg ?? obj.weight ?? obj.bodyMassKg;
-      const hrRaw = obj.heartRateBpm ?? obj.restingHeartRate ?? obj.heartRate ?? obj.bpm;
+      const stepsVal = toBoundedPositive(
+        obj.steps ?? obj.step_count ?? obj.totalSteps ?? obj.dailySteps,
+        1,
+        100000
+      );
+      const kcalVal = toBoundedPositive(
+        obj.activeKcal ?? obj.activeKilocalories ?? obj.calories ?? obj.calorie,
+        1,
+        8000
+      );
+      const weightVal = toBoundedPositive(obj.weightKg ?? obj.weight ?? obj.bodyMassKg, 30, 250);
+      const hrVal = toBoundedPositive(
+        obj.heartRateBpm ?? obj.restingHeartRate ?? obj.heartRate ?? obj.bpm,
+        30,
+        240
+      );
 
       return {
-        steps: Number.isFinite(Number(stepsRaw)) ? Math.round(Number(stepsRaw)) : undefined,
-        activeKcal: Number.isFinite(Number(kcalRaw)) ? Math.round(Number(kcalRaw)) : undefined,
-        weightKg: Number.isFinite(Number(weightRaw)) ? +Number(weightRaw).toFixed(1) : undefined,
-        heartRateBpm: Number.isFinite(Number(hrRaw)) ? Math.round(Number(hrRaw)) : undefined,
+        steps: stepsVal !== undefined ? Math.round(stepsVal) : undefined,
+        activeKcal: kcalVal !== undefined ? Math.round(kcalVal) : undefined,
+        weightKg: weightVal !== undefined ? +weightVal.toFixed(1) : undefined,
+        heartRateBpm: hrVal !== undefined ? Math.round(hrVal) : undefined,
         sourceLabel: lower.includes("garmin")
           ? "Import Garmin JSON"
           : lower.includes("fitbit")
@@ -208,35 +302,37 @@ export function parseWearableExportText(
   if (lines.length >= 2) {
     const header = lines[0].toLowerCase().split(/[,;]/).map((h) => h.trim());
     const last = lines[lines.length - 1].split(/[,;]/).map((c) => c.trim());
-    const findCol = (names: string[]): number | undefined => {
+    const findCol = (names: string[], min: number, max: number): number | undefined => {
       const idx = header.findIndex((h) => names.some((n) => h.includes(n)));
       if (idx === -1) return undefined;
-      const v = Number((last[idx] || "").replace(",", "."));
-      return Number.isFinite(v) && v > 0 ? v : undefined;
+      return toBoundedPositive(last[idx], min, max);
     };
-    const steps = findCol(["step", "pas"]);
-    const activeKcal = findCol(["kcal", "calor", "energy"]);
-    const weightKg = findCol(["weight", "poids", "mass"]);
-    const heartRateBpm = findCol(["heart", "bpm", "pulse", "fc"]);
+    const steps = findCol(["step", "pas"], 1, 100000);
+    const activeKcal = findCol(["kcal", "calor", "energy"], 1, 8000);
+    const weightKg = findCol(["weight", "poids", "mass"], 30, 250);
+    const heartRateBpm = findCol(["heart", "bpm", "pulse", "fc"], 30, 240);
     if (steps || activeKcal || weightKg || heartRateBpm) {
       return {
-        steps: steps ? Math.round(steps) : undefined,
-        activeKcal: activeKcal ? Math.round(activeKcal) : undefined,
-        weightKg: weightKg ? +weightKg.toFixed(1) : undefined,
-        heartRateBpm: heartRateBpm ? Math.round(heartRateBpm) : undefined,
+        steps: steps !== undefined ? Math.round(steps) : undefined,
+        activeKcal: activeKcal !== undefined ? Math.round(activeKcal) : undefined,
+        weightKg: weightKg !== undefined ? +weightKg.toFixed(1) : undefined,
+        heartRateBpm: heartRateBpm !== undefined ? Math.round(heartRateBpm) : undefined,
         sourceLabel: "Import Samsung / CSV",
       };
     }
   }
 
   // 4. Fallback regex libre
-  const stepsM = trimmed.match(/(\d{3,5})\s*(?:pas|steps)/i);
+  const stepsM = trimmed.match(/(\d{3,6})\s*(?:pas|steps)/i);
   const bpmM = trimmed.match(/(\d{2,3})\s*(?:bpm)/i);
   const weightM = trimmed.match(/(\d{2,3}(?:[.,]\d)?)\s*(?:kg)/i);
+  const stepsParsed = stepsM ? toBoundedPositive(stepsM[1], 100, 100000) : undefined;
+  const bpmParsed = bpmM ? toBoundedPositive(bpmM[1], 30, 240) : undefined;
+  const weightParsed = weightM ? toBoundedPositive(weightM[1], 30, 250) : undefined;
   return {
-    steps: stepsM ? Number(stepsM[1]) : undefined,
-    heartRateBpm: bpmM ? Number(bpmM[1]) : undefined,
-    weightKg: weightM ? Number(weightM[1].replace(",", ".")) : undefined,
+    steps: stepsParsed !== undefined ? Math.round(stepsParsed) : undefined,
+    heartRateBpm: bpmParsed !== undefined ? Math.round(bpmParsed) : undefined,
+    weightKg: weightParsed !== undefined ? +weightParsed.toFixed(1) : undefined,
     sourceLabel: "Import texte montre",
   };
 }

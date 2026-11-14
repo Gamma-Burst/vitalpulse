@@ -86,6 +86,9 @@ export interface DashboardViewProps {
   onOpenBarcode?: () => void;
   onToggleMindsetToday?: () => void;
   onNavigateFasting?: () => void;
+  onSetWaterToday?: (ml: number) => void;
+  onUpdateProfilePatch?: (patch: Partial<UserProfile>) => void;
+  onUpdateTodaySteps?: (steps: number) => void;
 }
 
 type ActiveSheetKind =
@@ -153,10 +156,42 @@ export function DashboardView({
   onOpenBarcode,
   onToggleMindsetToday,
   onNavigateFasting,
+  onSetWaterToday,
+  onUpdateProfilePatch,
+  onUpdateTodaySteps,
 }: DashboardViewProps) {
   const shouldReduceMotion = useReducedMotion();
   const [sheet, setSheet] = useState<ActiveSheetKind>(null);
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
+  const [waterGoalDraft, setWaterGoalDraft] = useState<string>(
+    String(profile.dailyWaterGoalMl ?? anthro.targets.waterMl)
+  );
+  const [stepGoalDraft, setStepGoalDraft] = useState<string>(String(profile.dailyStepGoal));
+  const [todayStepsDraft, setTodayStepsDraft] = useState<string>(String(todayBalance.rawSteps));
+  const [calorieGoalDraft, setCalorieGoalDraft] = useState<string>(
+    String(profile.dailyCalorieGoalOverride ?? anthro.targetIntakeKcal)
+  );
+  const [sheetFeedback, setSheetFeedback] = useState<string | null>(null);
+
+  useEffect(() => {
+    setWaterGoalDraft(String(profile.dailyWaterGoalMl ?? anthro.targets.waterMl));
+  }, [profile.dailyWaterGoalMl, anthro.targets.waterMl]);
+
+  useEffect(() => {
+    setStepGoalDraft(String(profile.dailyStepGoal));
+  }, [profile.dailyStepGoal]);
+
+  useEffect(() => {
+    setTodayStepsDraft(String(todayBalance.rawSteps));
+  }, [todayBalance.rawSteps]);
+
+  useEffect(() => {
+    setCalorieGoalDraft(String(profile.dailyCalorieGoalOverride ?? anthro.targetIntakeKcal));
+  }, [profile.dailyCalorieGoalOverride, anthro.targetIntakeKcal]);
+
+  useEffect(() => {
+    if (!sheet) setSheetFeedback(null);
+  }, [sheet]);
 
   useEffect(() => {
     if (!fasting || fasting.protocolId === "none") return;
@@ -219,19 +254,30 @@ export function DashboardView({
     anthro.safetyFloorApplied;
 
   const avgStats = useMemo(() => {
-    const validDays = recentBalances.filter((b) => b.intakeKcal > 0);
-    const half = Math.max(1, Math.floor(validDays.length / 2));
-    const prevPeriod = validDays.slice(0, half);
-    const currPeriod = validDays.slice(half);
-    const avg = (
+    const calDays = recentBalances.filter((b) => b.intakeKcal > 0);
+    const stepDays = recentBalances.filter((b) => b.rawSteps > 0);
+    const splitAvg = (
       arr: DailyEnergyBalance[],
       fn: (b: DailyEnergyBalance) => number
-    ) => (arr.length ? Math.round(arr.reduce((s, b) => s + fn(b), 0) / arr.length) : 0);
+    ) => {
+      if (arr.length === 0) return { prev: null as number | null, curr: null as number | null };
+      if (arr.length === 1) {
+        return { prev: null as number | null, curr: Math.round(fn(arr[0])) };
+      }
+      const half = Math.floor(arr.length / 2);
+      const prevPeriod = arr.slice(0, half);
+      const currPeriod = arr.slice(half);
+      const avg = (list: DailyEnergyBalance[]) =>
+        Math.round(list.reduce((s, b) => s + fn(b), 0) / list.length);
+      return { prev: avg(prevPeriod), curr: avg(currPeriod) };
+    };
+    const cal = splitAvg(calDays, (b) => b.intakeKcal);
+    const steps = splitAvg(stepDays, (b) => b.rawSteps);
     return {
-      avgCalPrev: avg(prevPeriod, (b) => b.intakeKcal),
-      avgCalCurr: avg(currPeriod, (b) => b.intakeKcal),
-      avgStepsPrev: avg(prevPeriod, (b) => b.rawSteps),
-      avgStepsCurr: avg(currPeriod, (b) => b.rawSteps),
+      avgCalPrev: cal.prev,
+      avgCalCurr: cal.curr,
+      avgStepsPrev: steps.prev,
+      avgStepsCurr: steps.curr,
     };
   }, [recentBalances]);
 
@@ -642,7 +688,10 @@ export function DashboardView({
                 </span>
               </div>
               <div>
-                <p className="text-[11px] font-semibold text-slate-400">Hydratation</p>
+                <p className="flex items-center gap-1 text-[11px] font-semibold text-slate-400">
+                  <span>Hydratation</span>
+                  <InfoTip term="hydration_efsa" />
+                </p>
                 <p className="font-display text-lg font-extrabold text-white tabular-nums">
                   {todayBalance.waterMl} mL
                 </p>
@@ -887,23 +936,111 @@ export function DashboardView({
             <div className="rounded-2xl border border-slate-500/20 bg-slate-500/10 p-4 text-xs">
               <p className="font-bold text-white">Moyenne apports sur {rangeDays} j</p>
               <p className="mt-1 font-display text-xl font-extrabold text-emerald-300 tabular-nums">
-                {avgStats.avgCalCurr} kcal/j
+                {avgStats.avgCalCurr !== null ? `${avgStats.avgCalCurr} kcal/j` : "—"}
               </p>
               <p className="mt-0.5 text-slate-400">
-                Période précédente : {avgStats.avgCalPrev} kcal/j
+                Période précédente :{" "}
+                {avgStats.avgCalPrev !== null
+                  ? `${avgStats.avgCalPrev} kcal/j`
+                  : "en attente de données (< 2 j)"}
               </p>
             </div>
 
             <div className="rounded-2xl border border-slate-500/20 bg-slate-500/10 p-4 text-xs">
               <p className="font-bold text-white">Moyenne pas sur {rangeDays} j</p>
               <p className="mt-1 font-display text-xl font-extrabold text-cyan-300 tabular-nums">
-                {avgStats.avgStepsCurr.toLocaleString("fr-FR")} pas/j
+                {avgStats.avgStepsCurr !== null
+                  ? `${avgStats.avgStepsCurr.toLocaleString("fr-FR")} pas/j`
+                  : "—"}
               </p>
               <p className="mt-0.5 text-slate-400">
-                Période précédente : {avgStats.avgStepsPrev.toLocaleString("fr-FR")} pas/j
+                Période précédente :{" "}
+                {avgStats.avgStepsPrev !== null
+                  ? `${avgStats.avgStepsPrev.toLocaleString("fr-FR")} pas/j`
+                  : "en attente de données (< 2 j)"}
               </p>
             </div>
           </div>
+
+          {onUpdateProfilePatch && (
+            <div className="rounded-2xl border border-emerald-400/25 bg-emerald-500/5 p-4 text-xs space-y-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="font-bold text-white">Cible calorique quotidienne</p>
+                  <p className="text-[11px] text-slate-400">
+                    Calcul automatique : {anthro.autoTargetIntakeKcal} kcal/j · Plancher clinique :{" "}
+                    {anthro.clinicalFloorKcal} kcal/j
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onUpdateProfilePatch({ dailyCalorieGoalOverride: undefined });
+                    setCalorieGoalDraft(String(anthro.autoTargetIntakeKcal));
+                    setSheetFeedback(
+                      `Cible calorique remise en mode Auto (${anthro.autoTargetIntakeKcal} kcal/j).`
+                    );
+                  }}
+                  className={`rounded-lg border px-2.5 py-1 text-[11px] font-bold ${
+                    profile.dailyCalorieGoalOverride === undefined
+                      ? "border-emerald-400 bg-emerald-500/20 text-emerald-200"
+                      : "border-slate-600 text-slate-300 hover:border-emerald-400"
+                  }`}
+                >
+                  Auto ({anthro.autoTargetIntakeKcal} kcal)
+                </button>
+              </div>
+              {anthro.minorSafetyLock ? (
+                <p className="text-[11px] text-amber-300">
+                  Mode sécurité mineur activé : l&apos;objectif calorique reste calculé automatiquement pour protéger la croissance.
+                </p>
+              ) : (
+                <form
+                  className="flex flex-wrap items-center gap-2"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const parsed = Number(calorieGoalDraft);
+                    const minAllowed = Math.max(1200, anthro.clinicalFloorKcal);
+                    const clamped = Math.max(
+                      minAllowed,
+                      Math.min(
+                        4500,
+                        Math.round(
+                          Number.isFinite(parsed) && parsed > 0
+                            ? parsed
+                            : anthro.autoTargetIntakeKcal
+                        )
+                      )
+                    );
+                    onUpdateProfilePatch({ dailyCalorieGoalOverride: clamped });
+                    setCalorieGoalDraft(String(clamped));
+                    setSheetFeedback(`Cible calorique enregistrée : ${clamped} kcal/j.`);
+                  }}
+                >
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    aria-label="Cible calorique personnalisée en kcal"
+                    value={calorieGoalDraft}
+                    onChange={(e) => setCalorieGoalDraft(e.target.value.replace(/[^\d]/g, ""))}
+                    className="w-28 rounded-xl border border-slate-600 bg-slate-950 px-3 py-2 font-bold text-white tabular-nums"
+                  />
+                  <span className="text-slate-400">
+                    kcal/j (min {Math.max(1200, anthro.clinicalFloorKcal)})
+                  </span>
+                  <button
+                    type="submit"
+                    className="ml-auto rounded-xl bg-emerald-500 px-3.5 py-2 font-extrabold text-slate-950 hover:bg-emerald-400"
+                  >
+                    Appliquer
+                  </button>
+                </form>
+              )}
+              {sheetFeedback && (
+                <p className="text-[11px] font-semibold text-emerald-300">{sheetFeedback}</p>
+              )}
+            </div>
+          )}
         </div>
       </DetailSheet>
 
@@ -968,19 +1105,26 @@ export function DashboardView({
         open={sheet === "hydration"}
         onClose={() => setSheet(null)}
         title="Hydratation quotidienne"
-        subtitle="Repère EFSA : ~35 mL / kg de poids corporel"
+        subtitle="Boissons EFSA ajustées (1 500–3 500 mL/j) ou cible personnalisée"
         icon={<Droplets className="h-5 w-5 text-sky-300" />}
         size="md"
       >
         <div className="space-y-4">
           <div className="rounded-2xl border border-sky-400/30 bg-sky-500/10 p-4 text-center">
-            <p className="font-display text-3xl font-extrabold text-white tabular-nums">
+            <p className="inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-sky-200">
+              <span>Objectif du jour</span>
+              <InfoTip term="hydration_efsa" />
+            </p>
+            <p className="mt-1 font-display text-3xl font-extrabold text-white tabular-nums">
               {todayBalance.waterMl} / {anthro.targets.waterMl} mL
             </p>
             <p className="mt-1 text-xs text-sky-200">
-              L&apos;hydratation soutient la satiété, la concentration et limite les coups de fatigue pendant un jeûne.
+              {profile.dailyWaterGoalMl
+                ? `Cible personnalisée (${profile.dailyWaterGoalMl} mL · Auto EFSA : ${anthro.autoWaterMl} mL)`
+                : `Calcul Auto EFSA ajusté : ${anthro.autoWaterMl} mL/j hors eau des aliments.`}
             </p>
           </div>
+
           <div className="grid grid-cols-3 gap-2">
             {[250, 500, 750].map((ml) => (
               <button
@@ -996,6 +1140,122 @@ export function DashboardView({
               </button>
             ))}
           </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              disabled={todayBalance.waterMl <= 0}
+              onClick={() => {
+                triggerLightHaptic();
+                if (onSetWaterToday) {
+                  onSetWaterToday(Math.max(0, todayBalance.waterMl - 250));
+                } else {
+                  onAddWater(-250);
+                }
+              }}
+              className="rounded-2xl border border-slate-600/50 bg-slate-800/60 py-2.5 text-xs font-bold text-slate-200 hover:bg-slate-700/60 disabled:opacity-40"
+            >
+              -250 mL (Corriger)
+            </button>
+            <button
+              type="button"
+              disabled={todayBalance.waterMl <= 0}
+              onClick={() => {
+                triggerLightHaptic();
+                if (onSetWaterToday) {
+                  onSetWaterToday(0);
+                } else {
+                  onAddWater(-todayBalance.waterMl);
+                }
+              }}
+              className="rounded-2xl border border-rose-400/30 bg-rose-500/10 py-2.5 text-xs font-bold text-rose-200 hover:bg-rose-500/20 disabled:opacity-40"
+            >
+              Réinitialiser (0 mL)
+            </button>
+          </div>
+
+          {onUpdateProfilePatch && (
+            <div className="space-y-2.5 rounded-2xl border border-slate-500/25 bg-slate-500/10 p-3.5 text-xs">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-bold text-white">
+                  Modifier l&apos;objectif eau / jour
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onUpdateProfilePatch({ dailyWaterGoalMl: undefined });
+                    setWaterGoalDraft(String(anthro.autoWaterMl));
+                    setSheetFeedback(`Mode Auto EFSA activé (${anthro.autoWaterMl} mL/j).`);
+                  }}
+                  className={`rounded-lg border px-2 py-0.5 text-[11px] font-bold ${
+                    profile.dailyWaterGoalMl === undefined
+                      ? "border-sky-400 bg-sky-500/20 text-sky-200"
+                      : "border-slate-600 text-slate-300 hover:border-sky-400"
+                  }`}
+                >
+                  Auto ({anthro.autoWaterMl} mL)
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {[1500, 2000, 2500, 3000].map((ml) => (
+                  <button
+                    key={ml}
+                    type="button"
+                    onClick={() => {
+                      onUpdateProfilePatch({ dailyWaterGoalMl: ml });
+                      setWaterGoalDraft(String(ml));
+                      setSheetFeedback(`Objectif eau mis à jour : ${ml} mL/j.`);
+                    }}
+                    className={`rounded-lg border px-2.5 py-1 text-[11px] font-bold tabular-nums ${
+                      anthro.targets.waterMl === ml
+                        ? "border-sky-400 bg-sky-500/25 text-sky-100"
+                        : "border-slate-700 bg-slate-900/60 text-slate-300 hover:border-sky-400/50"
+                    }`}
+                  >
+                    {ml} mL
+                  </button>
+                ))}
+              </div>
+              <form
+                className="flex items-center gap-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const parsed = Number(waterGoalDraft);
+                  const clamped = Math.max(
+                    1000,
+                    Math.min(4500, Math.round(Number.isFinite(parsed) && parsed > 0 ? parsed : anthro.autoWaterMl))
+                  );
+                  onUpdateProfilePatch({ dailyWaterGoalMl: clamped });
+                  setWaterGoalDraft(String(clamped));
+                  setSheetFeedback(`Objectif eau enregistré : ${clamped} mL/j.`);
+                }}
+              >
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  aria-label="Objectif quotidien eau en millilitres"
+                  value={waterGoalDraft}
+                  onChange={(e) => setWaterGoalDraft(e.target.value.replace(/[^\d]/g, ""))}
+                  className="w-28 rounded-xl border border-slate-600 bg-slate-950 px-3 py-2 text-xs font-bold text-white tabular-nums"
+                />
+                <span className="text-slate-400">mL/j (1 000–4 500)</span>
+                <button
+                  type="submit"
+                  className="ml-auto rounded-xl bg-sky-500 px-3.5 py-2 text-xs font-extrabold text-slate-950 hover:bg-sky-400"
+                >
+                  Appliquer
+                </button>
+              </form>
+              {Number(waterGoalDraft) > 3500 && (
+                <p className="text-[11px] text-amber-300">
+                  Au-delà de 3 500 mL/j hors effort prolongé ou forte chaleur, attention au risque de dilution du sodium (hyponatrémie).
+                </p>
+              )}
+              {sheetFeedback && (
+                <p className="text-[11px] font-semibold text-emerald-300">{sheetFeedback}</p>
+              )}
+            </div>
+          )}
         </div>
       </DetailSheet>
 
@@ -1004,7 +1264,7 @@ export function DashboardView({
         open={sheet === "steps_watch"}
         onClose={() => setSheet(null)}
         title="Activité, Pas & Montre connectée"
-        subtitle="Podomètre & synchronisation wearable"
+        subtitle="Podomètre, objectif quotidien & synchronisation wearable"
         icon={<Watch className="h-5 w-5 text-emerald-300" />}
         size="md"
       >
@@ -1015,7 +1275,9 @@ export function DashboardView({
               <p className="font-display text-2xl font-extrabold text-white tabular-nums">
                 {todayBalance.rawSteps.toLocaleString("fr-FR")}
               </p>
-              <p className="text-emerald-300">{todayBalance.stepDistanceKm} km estimés</p>
+              <p className="text-emerald-300">
+                Objectif {profile.dailyStepGoal.toLocaleString("fr-FR")} · {todayBalance.stepDistanceKm} km
+              </p>
             </div>
             <div className="rounded-2xl bg-slate-500/10 p-3.5">
               <p className="text-slate-400">Dépense mouvement</p>
@@ -1025,6 +1287,115 @@ export function DashboardView({
               <p className="text-slate-400">{todayBalance.workoutMinutes} min de séance</p>
             </div>
           </div>
+
+          {onUpdateTodaySteps && (
+            <div className="space-y-2 rounded-2xl border border-slate-500/25 bg-slate-500/10 p-3.5">
+              <span className="block font-bold text-white">Ajuster mes pas d&apos;aujourd&apos;hui</span>
+              <div className="flex flex-wrap items-center gap-2">
+                {[500, 1000, 2500].map((inc) => (
+                  <button
+                    key={inc}
+                    type="button"
+                    onClick={() => {
+                      const next = Math.min(100000, todayBalance.rawSteps + inc);
+                      onUpdateTodaySteps(next);
+                      setTodayStepsDraft(String(next));
+                      setSheetFeedback(`Pas du jour : ${next.toLocaleString("fr-FR")}.`);
+                    }}
+                    className="rounded-xl border border-slate-600 bg-slate-900/70 px-2.5 py-1.5 font-bold text-slate-200 hover:border-emerald-400 tabular-nums"
+                  >
+                    +{inc}
+                  </button>
+                ))}
+                <form
+                  className="ml-auto flex items-center gap-1.5"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const val = Math.max(0, Math.min(100000, Math.round(Number(todayStepsDraft) || 0)));
+                    onUpdateTodaySteps(val);
+                    setTodayStepsDraft(String(val));
+                    setSheetFeedback(`Pas du jour enregistrés : ${val.toLocaleString("fr-FR")}.`);
+                  }}
+                >
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    aria-label="Nombre exact de pas aujourd'hui"
+                    value={todayStepsDraft}
+                    onChange={(e) => setTodayStepsDraft(e.target.value.replace(/[^\d]/g, ""))}
+                    className="w-24 rounded-xl border border-slate-600 bg-slate-950 px-2.5 py-1.5 text-white tabular-nums"
+                  />
+                  <button
+                    type="submit"
+                    className="rounded-xl bg-emerald-500 px-3 py-1.5 font-bold text-slate-950 hover:bg-emerald-400"
+                  >
+                    OK
+                  </button>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {onUpdateProfilePatch && (
+            <div className="space-y-2 rounded-2xl border border-emerald-400/25 bg-emerald-500/5 p-3.5">
+              <span className="block font-bold text-white">
+                Modifier mon objectif quotidien de pas (1 500–30 000)
+              </span>
+              <div className="flex flex-wrap gap-1.5">
+                {[5000, 7500, 8000, 10000, 12000].map((goal) => (
+                  <button
+                    key={goal}
+                    type="button"
+                    onClick={() => {
+                      onUpdateProfilePatch({ dailyStepGoal: goal });
+                      setStepGoalDraft(String(goal));
+                      setSheetFeedback(`Objectif pas défini sur ${goal.toLocaleString("fr-FR")} pas/j.`);
+                    }}
+                    className={`rounded-lg border px-2.5 py-1 text-[11px] font-bold tabular-nums ${
+                      profile.dailyStepGoal === goal
+                        ? "border-emerald-400 bg-emerald-500/25 text-emerald-200"
+                        : "border-slate-700 bg-slate-900/60 text-slate-300 hover:border-emerald-400/50"
+                    }`}
+                  >
+                    {goal.toLocaleString("fr-FR")}
+                  </button>
+                ))}
+              </div>
+              <form
+                className="flex items-center gap-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const parsed = Number(stepGoalDraft);
+                  const clamped = Math.max(
+                    1500,
+                    Math.min(30000, Math.round(Number.isFinite(parsed) && parsed > 0 ? parsed : profile.dailyStepGoal))
+                  );
+                  onUpdateProfilePatch({ dailyStepGoal: clamped });
+                  setStepGoalDraft(String(clamped));
+                  setSheetFeedback(`Objectif pas mis à jour : ${clamped.toLocaleString("fr-FR")} pas/j.`);
+                }}
+              >
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  aria-label="Objectif quotidien de pas"
+                  value={stepGoalDraft}
+                  onChange={(e) => setStepGoalDraft(e.target.value.replace(/[^\d]/g, ""))}
+                  className="w-28 rounded-xl border border-slate-600 bg-slate-950 px-3 py-2 font-bold text-white tabular-nums"
+                />
+                <span className="text-slate-400">pas / jour</span>
+                <button
+                  type="submit"
+                  className="ml-auto rounded-xl bg-emerald-500 px-3.5 py-2 font-extrabold text-slate-950 hover:bg-emerald-400"
+                >
+                  Appliquer
+                </button>
+              </form>
+              {sheetFeedback && (
+                <p className="text-[11px] font-semibold text-emerald-300">{sheetFeedback}</p>
+              )}
+            </div>
+          )}
 
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {onOpenWearables && (

@@ -61,7 +61,16 @@ export function ProfileChallengesView({
   const [targetWeightDraft, setTargetWeightDraft] = useState<string>(
     String(profile.targetWeightKg)
   );
+  const [waistDraft, setWaistDraft] = useState<string>(
+    profile.waistCm ? String(profile.waistCm) : ""
+  );
   const [stepGoalDraft, setStepGoalDraft] = useState<string>(String(profile.dailyStepGoal));
+  const [waterGoalDraft, setWaterGoalDraft] = useState<string>(
+    String(profile.dailyWaterGoalMl ?? anthro.autoWaterMl)
+  );
+  const [calorieOverrideDraft, setCalorieOverrideDraft] = useState<string>(
+    String(profile.dailyCalorieGoalOverride ?? anthro.autoTargetIntakeKcal)
+  );
 
   useEffect(() => {
     setForm(profile);
@@ -69,18 +78,28 @@ export function ProfileChallengesView({
     setHeightDraft(String(profile.heightCm));
     setWeightDraft(String(profile.weightKg));
     setTargetWeightDraft(String(profile.targetWeightKg));
+    setWaistDraft(profile.waistCm ? String(profile.waistCm) : "");
     setStepGoalDraft(String(profile.dailyStepGoal));
+    setWaterGoalDraft(String(profile.dailyWaterGoalMl ?? anthro.autoWaterMl));
+    setCalorieOverrideDraft(
+      String(profile.dailyCalorieGoalOverride ?? anthro.autoTargetIntakeKcal)
+    );
   }, [
     profile.age,
     profile.heightCm,
     profile.weightKg,
     profile.targetWeightKg,
+    profile.waistCm,
     profile.dailyStepGoal,
+    profile.dailyWaterGoalMl,
+    profile.dailyCalorieGoalOverride,
     profile.name,
     profile.primaryGoal,
     profile.specialMode,
     profile.activityProfile,
     profile.sex,
+    anthro.autoWaterMl,
+    anthro.autoTargetIntakeKcal,
     profile,
   ]);
   const [showSources, setShowSources] = useState(false);
@@ -487,19 +506,37 @@ export function ProfileChallengesView({
           <label className="space-y-1">
             <span className="text-slate-400 block">Tour de taille au nombril (cm)</span>
             <input
-              type="number"
-              step="0.5"
-              min={45}
-              max={200}
-              value={form.waistCm ?? ""}
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  waistCm: e.target.value ? Number(e.target.value) : undefined,
-                })
-              }
-              placeholder="Optionnel mais recommandé"
-              className="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-white"
+              type="text"
+              inputMode="decimal"
+              value={waistDraft}
+              onChange={(e) => {
+                const clean = e.target.value.replace(/[^\d.,]/g, "");
+                setWaistDraft(clean);
+                if (clean.trim() === "") {
+                  setForm((prev) => ({ ...prev, waistCm: undefined }));
+                  return;
+                }
+                const n = Number(clean.replace(",", "."));
+                if (Number.isFinite(n) && n >= 42 && n <= 190) {
+                  setForm((prev) => ({ ...prev, waistCm: +n.toFixed(1) }));
+                }
+              }}
+              onBlur={() => {
+                if (waistDraft.trim() === "") {
+                  setWaistDraft("");
+                  setForm((prev) => ({ ...prev, waistCm: undefined }));
+                  return;
+                }
+                const n = Number(waistDraft.replace(",", "."));
+                const fallback = form.waistCm ?? 82;
+                const clamped = Number.isFinite(n)
+                  ? +Math.max(42, Math.min(190, n)).toFixed(1)
+                  : fallback;
+                setWaistDraft(String(clamped));
+                setForm((prev) => ({ ...prev, waistCm: clamped }));
+              }}
+              placeholder="Optionnel (42–190 cm)"
+              className="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-white tabular-nums"
             />
           </label>
           <label className="space-y-1">
@@ -516,9 +553,84 @@ export function ProfileChallengesView({
                 (dailyStepGoal) => setForm((prev) => ({ ...prev, dailyStepGoal })),
                 form.dailyStepGoal
               )}
-              className="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-white"
+              className="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-white tabular-nums"
             />
           </label>
+
+          <div className="space-y-1">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-slate-400">
+                Objectif eau / jour (mL) <InfoTip term="hydration_efsa" />
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setForm((prev) => ({ ...prev, dailyWaterGoalMl: undefined }));
+                  setWaterGoalDraft(String(anthro.autoWaterMl));
+                }}
+                className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold border ${
+                  form.dailyWaterGoalMl === undefined
+                    ? "border-sky-400 bg-sky-500/20 text-sky-200"
+                    : "border-slate-700 text-slate-400 hover:border-sky-400"
+                }`}
+              >
+                Auto ({anthro.autoWaterMl} mL)
+              </button>
+            </div>
+            <input
+              type="text"
+              inputMode="numeric"
+              value={waterGoalDraft}
+              {...bindNumericDraft(
+                setWaterGoalDraft,
+                1000,
+                4500,
+                false,
+                (dailyWaterGoalMl) => setForm((prev) => ({ ...prev, dailyWaterGoalMl })),
+                form.dailyWaterGoalMl ?? anthro.autoWaterMl
+              )}
+              className="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-white tabular-nums"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-slate-400">Cible calorique / jour (kcal)</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setForm((prev) => ({ ...prev, dailyCalorieGoalOverride: undefined }));
+                  setCalorieOverrideDraft(String(anthro.autoTargetIntakeKcal));
+                }}
+                className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold border ${
+                  form.dailyCalorieGoalOverride === undefined
+                    ? "border-emerald-400 bg-emerald-500/20 text-emerald-200"
+                    : "border-slate-700 text-slate-400 hover:border-emerald-400"
+                }`}
+              >
+                Auto ({anthro.autoTargetIntakeKcal})
+              </button>
+            </div>
+            <input
+              type="text"
+              inputMode="numeric"
+              disabled={anthro.minorSafetyLock}
+              value={calorieOverrideDraft}
+              {...bindNumericDraft(
+                setCalorieOverrideDraft,
+                Math.max(1200, anthro.clinicalFloorKcal),
+                4500,
+                false,
+                (dailyCalorieGoalOverride) =>
+                  setForm((prev) => ({ ...prev, dailyCalorieGoalOverride })),
+                form.dailyCalorieGoalOverride ?? anthro.autoTargetIntakeKcal
+              )}
+              className="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-white tabular-nums disabled:opacity-50"
+            />
+            <span className="block text-[10px] text-slate-500">
+              Plancher clinique protégé : {anthro.clinicalFloorKcal} kcal/j
+            </span>
+          </div>
 
           <label className="space-y-1">
             <span className="text-slate-400 block">Activité hors séances</span>
@@ -539,7 +651,20 @@ export function ProfileChallengesView({
             <span className="text-slate-400 block">Objectif principal</span>
             <select
               value={form.primaryGoal}
-              onChange={(e) => setForm({ ...form, primaryGoal: e.target.value as PrimaryGoal })}
+              onChange={(e) => {
+                const nextGoal = e.target.value as PrimaryGoal;
+                setForm((prev) => {
+                  let nextPace = prev.weeklyPaceKg;
+                  if (nextGoal === "maintenance") {
+                    nextPace = 0;
+                  } else if (nextGoal === "muscle_gain") {
+                    nextPace = Math.max(0.1, Math.min(0.4, Math.abs(prev.weeklyPaceKg) || 0.2));
+                  } else {
+                    nextPace = -Math.max(0.2, Math.min(0.75, Math.abs(prev.weeklyPaceKg) || 0.4));
+                  }
+                  return { ...prev, primaryGoal: nextGoal, weeklyPaceKg: +nextPace.toFixed(2) };
+                });
+              }}
               className="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-white"
             >
               <option value="fat_loss">Perte de masse grasse</option>
@@ -553,12 +678,13 @@ export function ProfileChallengesView({
             <span className="text-slate-400 block">Rythme hebdo visé ({form.weeklyPaceKg} kg/sem)</span>
             <input
               type="range"
-              min={-0.75}
-              max={0.35}
+              disabled={form.primaryGoal === "maintenance"}
+              min={form.primaryGoal === "muscle_gain" ? 0.05 : -0.75}
+              max={form.primaryGoal === "muscle_gain" ? 0.45 : form.primaryGoal === "maintenance" ? 0 : -0.1}
               step={0.05}
               value={form.weeklyPaceKg}
               onChange={(e) => setForm({ ...form, weeklyPaceKg: Number(e.target.value) })}
-              className="w-full accent-emerald-400 mt-2"
+              className="w-full accent-emerald-400 mt-2 disabled:opacity-40"
             />
           </label>
           <label className="space-y-1">
@@ -777,22 +903,27 @@ export function ProfileChallengesView({
               onChange={(e) => {
                 const m = e.target.value as ChallengeMetric;
                 setChMetric(m);
+                let nextVal = 1;
+                let nextUnit = "validation";
                 if (m === "steps") {
-                  setChTarget(8000);
-                  setChUnit("pas");
+                  nextVal = form.dailyStepGoal || 8000;
+                  nextUnit = "pas";
                 } else if (m === "water") {
-                  setChTarget(2000);
-                  setChUnit("mL");
+                  nextVal = anthro.targets.waterMl;
+                  nextUnit = "mL";
                 } else if (m === "protein") {
-                  setChTarget(130);
-                  setChUnit("g");
+                  nextVal = anthro.targets.proteinG;
+                  nextUnit = "g";
+                } else if (m === "fiber") {
+                  nextVal = anthro.targets.fiberG;
+                  nextUnit = "g";
                 } else if (m === "workout_minutes") {
-                  setChTarget(15);
-                  setChUnit("min");
-                } else {
-                  setChTarget(1);
-                  setChUnit("validation");
+                  nextVal = 15;
+                  nextUnit = "min";
                 }
+                setChTarget(nextVal);
+                setChTargetDraft(String(nextVal));
+                setChUnit(nextUnit);
               }}
               className="rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-white"
             >
@@ -814,7 +945,15 @@ export function ProfileChallengesView({
                 {...bindNumericDraft(
                   setChTargetDraft,
                   1,
-                  500000,
+                  chMetric === "water"
+                    ? 4500
+                    : chMetric === "steps"
+                      ? 50000
+                      : chMetric === "workout_minutes"
+                        ? 300
+                        : chMetric === "protein" || chMetric === "fiber"
+                          ? 400
+                          : 1000,
                   false,
                   setChTarget,
                   chTarget

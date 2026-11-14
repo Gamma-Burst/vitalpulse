@@ -32,6 +32,7 @@ import {
   formatDateKey,
   getRecentDateKeys,
   loadVitalPulseState,
+  sanitizeUserProfile,
   saveVitalPulseState,
   VitalPulseState,
 } from "@/lib/storage-db";
@@ -300,14 +301,73 @@ export default function VitalPulseApp() {
 
   const todayWorkouts = state.workouts.filter((w) => w.dateKey === todayKey);
 
+  function updateProfilePatch(patch: Partial<UserProfile>) {
+    commitState((prev) => {
+      const nextProfile = sanitizeUserProfile({ ...prev.profile, ...patch });
+      const goalChanged = nextProfile.dailyStepGoal !== prev.profile.dailyStepGoal;
+      const nextChallenges = goalChanged
+        ? prev.challenges.map((c) =>
+            c.id === "chal-steps-8000" || c.id === "chal-steps-8500"
+              ? {
+                  ...c,
+                  title: `Cap des ${nextProfile.dailyStepGoal} pas / jour`,
+                  targetValue: nextProfile.dailyStepGoal,
+                }
+              : c
+          )
+        : prev.challenges;
+      return {
+        ...prev,
+        profile: nextProfile,
+        challenges: nextChallenges,
+      };
+    });
+  }
+
+  function updateTodaySteps(steps: number, source: StepSource = "manual") {
+    const safeSteps = Math.max(0, Math.min(100000, Math.round(steps)));
+    commitState((prev) => {
+      const exists = prev.steps.some((s) => s.dateKey === todayKey);
+      const nextSteps = exists
+        ? prev.steps.map((s) =>
+            s.dateKey === todayKey
+              ? { ...s, steps: safeSteps, source, updatedAt: new Date().toISOString() }
+              : s
+          )
+        : [
+            ...prev.steps,
+            { dateKey: todayKey, steps: safeSteps, source, updatedAt: new Date().toISOString() },
+          ];
+      return { ...prev, steps: nextSteps };
+    });
+  }
+
+  function setWaterTodayMl(ml: number) {
+    const clamped = Math.max(0, Math.min(10000, Math.round(ml)));
+    commitState((prev) => {
+      const exists = prev.waters.find((w) => w.dateKey === todayKey);
+      const nextWaters = exists
+        ? prev.waters.map((w) =>
+            w.dateKey === todayKey ? { ...w, milliliters: clamped } : w
+          )
+        : [...prev.waters, { dateKey: todayKey, milliliters: clamped }];
+      return { ...prev, waters: nextWaters };
+    });
+  }
+
   function addWaterMl(ml: number) {
     commitState((prev) => {
       const exists = prev.waters.find((w) => w.dateKey === todayKey);
       const nextWaters = exists
         ? prev.waters.map((w) =>
-            w.dateKey === todayKey ? { ...w, milliliters: w.milliliters + ml } : w
+            w.dateKey === todayKey
+              ? { ...w, milliliters: Math.max(0, Math.min(10000, w.milliliters + ml)) }
+              : w
           )
-        : [...prev.waters, { dateKey: todayKey, milliliters: ml }];
+        : [
+            ...prev.waters,
+            { dateKey: todayKey, milliliters: Math.max(0, Math.min(10000, ml)) },
+          ];
       return { ...prev, waters: nextWaters };
     });
   }
@@ -742,6 +802,9 @@ export default function VitalPulseApp() {
                   })
                 }
                 onNavigateFasting={() => setActiveTab("fasting")}
+                onSetWaterToday={setWaterTodayMl}
+                onUpdateProfilePatch={updateProfilePatch}
+                onUpdateTodaySteps={(steps: number) => updateTodaySteps(steps, "manual")}
               />
             )}
 
@@ -773,6 +836,7 @@ export default function VitalPulseApp() {
             {activeTab === "fridge" && (
               <FridgeChefView
                 remainingKcal={Math.max(250, todayBalance.remainingToTargetKcal)}
+                rawRemainingKcal={todayBalance.remainingToTargetKcal}
                 remainingProteinG={Math.max(20, anthro.targets.proteinG - todayBalance.macros.proteinG)}
                 remainingFiberG={Math.max(5, anthro.targets.fiberG - todayBalance.macros.fiberG)}
                 specialMode={state.profile.specialMode}
@@ -809,22 +873,8 @@ export default function VitalPulseApp() {
                 recentBalances={recentBalances}
                 todayWorkouts={todayWorkouts}
                 difficultDayDates={state.difficultDayDates}
-                onUpdateSteps={(steps: number, source: StepSource) =>
-                  commitState((prev) => {
-                    const exists = prev.steps.some((s) => s.dateKey === todayKey);
-                    const nextSteps = exists
-                      ? prev.steps.map((s) =>
-                          s.dateKey === todayKey
-                            ? { ...s, steps, source, updatedAt: new Date().toISOString() }
-                            : s
-                        )
-                      : [
-                          ...prev.steps,
-                          { dateKey: todayKey, steps, source, updatedAt: new Date().toISOString() },
-                        ];
-                    return { ...prev, steps: nextSteps };
-                  })
-                }
+                onUpdateSteps={updateTodaySteps}
+                onUpdateStepGoal={(goal: number) => updateProfilePatch({ dailyStepGoal: goal })}
                 onLogWorkout={(session: WorkoutSession) =>
                   commitState((prev) => ({
                     ...prev,
@@ -849,9 +899,7 @@ export default function VitalPulseApp() {
                 todayBalance={todayBalance}
                 challenges={state.challenges}
                 onReopenOnboarding={() => setShowOnboardingOverride(true)}
-                onSaveProfile={(nextProfile: UserProfile) =>
-                  commitState((prev) => ({ ...prev, profile: nextProfile }))
-                }
+                onSaveProfile={(nextProfile: UserProfile) => updateProfilePatch(nextProfile)}
                 onAddChallenge={(c: CustomChallenge) =>
                   commitState((prev) => ({ ...prev, challenges: [c, ...prev.challenges] }))
                 }
@@ -1084,14 +1132,19 @@ export default function VitalPulseApp() {
           onApplySync={(patch) =>
             commitState((prev) => {
               let nextSteps = prev.steps;
-              if (typeof patch.stepsToday === "number") {
+              if (
+                typeof patch.stepsToday === "number" &&
+                Number.isFinite(patch.stepsToday) &&
+                patch.stepsToday >= 0
+              ) {
+                const safeSteps = Math.max(0, Math.min(100000, Math.round(patch.stepsToday)));
                 const exists = prev.steps.some((s) => s.dateKey === todayKey);
                 nextSteps = exists
                   ? prev.steps.map((s) =>
                       s.dateKey === todayKey
                         ? {
                             ...s,
-                            steps: patch.stepsToday!,
+                            steps: safeSteps,
                             source: "health_connect",
                             updatedAt: new Date().toISOString(),
                           }
@@ -1101,19 +1154,26 @@ export default function VitalPulseApp() {
                       ...prev.steps,
                       {
                         dateKey: todayKey,
-                        steps: patch.stepsToday!,
+                        steps: safeSteps,
                         source: "health_connect",
                         updatedAt: new Date().toISOString(),
                       },
                     ];
               }
+              const validWeight =
+                typeof patch.weightKg === "number" &&
+                Number.isFinite(patch.weightKg) &&
+                patch.weightKg >= 30 &&
+                patch.weightKg <= 250
+                  ? +patch.weightKg.toFixed(1)
+                  : undefined;
               return {
                 ...prev,
                 wearable: patch.wearable,
                 steps: nextSteps,
                 profile:
-                  typeof patch.weightKg === "number"
-                    ? { ...prev.profile, weightKg: patch.weightKg }
+                  validWeight !== undefined
+                    ? { ...prev.profile, weightKg: validWeight }
                     : prev.profile,
               };
             })

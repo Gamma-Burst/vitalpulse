@@ -670,7 +670,7 @@ export function buildDemoSeedState(): VitalPulseState {
   ];
 
   return {
-    version: 3,
+    version: 4,
     profile,
     meals,
     fridgeScans: [],

@@ -109,14 +109,34 @@ export function computeWeeklyCalorieBank(balances: DailyEnergyBalance[]): Weekly
     recent.reduce((acc, b) => acc + b.totalExpenditureKcal, 0)
   );
   const netBalanceKcal = weeklyIntakeKcal - weeklyExpenditureKcal;
-  const pleasureMarginKcal = Math.round(weeklyTargetKcal - weeklyIntakeKcal);
+
+  // Ne calculer la marge plaisir hebdomadaire que sur des journées réellement journalisées
+  // (évite d'afficher +13 300 kcal dès le Jour 1 avant toute saisie de repas).
+  const completeDays = recent.filter((b, idx) => {
+    const target = b.targetIntakeKcal || 1900;
+    const isLatestDay = idx === recent.length - 1;
+    if (!isLatestDay) {
+      return b.mealsCount > 0 && b.intakeKcal >= 500;
+    }
+    return b.mealsCount > 0 && (b.intakeKcal >= target * 0.65 || b.intakeKcal > target);
+  });
+
+  const completeTargetKcal = completeDays.reduce(
+    (acc, b) => acc + (b.targetIntakeKcal || 1900),
+    0
+  );
+  const completeIntakeKcal = completeDays.reduce((acc, b) => acc + b.intakeKcal, 0);
+  const pleasureMarginKcal =
+    completeDays.length > 0 ? Math.round(completeTargetKcal - completeIntakeKcal) : 0;
 
   const guidanceFr =
-    pleasureMarginKcal >= 250
-      ? `Marge souple de +${pleasureMarginKcal} kcal disponible cette semaine pour un repas plaisir sans sortir de votre trajectoire.`
-      : pleasureMarginKcal >= -250
-        ? "Équilibre parfait sur 7 jours : vous êtes pile dans votre budget énergétique."
-        : `Léger dépassement hebdo (${Math.abs(pleasureMarginKcal)} kcal) — lissable très facilement avec +2 000 pas/j ou 150 kcal plus léger sur 3 jours.`;
+    completeDays.length === 0
+      ? "Enregistrez vos repas de la journée pour calculer votre marge plaisir réelle sur 7 jours (aucune journée complète pour l'instant)."
+      : pleasureMarginKcal >= 250
+        ? `Marge souple de +${pleasureMarginKcal} kcal cumulée sur ${completeDays.length} jour(s) complet(s) pour un repas plaisir sans sortir de votre trajectoire.`
+        : pleasureMarginKcal >= -250
+          ? `Équilibre maîtrisé sur ${completeDays.length} jour(s) complet(s) : vous êtes pile dans votre budget énergétique.`
+          : `Léger dépassement (${Math.abs(pleasureMarginKcal)} kcal sur ${completeDays.length} jour(s) complet(s)) — lissable très facilement avec +2 000 pas/j ou 150 kcal plus léger sur 3 jours.`;
 
   return {
     daysCount: recent.length,

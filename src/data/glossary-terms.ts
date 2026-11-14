@@ -61,6 +61,7 @@ export type GlossaryTermId =
   | "glycemic_load"
   | "satiety_score"
   | "sodium_oms"
+  | "hydration_efsa"
   | "diet_rebalancing"
   | "diet_ketogenic"
   | "diet_glycemic_shield"
@@ -424,6 +425,19 @@ export const GLOSSARY_TERMS: Record<GlossaryTermId, GlossaryEntry> = {
     benchmarkFr:
       "Plafond OMS : < 2 000 mg de sodium/jour (~5 g de sel). C'est déjà intégré dans votre jauge de micronutriments.",
     keywords: ["sodium", "sel", "oms", "tension", "retention", "2000 mg"],
+  },
+  hydration_efsa: {
+    id: "hydration_efsa",
+    titleFr: "Hydratation quotidienne (Repères EFSA)",
+    shortTagFr: "Boissons hors eau des aliments",
+    category: "nutrition_nova",
+    simpleFr:
+      "C'est le volume de boissons (eau, thé, café nature, tisanes) conseillé sur votre journée. Comme ~20 % de vos besoins hydriques viennent déjà de vos aliments et que le tissu adipeux contient très peu d'eau, la vraie cible se situe presque toujours entre 1,6 L et 2,8 L (jamais 6 à 8 L !).",
+    exampleFr:
+      "Pour la plupart des adultes, 6 à 10 grands verres de 250 mL répartis sur la journée suffisent. Boire 6 à 8 litres par jour sans indication médicale peut diluer dangereusement le sodium du sang (hyponatrémie).",
+    benchmarkFr:
+      "Repère EFSA adulte : ~1,6 à 2,6 L de boissons/jour (+ un peu plus s'il fait très chaud ou pendant un jeûne), modifiable à tout moment selon votre soif et l'avis de votre médecin.",
+    keywords: ["eau", "hydratation", "efsa", "ml", "hyponatremie", "boire", "8000"],
   },
   diet_rebalancing: {
     id: "diet_rebalancing",

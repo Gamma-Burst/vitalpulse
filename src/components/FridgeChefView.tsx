@@ -23,6 +23,7 @@ import { compressImageFile } from "@/lib/native-bridge";
 
 interface FridgeChefViewProps {
   remainingKcal: number;
+  rawRemainingKcal?: number;
   remainingProteinG: number;
   remainingFiberG: number;
   specialMode: SpecialMode;
@@ -54,6 +55,7 @@ function playKitchenChime() {
 
 export function FridgeChefView({
   remainingKcal,
+  rawRemainingKcal,
   remainingProteinG,
   remainingFiberG,
   specialMode,
@@ -218,10 +220,24 @@ export function FridgeChefView({
             </p>
           </div>
           <div className="rounded-xl bg-slate-950/70 border border-emerald-400/30 px-3 py-2 text-xs text-right">
-            <span className="text-slate-400 block">Budget restant aujourd&apos;hui</span>
-            <strong className="text-emerald-300 tabular-nums">
-              {Math.max(200, remainingKcal)} kcal · {Math.max(15, Math.round(remainingProteinG))} g protéines
-            </strong>
+            {rawRemainingKcal !== undefined && rawRemainingKcal <= 0 ? (
+              <>
+                <span className="text-amber-300 block font-semibold">
+                  Objectif calorique atteint
+                </span>
+                <strong className="text-emerald-300 tabular-nums">
+                  Idée légère suggérée (~250 kcal)
+                </strong>
+              </>
+            ) : (
+              <>
+                <span className="text-slate-400 block">Budget restant aujourd&apos;hui</span>
+                <strong className="text-emerald-300 tabular-nums">
+                  {Math.max(200, remainingKcal)} kcal ·{" "}
+                  {Math.max(15, Math.round(remainingProteinG))} g protéines
+                </strong>
+              </>
+            )}
           </div>
         </div>
 

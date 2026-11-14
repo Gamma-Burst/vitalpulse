@@ -16,6 +16,71 @@ import {
 } from "@/types/vitalpulse";
 import { buildDemoSeedState, DEMO_BODY_PHOTOS } from "@/data/demo-seed";
 import { getProtocolSpec } from "@/lib/fasting-engine";
+import { computeAnthropometrics } from "@/lib/metabolic-engine";
+
+export const CURRENT_STATE_VERSION = 4;
+
+function clampNum(val: unknown, min: number, max: number, fallback: number, decimals = 0): number {
+  const num = typeof val === "number" ? val : Number(val);
+  if (!Number.isFinite(num)) return fallback;
+  const clamped = Math.max(min, Math.min(max, num));
+  return decimals > 0 ? +clamped.toFixed(decimals) : Math.round(clamped);
+}
+
+/**
+ * Normalise et sécurise les paramètres biométriques et objectifs utilisateur (QC v4).
+ */
+export function sanitizeUserProfile(raw?: Partial<UserProfile>): UserProfile {
+  const base: UserProfile = {
+    name: typeof raw?.name === "string" && raw.name.trim() ? raw.name.trim() : "Mon profil",
+    age: clampNum(raw?.age, 12, 105, 34),
+    sex: raw?.sex === "female" ? "female" : "male",
+    heightCm: clampNum(raw?.heightCm, 120, 230, 175),
+    weightKg: clampNum(raw?.weightKg, 30, 250, 78, 1),
+    targetWeightKg: clampNum(raw?.targetWeightKg, 35, 250, 72, 1),
+    activityProfile: raw?.activityProfile ?? "lightly_active",
+    primaryGoal: raw?.primaryGoal ?? "fat_loss",
+    weeklyPaceKg: clampNum(raw?.weeklyPaceKg, -1.0, 0.5, -0.4, 2),
+    dailyStepGoal: clampNum(raw?.dailyStepGoal, 1500, 30000, 8000),
+    specialMode: raw?.specialMode ?? "standard",
+    quietHours:
+      raw?.quietHours && typeof raw.quietHours.start === "string" && typeof raw.quietHours.end === "string"
+        ? raw.quietHours
+        : { start: "22:30", end: "07:00" },
+    ...(typeof raw?.isDemoProfile === "boolean" ? { isDemoProfile: raw.isDemoProfile } : {}),
+    ...(typeof raw?.onboardingCompleted === "boolean"
+      ? { onboardingCompleted: raw.onboardingCompleted }
+      : {}),
+    ...(raw?.preferredFasting ? { preferredFasting: raw.preferredFasting } : {}),
+  };
+
+  if (raw?.waistCm !== undefined && Number.isFinite(Number(raw.waistCm))) {
+    const w = Number(raw.waistCm);
+    if (w >= 42 && w <= 190) {
+      base.waistCm = +w.toFixed(1);
+    }
+  }
+
+  if (raw?.dailyWaterGoalMl !== undefined && Number.isFinite(Number(raw.dailyWaterGoalMl))) {
+    const waterGoal = Math.round(Number(raw.dailyWaterGoalMl));
+    // Toute ancienne cible aberrante (ex. 8000 mL) revient automatiquement en calcul EFSA sûr
+    if (waterGoal >= 1000 && waterGoal <= 4500) {
+      base.dailyWaterGoalMl = waterGoal;
+    }
+  }
+
+  if (
+    raw?.dailyCalorieGoalOverride !== undefined &&
+    Number.isFinite(Number(raw.dailyCalorieGoalOverride))
+  ) {
+    const calGoal = Math.round(Number(raw.dailyCalorieGoalOverride));
+    if (calGoal >= 1200 && calGoal <= 4500) {
+      base.dailyCalorieGoalOverride = calGoal;
+    }
+  }
+
+  return base;
+}
 
 export const DEFAULT_ENABLED_WIDGETS: DashboardWidgetId[] = [
   "fasting",
@@ -98,16 +163,50 @@ export function migrateVitalPulseState(raw: Partial<VitalPulseState>): VitalPuls
     history: [],
   };
 
+  const profile = sanitizeUserProfile(raw.profile);
+  const anthro = computeAnthropometrics(profile);
+
+  const sanitizedSteps: DailyStepLog[] = (Array.isArray(raw.steps) ? raw.steps : []).map((s) => ({
+    ...s,
+    steps: clampNum(s?.steps, 0, 100000, 0),
+  }));
+
+  const sanitizedWaters: WaterLog[] = (Array.isArray(raw.waters) ? raw.waters : []).map((w) => ({
+    ...w,
+    milliliters: clampNum(w?.milliliters, 0, 10000, 0),
+  }));
+
+  const sanitizedChallenges: CustomChallenge[] = (
+    Array.isArray(raw.challenges) ? raw.challenges : []
+  ).map((c) => {
+    if (c.metric === "water" && (!Number.isFinite(c.targetValue) || c.targetValue > 4500 || c.targetValue < 500)) {
+      return {
+        ...c,
+        targetValue: anthro.targets.waterMl,
+        unit: "mL",
+        title: c.title.replace(/8\s?000\s*ml/gi, `${anthro.targets.waterMl} mL`),
+      };
+    }
+    if (c.metric === "steps" && (!Number.isFinite(c.targetValue) || c.targetValue > 50000 || c.targetValue < 500)) {
+      return {
+        ...c,
+        targetValue: profile.dailyStepGoal,
+        unit: c.unit || "pas",
+      };
+    }
+    return c;
+  });
+
   return {
-    version: 3,
-    profile: raw.profile as UserProfile,
+    version: CURRENT_STATE_VERSION,
+    profile,
     meals: Array.isArray(raw.meals) ? raw.meals : [],
     fridgeScans: Array.isArray(raw.fridgeScans) ? raw.fridgeScans : [],
-    steps: Array.isArray(raw.steps) ? raw.steps : [],
+    steps: sanitizedSteps,
     workouts: Array.isArray(raw.workouts) ? raw.workouts : [],
     weights: existingWeights,
-    waters: Array.isArray(raw.waters) ? raw.waters : [],
-    challenges: Array.isArray(raw.challenges) ? raw.challenges : [],
+    waters: sanitizedWaters,
+    challenges: sanitizedChallenges,
     difficultDayDates: Array.isArray(raw.difficultDayDates) ? raw.difficultDayDates : [],
     measurements: migratedMeasurements,
     bloodPanels: Array.isArray(raw.bloodPanels) ? raw.bloodPanels : [],
@@ -150,7 +249,7 @@ export async function loadVitalPulseState(): Promise<VitalPulseState> {
     });
     if (existing && existing.profile) {
       const migrated = migrateVitalPulseState(existing);
-      if ((existing.version ?? 1) < 3) {
+      if ((existing.version ?? 1) < CURRENT_STATE_VERSION) {
         await saveVitalPulseState(migrated);
       }
       return migrated;
@@ -170,7 +269,7 @@ export async function saveVitalPulseState(state: VitalPulseState): Promise<void>
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(STORE_NAME, "readwrite");
       const store = tx.objectStore(STORE_NAME);
-      store.put({ ...state, version: 2 }, STATE_KEY);
+      store.put({ ...state, version: CURRENT_STATE_VERSION }, STATE_KEY);
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
       tx.onabort = () => reject(tx.error);
@@ -253,10 +352,16 @@ export function buildFreshUserState(
   }
 ): VitalPulseState {
   const todayKey = formatDateKey();
-  const protoSpec = getProtocolSpec(profile.preferredFasting ?? "16_8");
+  const cleanProfile = sanitizeUserProfile({
+    ...profile,
+    isDemoProfile: false,
+    onboardingCompleted: true,
+  });
+  const anthro = computeAnthropometrics(cleanProfile);
+  const protoSpec = getProtocolSpec(cleanProfile.preferredFasting ?? "16_8");
   return {
-    version: 3,
-    profile: { ...profile, isDemoProfile: false, onboardingCompleted: true },
+    version: CURRENT_STATE_VERSION,
+    profile: cleanProfile,
     meals: [],
     fridgeScans: [],
     steps: [{ dateKey: todayKey, steps: 0, source: "manual", updatedAt: new Date().toISOString() }],
@@ -266,8 +371,8 @@ export function buildFreshUserState(
         id: `w-init-${todayKey}`,
         dateKey: todayKey,
         timestamp: new Date().toISOString(),
-        weightKg: profile.weightKg,
-        waistCm: profile.waistCm,
+        weightKg: cleanProfile.weightKg,
+        waistCm: cleanProfile.waistCm,
         note: "Mesure initiale de départ",
       },
     ],
@@ -277,15 +382,15 @@ export function buildFreshUserState(
         id: `bm-init-${todayKey}`,
         dateKey: todayKey,
         createdAt: new Date().toISOString(),
-        weightKg: profile.weightKg,
-        waistCm: profile.waistCm,
+        weightKg: cleanProfile.weightKg,
+        waistCm: cleanProfile.waistCm,
         note: "Mesure initiale de départ",
       },
     ],
     bloodPanels: [],
     bodyPhotoMetas: [],
     fasting: {
-      protocolId: profile.preferredFasting ?? "16_8",
+      protocolId: cleanProfile.preferredFasting ?? "16_8",
       fastHours: protoSpec.fastHours,
       eatHours: protoSpec.eatHours,
       activeStartIso: null,
@@ -301,10 +406,10 @@ export function buildFreshUserState(
     challenges: [
       {
         id: "chal-steps-8000",
-        title: "Cap des 8 000 pas / jour",
+        title: `Cap des ${cleanProfile.dailyStepGoal.toLocaleString("fr-FR")} pas / jour`,
         description: "Marche cumulée quotidienne (hors double comptage)",
         metric: "steps",
-        targetValue: profile.dailyStepGoal || 8000,
+        targetValue: cleanProfile.dailyStepGoal,
         unit: "pas",
         durationDays: 14,
         reminderTime: "18:00",
@@ -317,7 +422,7 @@ export function buildFreshUserState(
         title: "Bouclier Protéines & Satiété",
         description: "Préserver la masse musculaire et éviter les fringales",
         metric: "protein",
-        targetValue: Math.round(profile.weightKg * 1.6),
+        targetValue: anthro.targets.proteinG,
         unit: "g",
         durationDays: 14,
         reminderTime: "19:30",

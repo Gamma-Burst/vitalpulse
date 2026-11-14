@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Activity,
   ArrowDownRight,
@@ -45,6 +45,14 @@ export function EnergyActivityChart({
   const [waistInput, setWaistInput] = useState(
     currentWaistCm ? String(currentWaistCm) : ""
   );
+
+  useEffect(() => {
+    setWeightInput(String(currentWeightKg));
+  }, [currentWeightKg]);
+
+  useEffect(() => {
+    setWaistInput(currentWaistCm ? String(currentWaistCm) : "");
+  }, [currentWaistCm]);
 
   const safeIdx = Math.min(selectedIndex, Math.max(0, balances.length - 1));
   const activeDay = balances[safeIdx];
@@ -347,25 +355,29 @@ export function EnergyActivityChart({
               e.preventDefault();
               const kg = parseFloat(weightInput.replace(",", "."));
               const waist = waistInput ? parseFloat(waistInput.replace(",", ".")) : undefined;
-              if (!isNaN(kg) && kg >= 30 && kg <= 280) {
-                onQuickLogWeight(kg, waist && waist > 40 ? waist : undefined);
+              if (!isNaN(kg) && kg >= 30 && kg <= 250) {
+                const validWaist =
+                  waist !== undefined && !isNaN(waist) && waist >= 42 && waist <= 190
+                    ? +waist.toFixed(1)
+                    : undefined;
+                onQuickLogWeight(+kg.toFixed(1), validWaist);
               }
             }}
           >
             <input
-              type="number"
-              step="0.1"
+              type="text"
+              inputMode="decimal"
               value={weightInput}
-              onChange={(e) => setWeightInput(e.target.value)}
+              onChange={(e) => setWeightInput(e.target.value.replace(/[^\d.,]/g, ""))}
               placeholder="Poids kg"
               aria-label="Nouveau poids en kg"
               className="w-24 rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-xs text-white tabular-nums"
             />
             <input
-              type="number"
-              step="0.5"
+              type="text"
+              inputMode="decimal"
               value={waistInput}
-              onChange={(e) => setWaistInput(e.target.value)}
+              onChange={(e) => setWaistInput(e.target.value.replace(/[^\d.,]/g, ""))}
               placeholder="Taille cm"
               aria-label="Tour de taille en cm"
               className="w-24 rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-xs text-white tabular-nums"

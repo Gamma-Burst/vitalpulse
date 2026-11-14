@@ -106,6 +106,8 @@ export interface UserProfile {
   primaryGoal: PrimaryGoal;
   weeklyPaceKg: number; // e.g. -0.4 kg/week
   dailyStepGoal: number;
+  dailyWaterGoalMl?: number; // Objectif boisson quotidien personnalisé (mL/j)
+  dailyCalorieGoalOverride?: number; // Cible calorique personnalisée optionnelle (kcal/j)
   specialMode: SpecialMode;
   quietHours: QuietHours;
   isDemoProfile?: boolean;
@@ -330,9 +332,12 @@ export interface AnthropometricReport {
   athleticCoherenceNote: string | null;
   bmrKcal: number;
   estimatedMaintenanceKcal: number;
+  autoTargetIntakeKcal: number;
   targetIntakeKcal: number;
+  clinicalFloorKcal: number;
   safetyFloorApplied: boolean;
   minorSafetyLock: boolean;
+  autoWaterMl: number;
   targets: {
     proteinG: number;
     carbsG: number;

@@ -36,6 +36,7 @@ interface ActivityCoachViewProps {
   onUpdateSteps: (steps: number, source: StepSource) => void;
   onLogWorkout: (session: WorkoutSession) => void;
   onActivateDifficultDay: (dateKey: string) => void;
+  onUpdateStepGoal?: (goal: number) => void;
 }
 
 const CATEGORIES: { id: "all" | ExerciseCategory; label: string }[] = [
@@ -58,11 +59,22 @@ export function ActivityCoachView({
   onUpdateSteps,
   onLogWorkout,
   onActivateDifficultDay,
+  onUpdateStepGoal,
 }: ActivityCoachViewProps) {
   const [category, setCategory] = useState<"all" | ExerciseCategory>("all");
   const [manualStepsInput, setManualStepsInput] = useState(String(todayBalance.rawSteps));
+  const [stepGoalDraft, setStepGoalDraft] = useState(String(profile.dailyStepGoal));
+  const [showGoalEditor, setShowGoalEditor] = useState(false);
   const [pedometerLive, setPedometerLive] = useState(false);
   const [caps, setCaps] = useState(() => detectPlatformCapabilities());
+
+  useEffect(() => {
+    setStepGoalDraft(String(profile.dailyStepGoal));
+  }, [profile.dailyStepGoal]);
+
+  useEffect(() => {
+    setManualStepsInput(String(todayBalance.rawSteps));
+  }, [todayBalance.rawSteps]);
 
   // Lecteur d'exercice actif
   const [activeExercise, setActiveExercise] = useState<ExerciseDefinition | null>(null);
@@ -198,17 +210,89 @@ export function ActivityCoachView({
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
           <div className="md:col-span-2 space-y-2">
-            <div className="flex items-baseline justify-between">
-              <span className="text-2xl sm:text-3xl font-bold text-white tabular-nums">
-                {todayBalance.rawSteps.toLocaleString("fr-FR")}{" "}
-                <span className="text-sm font-normal text-slate-400">
-                  / {profile.dailyStepGoal.toLocaleString("fr-FR")} pas ({stepPct}%)
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <div className="flex flex-wrap items-baseline gap-2">
+                <span className="text-2xl sm:text-3xl font-bold text-white tabular-nums">
+                  {todayBalance.rawSteps.toLocaleString("fr-FR")}{" "}
+                  <span className="text-sm font-normal text-slate-400">
+                    / {profile.dailyStepGoal.toLocaleString("fr-FR")} pas ({stepPct}%)
+                  </span>
                 </span>
-              </span>
+                {onUpdateStepGoal && (
+                  <button
+                    type="button"
+                    onClick={() => setShowGoalEditor((v) => !v)}
+                    className="rounded-lg border border-sky-400/35 bg-sky-500/10 px-2 py-0.5 text-[11px] font-semibold text-sky-300 hover:bg-sky-500/20"
+                  >
+                    {showGoalEditor ? "Fermer objectif" : "Modifier objectif"}
+                  </button>
+                )}
+              </div>
               <span className="text-xs font-semibold text-emerald-300 tabular-nums">
                 {todayBalance.stepDistanceKm} km · +{todayBalance.netStepsKcal} kcal nets
               </span>
             </div>
+            {showGoalEditor && onUpdateStepGoal && (
+              <div className="rounded-xl border border-sky-400/30 bg-slate-950/70 p-3 space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-[11px] font-semibold text-sky-200">
+                    Objectif quotidien personnalisé (1 500 – 30 000 pas/j)
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[5000, 7500, 8000, 10000, 12000].map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => {
+                          onUpdateStepGoal(preset);
+                          setStepGoalDraft(String(preset));
+                          setToast(`Objectif mis à jour : ${preset.toLocaleString("fr-FR")} pas/j`);
+                          setTimeout(() => setToast(null), 2500);
+                        }}
+                        className={`rounded-lg border px-2 py-1 text-[11px] font-bold tabular-nums ${
+                          profile.dailyStepGoal === preset
+                            ? "border-emerald-400 bg-emerald-500/20 text-emerald-200"
+                            : "border-slate-700 bg-slate-900 text-slate-300 hover:border-sky-400"
+                        }`}
+                      >
+                        {preset.toLocaleString("fr-FR")}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <form
+                  className="flex items-center gap-2"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const parsed = Number(stepGoalDraft.replace(/\s+/g, ""));
+                    const clamped = Math.max(
+                      1500,
+                      Math.min(30000, Math.round(Number.isFinite(parsed) ? parsed : profile.dailyStepGoal))
+                    );
+                    onUpdateStepGoal(clamped);
+                    setStepGoalDraft(String(clamped));
+                    setShowGoalEditor(false);
+                    setToast(`Objectif mis à jour : ${clamped.toLocaleString("fr-FR")} pas/j`);
+                    setTimeout(() => setToast(null), 2500);
+                  }}
+                >
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={stepGoalDraft}
+                    onChange={(e) => setStepGoalDraft(e.target.value.replace(/[^\d]/g, ""))}
+                    aria-label="Objectif quotidien de pas"
+                    className="w-28 rounded-xl bg-slate-900 border border-slate-700 px-2.5 py-1.5 text-xs text-white tabular-nums"
+                  />
+                  <button
+                    type="submit"
+                    className="px-3 py-1.5 rounded-xl bg-sky-500 text-slate-950 font-bold text-xs hover:bg-sky-400"
+                  >
+                    Enregistrer objectif
+                  </button>
+                </form>
+              </div>
+            )}
             <div className="h-3 rounded-full bg-slate-900 overflow-hidden border border-slate-800">
               <div
                 className="vp-gpu-bar h-full w-full bg-gradient-to-r from-sky-400 to-emerald-400"
@@ -238,7 +322,9 @@ export function ActivityCoachView({
               <button
                 key={inc}
                 type="button"
-                onClick={() => onUpdateSteps(todayBalance.rawSteps + inc, "manual")}
+                onClick={() =>
+                  onUpdateSteps(Math.min(100000, todayBalance.rawSteps + inc), "manual")
+                }
                 className="inline-flex items-center gap-1 px-2.5 py-2 rounded-xl bg-slate-900 border border-slate-700 hover:border-sky-400 text-xs text-white tabular-nums"
               >
                 <Plus className="w-3 h-3" /> {inc}
@@ -248,14 +334,15 @@ export function ActivityCoachView({
               className="flex items-center gap-1.5"
               onSubmit={(e) => {
                 e.preventDefault();
-                const val = Math.max(0, Math.round(Number(manualStepsInput) || 0));
+                const val = Math.max(0, Math.min(100000, Math.round(Number(manualStepsInput) || 0)));
                 onUpdateSteps(val, "manual");
               }}
             >
               <input
-                type="number"
+                type="text"
+                inputMode="numeric"
                 value={manualStepsInput}
-                onChange={(e) => setManualStepsInput(e.target.value)}
+                onChange={(e) => setManualStepsInput(e.target.value.replace(/[^\d]/g, ""))}
                 aria-label="Total pas du jour"
                 className="w-24 rounded-xl bg-slate-950 border border-slate-700 px-2.5 py-2 text-xs text-white tabular-nums"
               />
