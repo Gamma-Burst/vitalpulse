@@ -1,4 +1,7 @@
 import {
+  BloodPanelEntry,
+  BodyMeasurementEntry,
+  BodyPhotoMeta,
   CustomChallenge,
   DailyStepLog,
   FridgeScanSession,
@@ -8,7 +11,7 @@ import {
   WeightEntry,
   WorkoutSession,
 } from "@/types/vitalpulse";
-import { buildDemoSeedState } from "@/data/demo-seed";
+import { buildDemoSeedState, DEMO_BODY_PHOTOS } from "@/data/demo-seed";
 
 export interface VitalPulseState {
   version: number;
@@ -21,12 +24,16 @@ export interface VitalPulseState {
   waters: WaterLog[];
   challenges: CustomChallenge[];
   difficultDayDates: string[];
+  measurements: BodyMeasurementEntry[];
+  bloodPanels: BloodPanelEntry[];
+  bodyPhotoMetas: BodyPhotoMeta[];
   pushEndpoint?: string;
 }
 
 const DB_NAME = "vitalpulse_idb";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_NAME = "app_state";
+const PHOTO_STORE_NAME = "body_photos";
 const STATE_KEY = "primary_state";
 
 function openDb(): Promise<IDBDatabase> {
@@ -37,10 +44,50 @@ function openDb(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(STORE_NAME)) {
         db.createObjectStore(STORE_NAME);
       }
+      if (!db.objectStoreNames.contains(PHOTO_STORE_NAME)) {
+        db.createObjectStore(PHOTO_STORE_NAME);
+      }
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
+}
+
+/**
+ * Migration pure et idempotente v1 -> v2 (Codex) :
+ * conserve toutes les données existantes et initialise mensurations, bilans et métadonnées photo.
+ */
+export function migrateVitalPulseState(raw: Partial<VitalPulseState>): VitalPulseState {
+  const existingWeights = Array.isArray(raw.weights) ? raw.weights : [];
+  const migratedMeasurements: BodyMeasurementEntry[] = Array.isArray(raw.measurements)
+    ? raw.measurements
+    : existingWeights
+        .filter((w) => typeof w.waistCm === "number" || typeof w.weightKg === "number")
+        .map((w) => ({
+          id: `bm-mig-${w.id}`,
+          dateKey: w.dateKey,
+          createdAt: w.timestamp || new Date().toISOString(),
+          weightKg: w.weightKg,
+          waistCm: w.waistCm,
+          note: w.note,
+        }));
+
+  return {
+    version: 2,
+    profile: raw.profile as UserProfile,
+    meals: Array.isArray(raw.meals) ? raw.meals : [],
+    fridgeScans: Array.isArray(raw.fridgeScans) ? raw.fridgeScans : [],
+    steps: Array.isArray(raw.steps) ? raw.steps : [],
+    workouts: Array.isArray(raw.workouts) ? raw.workouts : [],
+    weights: existingWeights,
+    waters: Array.isArray(raw.waters) ? raw.waters : [],
+    challenges: Array.isArray(raw.challenges) ? raw.challenges : [],
+    difficultDayDates: Array.isArray(raw.difficultDayDates) ? raw.difficultDayDates : [],
+    measurements: migratedMeasurements,
+    bloodPanels: Array.isArray(raw.bloodPanels) ? raw.bloodPanels : [],
+    bodyPhotoMetas: Array.isArray(raw.bodyPhotoMetas) ? raw.bodyPhotoMetas : [],
+    pushEndpoint: raw.pushEndpoint,
+  };
 }
 
 export async function loadVitalPulseState(): Promise<VitalPulseState> {
@@ -49,15 +96,19 @@ export async function loadVitalPulseState(): Promise<VitalPulseState> {
   }
   try {
     const db = await openDb();
-    const existing = await new Promise<VitalPulseState | undefined>((resolve, reject) => {
+    const existing = await new Promise<Partial<VitalPulseState> | undefined>((resolve, reject) => {
       const tx = db.transaction(STORE_NAME, "readonly");
       const store = tx.objectStore(STORE_NAME);
       const req = store.get(STATE_KEY);
-      req.onsuccess = () => resolve(req.result as VitalPulseState | undefined);
+      req.onsuccess = () => resolve(req.result as Partial<VitalPulseState> | undefined);
       req.onerror = () => reject(req.error);
     });
     if (existing && existing.profile) {
-      return existing;
+      const migrated = migrateVitalPulseState(existing);
+      if ((existing.version ?? 1) < 2) {
+        await saveVitalPulseState(migrated);
+      }
+      return migrated;
     }
     const seeded = buildDemoSeedState();
     await saveVitalPulseState(seeded);
@@ -74,12 +125,61 @@ export async function saveVitalPulseState(state: VitalPulseState): Promise<void>
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(STORE_NAME, "readwrite");
       const store = tx.objectStore(STORE_NAME);
-      const req = store.put(state, STATE_KEY);
-      req.onsuccess = () => resolve();
-      req.onerror = () => reject(req.error);
+      store.put({ ...state, version: 2 }, STATE_KEY);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
     });
   } catch (err) {
     console.warn("IndexedDB save warning:", err);
+  }
+}
+
+/**
+ * Stockage 100 % local des photos d'évolution corporelle (jamais transmises au serveur).
+ */
+export async function saveBodyPhotoDataUrl(photoId: string, dataUrl: string): Promise<void> {
+  if (typeof window === "undefined" || typeof indexedDB === "undefined") return;
+  const db = await openDb();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(PHOTO_STORE_NAME, "readwrite");
+    tx.objectStore(PHOTO_STORE_NAME).put(dataUrl, photoId);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+export async function loadBodyPhotoDataUrl(photoId: string): Promise<string | null> {
+  if (typeof window === "undefined" || typeof indexedDB === "undefined") {
+    return DEMO_BODY_PHOTOS[photoId] ?? null;
+  }
+  try {
+    const db = await openDb();
+    const stored = await new Promise<string | undefined>((resolve, reject) => {
+      const tx = db.transaction(PHOTO_STORE_NAME, "readonly");
+      const req = tx.objectStore(PHOTO_STORE_NAME).get(photoId);
+      req.onsuccess = () => resolve(req.result as string | undefined);
+      req.onerror = () => reject(req.error);
+    });
+    if (stored) return stored;
+    return DEMO_BODY_PHOTOS[photoId] ?? null;
+  } catch {
+    return DEMO_BODY_PHOTOS[photoId] ?? null;
+  }
+}
+
+export async function deleteBodyPhotoDataUrl(photoId: string): Promise<void> {
+  if (typeof window === "undefined" || typeof indexedDB === "undefined") return;
+  try {
+    const db = await openDb();
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(PHOTO_STORE_NAME, "readwrite");
+      tx.objectStore(PHOTO_STORE_NAME).delete(photoId);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch {
+    // noop
   }
 }
 
@@ -103,7 +203,7 @@ export function getRecentDateKeys(days: number, endDate: Date = new Date()): str
 export function buildFreshUserState(profile: UserProfile): VitalPulseState {
   const todayKey = formatDateKey();
   return {
-    version: 1,
+    version: 2,
     profile: { ...profile, isDemoProfile: false },
     meals: [],
     fridgeScans: [],
@@ -120,6 +220,18 @@ export function buildFreshUserState(profile: UserProfile): VitalPulseState {
       },
     ],
     waters: [{ dateKey: todayKey, milliliters: 0 }],
+    measurements: [
+      {
+        id: `bm-init-${todayKey}`,
+        dateKey: todayKey,
+        createdAt: new Date().toISOString(),
+        weightKg: profile.weightKg,
+        waistCm: profile.waistCm,
+        note: "Mesure initiale de départ",
+      },
+    ],
+    bloodPanels: [],
+    bodyPhotoMetas: [],
     challenges: [
       {
         id: "chal-steps-8000",

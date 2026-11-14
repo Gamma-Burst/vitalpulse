@@ -318,3 +318,142 @@ export interface MedicalEvidenceCard {
   summaryFr: string;
   actionableTip: string;
 }
+
+export interface BodyMeasurementEntry {
+  id: string;
+  dateKey: string; // YYYY-MM-DD
+  createdAt: string;
+  weightKg?: number;
+  neckCm?: number;
+  shouldersCm?: number;
+  chestCm?: number;
+  waistCm?: number;
+  hipsCm?: number;
+  armCm?: number;
+  thighCm?: number;
+  calfCm?: number;
+  note?: string;
+}
+
+export interface BodyCompositionSummary {
+  navyBodyFatPct: number | null;
+  rfmPct: number;
+  bodyFatRangeMinPct: number;
+  bodyFatRangeMaxPct: number;
+  fatMassKg: number;
+  leanMassKg: number;
+  ffmi: number;
+  whr: number | null;
+  whrStatusFr: string | null;
+  wthr: number | null;
+  totalCmLostFromStart: number;
+  recompositionDetected: boolean;
+  recompositionBannerFr: string | null;
+}
+
+export type BloodBiomarkerKey =
+  | "fastingGlucose"
+  | "hba1c"
+  | "fastingInsulin"
+  | "totalCholesterol"
+  | "hdlCholesterol"
+  | "ldlCholesterol"
+  | "triglycerides"
+  | "apob"
+  | "creatinine"
+  | "alat"
+  | "asat"
+  | "ggt"
+  | "platelets"
+  | "ferritin"
+  | "tsh"
+  | "crpUs"
+  | "vitD"
+  | "vitB12"
+  | "hemoglobin"
+  | "uricAcid";
+
+export interface BloodPanelContext {
+  fasting: boolean;
+  pregnant: boolean;
+  labName?: string;
+  notes?: string;
+}
+
+export interface BloodMarkerInput {
+  key: BloodBiomarkerKey;
+  rawValue: number;
+  unit: string;
+  labMin?: number;
+  labMax?: number;
+}
+
+export type BloodMarkerStatus =
+  | "optimal"
+  | "normal"
+  | "watch"
+  | "high_priority"
+  | "critical"
+  | "uninterpretable_non_fasting";
+
+export interface BloodMarkerEvaluation {
+  key: BloodBiomarkerKey;
+  labelFr: string;
+  category: "glycemie" | "lipides" | "foie_rein" | "statut_global";
+  canonicalValue: number;
+  canonicalUnit: string;
+  displayInput: string;
+  refRangeLabel: string;
+  optimalRangeLabel: string;
+  status: BloodMarkerStatus;
+  explanationFr: string;
+  nutritionActionFr: string;
+  exerciseActionFr: string;
+  sourceRef: string;
+}
+
+export interface BloodDerivedMetric {
+  id: "homa_ir" | "non_hdl" | "tg_hdl_ratio" | "egfr_ckdepi_2021" | "fib4";
+  labelFr: string;
+  value: number;
+  unit: string;
+  status: "optimal" | "normal" | "watch" | "high_priority";
+  interpretationFr: string;
+  sourceRef: string;
+}
+
+export interface BloodPanelAnalysis {
+  overallScore: number;
+  criticalFlags: string[];
+  renalProteinGuardTriggered: boolean;
+  summaryFr: string;
+  evaluatedMarkers: BloodMarkerEvaluation[];
+  derivedMetrics: BloodDerivedMetric[];
+  priorityNutritionTips: string[];
+  priorityExerciseTips: string[];
+  doctorQuestions: string[];
+  provider: "openai-assisted" | "clinical-deterministic";
+}
+
+export interface BloodPanelEntry {
+  id: string;
+  dateKey: string;
+  createdAt: string;
+  context: BloodPanelContext;
+  markers: BloodMarkerInput[];
+  analysis: BloodPanelAnalysis;
+}
+
+export type BodyPhotoAngle = "front" | "side" | "back";
+
+export interface BodyPhotoMeta {
+  id: string;
+  dateKey: string;
+  createdAt: string;
+  angle: BodyPhotoAngle;
+  weightKg?: number;
+  waistCm?: number;
+  bodyFatPct?: number;
+  faceBlurred: boolean;
+  note?: string;
+}

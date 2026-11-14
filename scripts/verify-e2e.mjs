@@ -112,6 +112,27 @@ async function main() {
   results.push_pk_status = pkRes.status;
   results.push_configured = pkJson.configured;
 
+  // 6. Blood panel analysis (FR/SI parsing + CKD-EPI + FIB-4)
+  const bloodRes = await fetch(`${BASE}/api/analyze-blood`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      rawText:
+        "Glycémie 0,94 g/L, HbA1c 5,4 %, LDL 1,15 g/L, Triglycérides 1,10 g/L, Créatinine 9,0 mg/L, ALAT 24 UI/L, ASAT 22 UI/L, Plaquettes 250 G/L",
+      context: { fasting: true, pregnant: false },
+      profile: { age: 40, sex: "male" },
+    }),
+  });
+  const bloodJson = await bloodRes.json();
+  results.analyze_blood_status = bloodRes.status;
+  results.blood_evaluated_count = Array.isArray(bloodJson.analysis?.evaluatedMarkers)
+    ? bloodJson.analysis.evaluatedMarkers.length
+    : 0;
+  results.blood_derived_count = Array.isArray(bloodJson.analysis?.derivedMetrics)
+    ? bloodJson.analysis.derivedMetrics.length
+    : 0;
+  results.blood_provider = bloodJson.analysis?.provider ?? null;
+
   console.log(JSON.stringify(results, null, 2));
 
   const allOk =
@@ -125,7 +146,10 @@ async function main() {
     results.fridge_first_recipe_steps >= 3 &&
     results.medical_feed_status === 200 &&
     results.push_pk_status === 200 &&
-    results.push_configured;
+    results.push_configured &&
+    results.analyze_blood_status === 200 &&
+    results.blood_evaluated_count >= 6 &&
+    results.blood_derived_count >= 2;
 
   if (!allOk) process.exit(1);
 }

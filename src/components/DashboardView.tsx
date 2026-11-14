@@ -7,13 +7,18 @@ import {
   Camera,
   Droplets,
   Flame,
+  FlaskConical,
   Footprints,
+  Image as ImageIcon,
   Plus,
+  Ruler,
   Sparkles,
   TrendingUp,
 } from "lucide-react";
 import {
   AnthropometricReport,
+  BloodPanelEntry,
+  BodyMeasurementEntry,
   DailyEnergyBalance,
   MealEntry,
   ScaleDecoderInsight,
@@ -34,9 +39,15 @@ interface DashboardViewProps {
   onRangeChange: (d: 7 | 14 | 30) => void;
   onAddWater: (ml: number) => void;
   onQuickLogWeight: (kg: number, waistCm?: number) => void;
-  onNavigateTab: (tab: "scanner" | "fridge" | "activity" | "profile" | "medical") => void;
+  onNavigateTab: (
+    tab: "scanner" | "fridge" | "activity" | "bodylab" | "profile" | "medical",
+    subTab?: "measurements" | "blood" | "photos"
+  ) => void;
   onSelectMealToInspect: (mealId: string) => void;
   onSwitchToRealProfile: () => void;
+  latestMeasurement?: BodyMeasurementEntry | null;
+  latestBloodPanel?: BloodPanelEntry | null;
+  photosCount?: number;
 }
 
 function ProgressBar({
@@ -86,6 +97,9 @@ export function DashboardView({
   onNavigateTab,
   onSelectMealToInspect,
   onSwitchToRealProfile,
+  latestMeasurement = null,
+  latestBloodPanel = null,
+  photosCount = 0,
 }: DashboardViewProps) {
   const [inspectPhotoMeal, setInspectPhotoMeal] = useState<MealEntry | null>(null);
 
@@ -162,6 +176,14 @@ export function DashboardView({
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-medium text-xs sm:text-sm border border-slate-700 transition"
             >
               Frigo → Recettes
+            </button>
+            <button
+              type="button"
+              onClick={() => onNavigateTab("bodylab", "measurements")}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-emerald-300 font-medium text-xs sm:text-sm border border-emerald-500/30 transition"
+            >
+              <Ruler className="w-4 h-4" />
+              Corps &amp; Bilans
             </button>
           </div>
         </div>
@@ -350,6 +372,94 @@ export function DashboardView({
               Cible NOVA idéal ≤ 2,0 (peu transformé)
             </span>
           </div>
+        </div>
+      </div>
+
+      {/* Accès rapide Corps, Bilan Sanguin & Photos Avant/Après */}
+      <div className="vp-card p-4 sm:p-5">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <div>
+            <h3 className="text-base sm:text-lg font-semibold text-white flex items-center gap-2">
+              <Ruler className="w-5 h-5 text-emerald-400" />
+              Silhouette, Bilan Sanguin &amp; Transformation
+            </h3>
+            <p className="text-xs text-slate-400">
+              Mensurations multi-sites, analyse biologique avec unités FR/SI et comparateur photo local sécurisé
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => onNavigateTab("bodylab", "measurements")}
+            className="text-xs text-emerald-400 hover:underline font-medium"
+          >
+            Ouvrir l&apos;espace Corps &amp; Bilans →
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <button
+            type="button"
+            onClick={() => onNavigateTab("bodylab", "measurements")}
+            className="text-left rounded-xl bg-slate-950/70 hover:bg-slate-900 border border-slate-800 hover:border-emerald-500/40 p-3.5 transition"
+          >
+            <div className="flex items-center justify-between text-xs text-emerald-300 font-semibold">
+              <span className="inline-flex items-center gap-1.5">
+                <Ruler className="w-4 h-4" />
+                Mensurations &amp; Graph
+              </span>
+              <span>{latestMeasurement ? latestMeasurement.dateKey : "Nouveau"}</span>
+            </div>
+            <p className="text-sm font-bold text-white mt-1.5 tabular-nums">
+              {latestMeasurement?.waistCm
+                ? `Taille ${latestMeasurement.waistCm} cm · Hanches ${latestMeasurement.hipsCm ?? "--"} cm`
+                : "Enregistrer vos mesures (cm)"}
+            </p>
+            <span className="text-[11px] text-slate-400 block mt-0.5">
+              Tableau comparatif complet &amp; courbe Base 100
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onNavigateTab("bodylab", "blood")}
+            className="text-left rounded-xl bg-slate-950/70 hover:bg-slate-900 border border-slate-800 hover:border-sky-500/40 p-3.5 transition"
+          >
+            <div className="flex items-center justify-between text-xs text-sky-300 font-semibold">
+              <span className="inline-flex items-center gap-1.5">
+                <FlaskConical className="w-4 h-4" />
+                Bilan Sanguin
+              </span>
+              <span>{latestBloodPanel ? `${latestBloodPanel.analysis.overallScore}/100` : "Prêt"}</span>
+            </div>
+            <p className="text-sm font-bold text-white mt-1.5">
+              {latestBloodPanel
+                ? `${latestBloodPanel.analysis.evaluatedMarkers.length} marqueurs (${latestBloodPanel.dateKey})`
+                : "Coller un bilan ou photo d'ordonnance"}
+            </p>
+            <span className="text-[11px] text-slate-400 block mt-0.5">
+              Normes labo, cibles prévention &amp; CKD-EPI / HOMA-IR / FIB-4
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onNavigateTab("bodylab", "photos")}
+            className="text-left rounded-xl bg-slate-950/70 hover:bg-slate-900 border border-slate-800 hover:border-violet-500/40 p-3.5 transition"
+          >
+            <div className="flex items-center justify-between text-xs text-violet-300 font-semibold">
+              <span className="inline-flex items-center gap-1.5">
+                <ImageIcon className="w-4 h-4" />
+                Photos Avant / Après
+              </span>
+              <span>{photosCount} photo{photosCount > 1 ? "s" : ""}</span>
+            </div>
+            <p className="text-sm font-bold text-white mt-1.5">
+              {photosCount >= 2 ? "Curseur Avant/Après & Ghost" : "Suivre l'évolution visuelle"}
+            </p>
+            <span className="text-[11px] text-slate-400 block mt-0.5">
+              100 % local sans EXIF, flou visage &amp; mode discret
+            </span>
+          </button>
         </div>
       </div>
 

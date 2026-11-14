@@ -9,6 +9,7 @@ import {
   Download,
   Footprints,
   LayoutDashboard,
+  Ruler,
   UserCheck,
 } from "lucide-react";
 import {
@@ -18,6 +19,7 @@ import {
 } from "@/lib/metabolic-engine";
 import {
   buildFreshUserState,
+  deleteBodyPhotoDataUrl,
   formatDateKey,
   getRecentDateKeys,
   loadVitalPulseState,
@@ -29,9 +31,13 @@ import { DashboardView } from "@/components/DashboardView";
 import { MealScannerView } from "@/components/MealScannerView";
 import { FridgeChefView } from "@/components/FridgeChefView";
 import { ActivityCoachView } from "@/components/ActivityCoachView";
+import { BodyLabSubTab, BodyLabView } from "@/components/BodyLabView";
 import { ProfileChallengesView } from "@/components/ProfileChallengesView";
 import { MedicalHubView } from "@/components/MedicalHubView";
 import {
+  BloodPanelEntry,
+  BodyMeasurementEntry,
+  BodyPhotoMeta,
   CustomChallenge,
   FridgeScanSession,
   MealEntry,
@@ -40,7 +46,7 @@ import {
   WorkoutSession,
 } from "@/types/vitalpulse";
 
-type TabId = "dashboard" | "scanner" | "fridge" | "activity" | "profile" | "medical";
+type TabId = "dashboard" | "scanner" | "fridge" | "activity" | "bodylab" | "profile" | "medical";
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -52,6 +58,7 @@ const TABS: { id: TabId; label: string; shortLabel: string; icon: React.Componen
   { id: "scanner", label: "Scanner Plat", shortLabel: "Plat", icon: Camera },
   { id: "fridge", label: "Frigo & Recettes", shortLabel: "Frigo", icon: ChefHat },
   { id: "activity", label: "Pas & Exercices", shortLabel: "Bouger", icon: Footprints },
+  { id: "bodylab", label: "Corps & Bilans", shortLabel: "Corps", icon: Ruler },
   { id: "profile", label: "Profil, IMC & Push", shortLabel: "Profil", icon: UserCheck },
   { id: "medical", label: "Veille Médicale", shortLabel: "Science", icon: BookOpen },
 ];
@@ -59,6 +66,7 @@ const TABS: { id: TabId; label: string; shortLabel: string; icon: React.Componen
 export default function VitalPulseApp() {
   const [state, setState] = useState<VitalPulseState | null>(null);
   const [activeTab, setActiveTab] = useState<TabId>("dashboard");
+  const [bodyLabSubTab, setBodyLabSubTab] = useState<BodyLabSubTab>("measurements");
   const [rangeDays, setRangeDays] = useState<7 | 14 | 30>(7);
   const [highlightedMealId, setHighlightedMealId] = useState<string | null>(null);
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
@@ -135,6 +143,16 @@ export default function VitalPulseApp() {
     if (!state) return { trend: [], decoder: null };
     return computeWeightTrendAndScaleDecoder(state.weights, recentBalances);
   }, [state, recentBalances]);
+
+  const latestMeasurement = useMemo(() => {
+    if (!state || state.measurements.length === 0) return null;
+    return [...state.measurements].sort((a, b) => b.dateKey.localeCompare(a.dateKey))[0];
+  }, [state]);
+
+  const latestBloodPanel = useMemo(() => {
+    if (!state || state.bloodPanels.length === 0) return null;
+    return [...state.bloodPanels].sort((a, b) => b.dateKey.localeCompare(a.dateKey))[0];
+  }, [state]);
 
   if (!state || !anthro || !todayBalance) {
     return (
@@ -231,6 +249,19 @@ export default function VitalPulseApp() {
                 Installer
               </button>
             )}
+            <button
+              type="button"
+              onClick={() => setActiveTab("medical")}
+              aria-label="Veille Médicale"
+              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full border text-xs font-medium transition ${
+                activeTab === "medical"
+                  ? "bg-emerald-500/20 border-emerald-400 text-emerald-300"
+                  : "bg-slate-900 border-slate-700 text-slate-300"
+              }`}
+            >
+              <BookOpen className="w-3.5 h-3.5" />
+              Science
+            </button>
             <span className="text-xs px-2.5 py-1 rounded-full bg-slate-900 border border-slate-700 text-emerald-300 font-semibold tabular-nums">
               {todayBalance.netBalanceKcal > 0
                 ? `+${todayBalance.netBalanceKcal}`
@@ -283,7 +314,10 @@ export default function VitalPulseApp() {
                   ],
                 }))
               }
-              onNavigateTab={(tab) => setActiveTab(tab)}
+              onNavigateTab={(tab, subTab) => {
+                if (subTab) setBodyLabSubTab(subTab);
+                setActiveTab(tab);
+              }}
               onSelectMealToInspect={(mealId) => {
                 setHighlightedMealId(mealId);
                 setActiveTab("scanner");
@@ -291,6 +325,9 @@ export default function VitalPulseApp() {
               onSwitchToRealProfile={() => {
                 setActiveTab("profile");
               }}
+              latestMeasurement={latestMeasurement}
+              latestBloodPanel={latestBloodPanel}
+              photosCount={state.bodyPhotoMetas.length}
             />
           )}
 
@@ -426,6 +463,89 @@ export default function VitalPulseApp() {
             />
           )}
 
+          {activeTab === "bodylab" && (
+            <BodyLabView
+              key={bodyLabSubTab}
+              profile={state.profile}
+              todayDateKey={todayKey}
+              weights={state.weights}
+              measurements={state.measurements}
+              bloodPanels={state.bloodPanels}
+              bodyPhotoMetas={state.bodyPhotoMetas}
+              initialSubTab={bodyLabSubTab}
+              onSaveMeasurement={(entry: BodyMeasurementEntry) =>
+                commitState((prev) => {
+                  const filtered = prev.measurements.filter((m) => m.id !== entry.id);
+                  const nextMeasurements = [...filtered, entry].sort((a, b) =>
+                    a.dateKey.localeCompare(b.dateKey)
+                  );
+                  const latest = nextMeasurements[nextMeasurements.length - 1];
+                  const nextWeights =
+                    typeof entry.weightKg === "number"
+                      ? [
+                          ...prev.weights,
+                          {
+                            id: `wt-m-${entry.id}`,
+                            dateKey: entry.dateKey,
+                            timestamp: entry.createdAt,
+                            weightKg: entry.weightKg,
+                            waistCm: entry.waistCm,
+                          },
+                        ]
+                      : prev.weights;
+                  return {
+                    ...prev,
+                    profile: {
+                      ...prev.profile,
+                      weightKg: latest?.weightKg ?? prev.profile.weightKg,
+                      waistCm: latest?.waistCm ?? prev.profile.waistCm,
+                    },
+                    measurements: nextMeasurements,
+                    weights: nextWeights,
+                  };
+                })
+              }
+              onDeleteMeasurement={(id: string) =>
+                commitState((prev) => ({
+                  ...prev,
+                  measurements: prev.measurements.filter((m) => m.id !== id),
+                }))
+              }
+              onSaveBloodPanel={(panel: BloodPanelEntry) =>
+                commitState((prev) => {
+                  const filtered = prev.bloodPanels.filter((b) => b.id !== panel.id);
+                  return {
+                    ...prev,
+                    bloodPanels: [...filtered, panel].sort((a, b) =>
+                      a.dateKey.localeCompare(b.dateKey)
+                    ),
+                  };
+                })
+              }
+              onDeleteBloodPanel={(id: string) =>
+                commitState((prev) => ({
+                  ...prev,
+                  bloodPanels: prev.bloodPanels.filter((b) => b.id !== id),
+                }))
+              }
+              onSaveBodyPhotoMeta={(meta: BodyPhotoMeta) =>
+                commitState((prev) => ({
+                  ...prev,
+                  bodyPhotoMetas: [...prev.bodyPhotoMetas.filter((p) => p.id !== meta.id), meta].sort(
+                    (a, b) => a.dateKey.localeCompare(b.dateKey)
+                  ),
+                }))
+              }
+              onDeleteBodyPhotoMeta={(id: string) => {
+                void deleteBodyPhotoDataUrl(id);
+                commitState((prev) => ({
+                  ...prev,
+                  bodyPhotoMetas: prev.bodyPhotoMetas.filter((p) => p.id !== id),
+                }));
+              }}
+            />
+          )}
+
           {activeTab === "medical" && <MedicalHubView />}
         </main>
       </div>
@@ -435,7 +555,7 @@ export default function VitalPulseApp() {
         aria-label="Navigation principale mobile"
         className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-[#080E11]/95 backdrop-blur border-t border-slate-800 grid grid-cols-6 px-1 py-1.5"
       >
-        {TABS.map((t) => {
+        {TABS.filter((t) => t.id !== "medical").map((t) => {
           const Icon = t.icon;
           const active = activeTab === t.id;
           return (

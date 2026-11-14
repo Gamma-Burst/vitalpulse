@@ -1,4 +1,7 @@
 import {
+  BloodPanelEntry,
+  BodyMeasurementEntry,
+  BodyPhotoMeta,
   CustomChallenge,
   DailyStepLog,
   MealEntry,
@@ -7,7 +10,72 @@ import {
   WeightEntry,
   WorkoutSession,
 } from "@/types/vitalpulse";
+import { evaluateBloodPanelDeterministically } from "@/lib/blood-panel-engine";
 import type { VitalPulseState } from "@/lib/storage-db";
+
+function makeBodySilhouetteSvgDataUrl(opts: {
+  label: string;
+  waistWidth: number;
+  shoulderWidth: number;
+  chestWidth: number;
+  hipWidth: number;
+  accent: string;
+  weightText: string;
+}): string {
+  const cx = 200;
+  const sw = opts.shoulderWidth;
+  const cw = opts.chestWidth;
+  const ww = opts.waistWidth;
+  const hw = opts.hipWidth;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="560" viewBox="0 0 400 560">
+    <defs>
+      <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#0d171c"/>
+        <stop offset="100%" stop-color="#132229"/>
+      </linearGradient>
+      <linearGradient id="bodyGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="${opts.accent}" stop-opacity="0.45"/>
+        <stop offset="100%" stop-color="#38bdf8" stop-opacity="0.25"/>
+      </linearGradient>
+    </defs>
+    <rect width="400" height="560" fill="url(#bg)"/>
+    <g stroke="#1e293b" stroke-width="1" stroke-dasharray="4 4">
+      <line x1="30" y1="150" x2="370" y2="150"/>
+      <line x1="30" y1="245" x2="370" y2="245"/>
+      <line x1="30" y1="315" x2="370" y2="315"/>
+    </g>
+    <circle cx="${cx}" cy="76" r="28" fill="#1e293b" stroke="${opts.accent}" stroke-width="2"/>
+    <text x="${cx}" y="80" fill="#94a3b8" font-family="system-ui,sans-serif" font-size="10" text-anchor="middle">PRIVÉ</text>
+    <path d="M ${cx - 14} 104 L ${cx + 14} 104 L ${cx + sw} 135 L ${cx + sw + 18} 275 L ${cx + sw} 275 L ${cx + cw} 170 L ${cx + ww} 245 L ${cx + hw} 315 L ${cx + hw - 8} 495 L ${cx + 12} 495 L ${cx + 6} 350 L ${cx - 6} 350 L ${cx - 12} 495 L ${cx - hw + 8} 495 L ${cx - hw} 315 L ${cx - ww} 245 L ${cx - cw} 170 L ${cx - sw} 275 L ${cx - sw - 18} 275 L ${cx - sw} 135 Z" fill="url(#bodyGrad)" stroke="${opts.accent}" stroke-width="2.5" stroke-linejoin="round"/>
+    <line x1="${cx - ww - 18}" y1="245" x2="${cx + ww + 18}" y2="245" stroke="#fbbf24" stroke-width="1.5" stroke-dasharray="4 3"/>
+    <rect x="20" y="18" width="160" height="28" rx="14" fill="#0B1215CC" stroke="${opts.accent}" stroke-width="1"/>
+    <text x="100" y="36" fill="#F8FAFC" font-family="system-ui,sans-serif" font-size="12" font-weight="700" text-anchor="middle">${opts.label}</text>
+    <rect x="20" y="510" width="360" height="32" rx="10" fill="#0B1215D9"/>
+    <text x="200" y="531" fill="${opts.accent}" font-family="system-ui,sans-serif" font-size="13" font-weight="700" text-anchor="middle">${opts.weightText}</text>
+  </svg>`;
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+}
+
+export const DEMO_BODY_PHOTOS: Record<string, string> = {
+  "demo-photo-before": makeBodySilhouetteSvgDataUrl({
+    label: "Départ · Semaine 1",
+    shoulderWidth: 68,
+    chestWidth: 58,
+    waistWidth: 56,
+    hipWidth: 60,
+    accent: "#f59e0b",
+    weightText: "85,2 kg · Tour de taille 92,5 cm (Démo)",
+  }),
+  "demo-photo-after": makeBodySilhouetteSvgDataUrl({
+    label: "Aujourd'hui · Semaine 6",
+    shoulderWidth: 70,
+    chestWidth: 56,
+    waistWidth: 46,
+    hipWidth: 54,
+    accent: "#34d399",
+    weightText: "82,4 kg · Tour de taille 88,0 cm (-4,5 cm)",
+  }),
+};
 
 function shiftDateKey(daysAgo: number): string {
   const d = new Date();
@@ -448,8 +516,159 @@ export function buildDemoSeedState(): VitalPulseState {
     },
   ];
 
+  const d21 = shiftDateKey(21);
+  const d42 = shiftDateKey(42);
+  const d90 = shiftDateKey(90);
+
+  const measurements: BodyMeasurementEntry[] = [
+    {
+      id: "bm-demo-1",
+      dateKey: d42,
+      createdAt: `${d42}T07:30:00.000Z`,
+      weightKg: 85.2,
+      neckCm: 39.5,
+      shouldersCm: 117.0,
+      chestCm: 104.0,
+      waistCm: 92.5,
+      hipsCm: 103.0,
+      armCm: 35.0,
+      thighCm: 60.0,
+      calfCm: 38.5,
+      note: "Mesure initiale de référence (à jeun)",
+    },
+    {
+      id: "bm-demo-2",
+      dateKey: shiftDateKey(28),
+      createdAt: `${shiftDateKey(28)}T07:30:00.000Z`,
+      weightKg: 84.1,
+      neckCm: 39.3,
+      shouldersCm: 117.0,
+      chestCm: 103.0,
+      waistCm: 90.8,
+      hipsCm: 101.8,
+      armCm: 34.8,
+      thighCm: 59.4,
+      calfCm: 38.4,
+      note: "Semaine 2 — -1,7 cm au nombril",
+    },
+    {
+      id: "bm-demo-3",
+      dateKey: shiftDateKey(14),
+      createdAt: `${shiftDateKey(14)}T07:30:00.000Z`,
+      weightKg: 83.2,
+      neckCm: 39.0,
+      shouldersCm: 117.2,
+      chestCm: 102.2,
+      waistCm: 89.2,
+      hipsCm: 100.5,
+      armCm: 34.9,
+      thighCm: 58.6,
+      calfCm: 38.3,
+      note: "Semaine 4 — recomposition taille/épaules",
+    },
+    {
+      id: "bm-demo-4",
+      dateKey: d0,
+      createdAt: `${d0}T07:30:00.000Z`,
+      weightKg: 82.4,
+      neckCm: 38.8,
+      shouldersCm: 117.5,
+      chestCm: 101.5,
+      waistCm: 88.0,
+      hipsCm: 99.5,
+      armCm: 35.0,
+      thighCm: 58.0,
+      calfCm: 38.2,
+      note: "Semaine 6 — taille passée sous le seuil 0,50",
+    },
+  ];
+
+  const oldMarkers = [
+    { key: "fastingGlucose" as const, rawValue: 1.06, unit: "g/L" },
+    { key: "hba1c" as const, rawValue: 5.8, unit: "%" },
+    { key: "fastingInsulin" as const, rawValue: 11.4, unit: "mUI/L" },
+    { key: "totalCholesterol" as const, rawValue: 2.15, unit: "g/L" },
+    { key: "hdlCholesterol" as const, rawValue: 0.43, unit: "g/L" },
+    { key: "ldlCholesterol" as const, rawValue: 1.38, unit: "g/L" },
+    { key: "triglycerides" as const, rawValue: 1.72, unit: "g/L" },
+    { key: "creatinine" as const, rawValue: 9.2, unit: "mg/L" },
+    { key: "alat" as const, rawValue: 39, unit: "UI/L" },
+    { key: "asat" as const, rawValue: 31, unit: "UI/L" },
+    { key: "platelets" as const, rawValue: 245, unit: "G/L" },
+    { key: "vitD" as const, rawValue: 19, unit: "ng/mL" },
+  ];
+
+  const newMarkers = [
+    { key: "fastingGlucose" as const, rawValue: 0.91, unit: "g/L" },
+    { key: "hba1c" as const, rawValue: 5.4, unit: "%" },
+    { key: "fastingInsulin" as const, rawValue: 6.2, unit: "mUI/L" },
+    { key: "totalCholesterol" as const, rawValue: 1.88, unit: "g/L" },
+    { key: "hdlCholesterol" as const, rawValue: 0.56, unit: "g/L" },
+    { key: "ldlCholesterol" as const, rawValue: 1.08, unit: "g/L" },
+    { key: "triglycerides" as const, rawValue: 1.18, unit: "g/L" },
+    { key: "creatinine" as const, rawValue: 8.8, unit: "mg/L" },
+    { key: "alat" as const, rawValue: 24, unit: "UI/L" },
+    { key: "asat" as const, rawValue: 22, unit: "UI/L" },
+    { key: "platelets" as const, rawValue: 252, unit: "G/L" },
+    { key: "vitD" as const, rawValue: 34, unit: "ng/mL" },
+  ];
+
+  const bloodPanels: BloodPanelEntry[] = [
+    {
+      id: "bp-demo-1",
+      dateKey: d90,
+      createdAt: `${d90}T08:15:00.000Z`,
+      context: { fasting: true, pregnant: false, labName: "BioLab Exemple (Il y a 3 mois)" },
+      markers: oldMarkers,
+      analysis: evaluateBloodPanelDeterministically({
+        markers: oldMarkers,
+        context: { fasting: true, pregnant: false },
+        age: profile.age,
+        sex: profile.sex,
+      }),
+    },
+    {
+      id: "bp-demo-2",
+      dateKey: d21,
+      createdAt: `${d21}T08:10:00.000Z`,
+      context: { fasting: true, pregnant: false, labName: "BioLab Exemple (Bilan actuel)" },
+      markers: newMarkers,
+      analysis: evaluateBloodPanelDeterministically({
+        markers: newMarkers,
+        context: { fasting: true, pregnant: false },
+        age: profile.age,
+        sex: profile.sex,
+      }),
+    },
+  ];
+
+  const bodyPhotoMetas: BodyPhotoMeta[] = [
+    {
+      id: "demo-photo-before",
+      dateKey: d42,
+      createdAt: `${d42}T07:35:00.000Z`,
+      angle: "front",
+      weightKg: 85.2,
+      waistCm: 92.5,
+      bodyFatPct: 21.8,
+      faceBlurred: true,
+      note: "Départ — photo exemple (vos vraies photos restent 100 % privées sur votre appareil)",
+    },
+    {
+      id: "demo-photo-after",
+      dateKey: d0,
+      createdAt: `${d0}T07:35:00.000Z`,
+      angle: "front",
+      weightKg: 82.4,
+      waistCm: 88.0,
+      bodyFatPct: 18.6,
+      faceBlurred: true,
+      note: "Semaine 6 — -4,5 cm de tour de taille",
+    },
+  ];
+
   return {
-    version: 1,
+    version: 2,
     profile,
     meals,
     fridgeScans: [],
@@ -459,5 +678,8 @@ export function buildDemoSeedState(): VitalPulseState {
     waters,
     challenges,
     difficultDayDates: [],
+    measurements,
+    bloodPanels,
+    bodyPhotoMetas,
   };
 }

@@ -76,6 +76,66 @@ export async function compressImageFile(file: File, maxDim = 1080): Promise<stri
   });
 }
 
+/**
+ * Traite une photo d'évolution corporelle 100 % côté client :
+ * 1) Re-dessine dans Canvas pour supprimer EXIF & GPS ;
+ * 2) Optionnellement floute/pixelise le haut central (zone visage) avant stockage IndexedDB local.
+ */
+export async function processBodyProgressPhoto(
+  file: File,
+  options: { blurFace: boolean; maxDim?: number }
+): Promise<string> {
+  const maxDim = options.maxDim ?? 1280;
+  const rawUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+
+  if (file.type === "image/svg+xml") {
+    return rawUrl;
+  }
+
+  return new Promise<string>((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const ratio = Math.min(1, maxDim / Math.max(img.width, img.height));
+      const w = Math.max(1, Math.round(img.width * ratio));
+      const h = Math.max(1, Math.round(img.height * ratio));
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        resolve(rawUrl);
+        return;
+      }
+      ctx.drawImage(img, 0, 0, w, h);
+
+      if (options.blurFace) {
+        const fx = Math.round(w * 0.25);
+        const fw = Math.round(w * 0.5);
+        const fh = Math.round(h * 0.22);
+        ctx.save();
+        ctx.filter = "blur(18px)";
+        ctx.drawImage(canvas, fx, 0, fw, fh, fx, 0, fw, fh);
+        ctx.restore();
+        ctx.fillStyle = "rgba(11, 18, 21, 0.35)";
+        ctx.fillRect(fx, Math.round(fh * 0.25), fw, Math.round(fh * 0.55));
+        ctx.fillStyle = "rgba(226, 232, 240, 0.85)";
+        ctx.font = `bold ${Math.max(12, Math.round(w * 0.024))}px system-ui, sans-serif`;
+        ctx.textAlign = "center";
+        ctx.fillText("Visage masqué (local)", w / 2, Math.round(fh * 0.56));
+      }
+
+      resolve(canvas.toDataURL("image/jpeg", 0.82));
+    };
+    img.onerror = () => resolve(rawUrl);
+    img.src = rawUrl;
+  });
+}
+
 export function urlBase64ToUint8Array(base64String: string): Uint8Array {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");

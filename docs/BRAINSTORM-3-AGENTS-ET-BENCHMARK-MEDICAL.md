@@ -50,3 +50,23 @@
 | Besoins énergétiques & protéines | **Mifflin-St Jeor (1990)**, **EFSA**, **ANSES / ESPEN** | `BMR`, hydratation `35 mL/kg + 500 mL/30 min`, plancher de sécurité calorique, protéines `1.6 à 1.8 g/kg` en perte de gras. |
 | Dépense physique & micro-activité | **Compendium of Physical Activities (2024 Adult Update)**, **Stamatakis et al. (*Nature Medicine*, 2022 — VILPA)**, **Buffey et al. (*Sports Medicine*, 2022)** | 24 exercices quotidiens calibrés par `MET` exact, mini-séances `VILPA 3×1 min`, marche digestive post-prandiale `10 min`. |
 | Veille scientifique continue | **NCBI PubMed E-utilities (`esearch` + `esummary`)** | Flux live filtré sur méta-analyses, revues systématiques et essais cliniques récents classés par objectif santé. |
+
+
+---
+
+## Brainstorm v2.0 (14 novembre 2026) — Mensurations, Bilan Sanguin & Photos Avant/Après
+
+### Contributions croisées des 3 Agents
+| Axe | Claude Opus 5.5 (`15644822`) | Codex (`a9526cc7`) | Implémentation Antigravity (`VitalPulse v2.0`) |
+| --- | --- | --- | --- |
+| **Mensurations & Silhouette** | Formule US Navy + plage RFM, graphe Base 100 pour comparer poids/taille/% graisse sur la même échelle, détecteur de recomposition corporelle | Equations exactes Hodgdon–Beckett en centimètres, garde-fous géométriques (`waist > neck`), matrices chronologiques delta J-1 / départ | `src/lib/body-composition.ts` + onglet `Corps & Bilans -> Mensurations & Graph` (8 sites anatomiques + silhouette SVG/tableau delta + Base 100) |
+| **Bilan Sanguin FR/SI** | Interprétation à 3 niveaux (norme labo / cible clinique / optimal), alerte rénale protéique (`DFG < 60` KDIGO), verrouillage grossesse, pont nutrition & sport | Facteurs exacts FR ↔ SI (`glycémie *5.551`, `chol *2.586`, `TG *1.129`, `créatinine *8.84`, `HbA1c NGSP/IFCC`), parseur virgule FR, seuils d'urgence biologique | `src/lib/blood-panel-engine.ts` + `/api/analyze-blood` (OCR OpenAI optionnel + parseur FR déterministe + HOMA-IR, CKD-EPI 2021, FIB-4, non-HDL, TG/HDL) |
+| **Photos Avant / Après** | Coffre local sans cloud, Ghost Overlay de cadrage, curseur Split Avant/Après, mode discret anti-regard indiscret | IndexedDB v2 store dédié `body_photos` (migration pure idempotente `migrateVitalPulseState`), suppression EXIF via Canvas + flou visage local | `src/lib/storage-db.ts` (v2) + `processBodyProgressPhoto` (`native-bridge.ts`) + comparateur Split/Timelapse/Ghost/Flou |
+
+### Références cliniques intégrées au module Corps & Bilans
+- **Hodgdon & Beckett (1984)** / **Woolcott & Bergman (2018 RFM)** : estimation circonférentielle du % de masse grasse sans impédancemètre médical.
+- **OMS / NICE / HAS** : Tour de taille / Taille (`WtHR < 0,50`) et Rapport Taille/Hanches (`WHR < 0,90` H / `< 0,85` F).
+- **ADA Standards of Care 2025 & HAS** : Glycémie à jeun, HbA1c, HOMA-IR (`(Glycémie mmol/L × Insuline) / 22,5`).
+- **ESC/EAS Dyslipidaemias & EFLM** : LDL, non-HDL, ratio TG/HDL et règle stricte à jeun pour triglycérides / insulinémie.
+- **KDIGO 2024 (CKD-EPI 2021 sans facteur ethnique)** : DFG estimé et garde-fou automatique d'apport protéique si `DFG < 60 mL/min/1,73m²`.
+- **EASL / EASD / EASO MASLD 2024** : score hépatique `FIB-4` (âge ≥ 35, ASAT, ALAT, plaquettes).
