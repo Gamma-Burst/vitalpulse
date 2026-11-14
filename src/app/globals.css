@@ -2,17 +2,52 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  color-scheme: dark;
+:root,
+[data-theme="dark"] {
+  --vp-bg: #070c0b;
+  --vp-surface: #0f1916;
+  --vp-surface-2: #162520;
+  --vp-surface-glass: rgba(15, 25, 22, 0.88);
+  --vp-border: rgba(148, 163, 184, 0.14);
+  --vp-border-strong: rgba(52, 211, 153, 0.28);
+  --vp-text: #f3f7f4;
+  --vp-text-muted: #9eb2aa;
+  --vp-accent: #2fe09b;
+  --vp-fasting-arc: #fbbf24;
+  --vp-fasting-track: rgba(251, 191, 36, 0.16);
+  --vp-shadow: 0 20px 50px -24px rgba(0, 0, 0, 0.72);
+  --vp-safe-top: env(safe-area-inset-top, 0px);
+  --vp-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --vp-dock-clearance: calc(92px + env(safe-area-inset-bottom, 0px));
 }
 
-html,
-body {
-  background-color: #0b1215;
-  color: #f1f5f9;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif;
-  overflow-x: hidden;
+[data-theme="light"] {
+  --vp-bg: #f7f4ee;
+  --vp-surface: #ffffff;
+  --vp-surface-2: #efe9dc;
+  --vp-surface-glass: rgba(255, 255, 255, 0.92);
+  --vp-border: rgba(15, 23, 42, 0.11);
+  --vp-border-strong: rgba(5, 150, 105, 0.28);
+  --vp-text: #151c19;
+  --vp-text-muted: #4b5d55;
+  --vp-accent: #059669;
+  --vp-fasting-arc: #f59e0b;
+  --vp-fasting-track: #f5e6c4;
+  --vp-shadow: 0 18px 40px -24px rgba(15, 23, 42, 0.16);
+}
+
+html {
+  background-color: var(--vp-bg);
+  color: var(--vp-text);
+  scroll-behavior: smooth;
   -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  background-color: var(--vp-bg);
+  color: var(--vp-text);
+  overflow-x: clip;
+  padding-top: var(--vp-safe-top);
 }
 
 .tabular-nums {
@@ -20,23 +55,171 @@ body {
 }
 
 .vp-card {
-  background: linear-gradient(160deg, rgba(18, 29, 35, 0.96), rgba(11, 18, 21, 0.98));
-  border: 1px solid rgba(148, 163, 184, 0.14);
-  border-radius: 1.15rem;
+  background: var(--vp-surface);
+  border: 1px solid var(--vp-border);
+  box-shadow: var(--vp-shadow);
+  transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 180ms ease,
+    box-shadow 180ms ease;
 }
 
 .vp-card-accent {
-  background: linear-gradient(155deg, rgba(16, 185, 129, 0.14), rgba(14, 116, 144, 0.08) 55%, rgba(18, 29, 35, 0.96));
-  border: 1px solid rgba(52, 211, 153, 0.28);
-  border-radius: 1.15rem;
+  background: linear-gradient(
+    145deg,
+    rgba(16, 185, 129, 0.14) 0%,
+    var(--vp-surface) 58%,
+    rgba(6, 182, 212, 0.1) 100%
+  );
+  border: 1px solid var(--vp-border-strong);
+  box-shadow: var(--vp-shadow);
 }
 
-/* Custom subtle scrollbars */
+[data-theme="light"] .vp-card-accent {
+  background: linear-gradient(145deg, #ecfdf5 0%, #ffffff 55%, #f0f9ff 100%);
+  border: 1px solid rgba(5, 150, 105, 0.25);
+}
+
+/* Adaptation contraste mode clair Porcelaine sans toucher aux pastilles/boutons sombres voulus */
+[data-theme="light"] header,
+[data-theme="light"] nav[aria-label="Navigation principale"] {
+  background-color: var(--vp-surface-glass);
+  border-color: var(--vp-border);
+}
+
+[data-theme="light"] .vp-card,
+[data-theme="light"] .vp-card-accent {
+  color: var(--vp-text);
+}
+
+[data-theme="light"] .vp-card .text-white,
+[data-theme="light"] .vp-card .text-slate-100,
+[data-theme="light"] .vp-card .text-slate-200,
+[data-theme="light"] .vp-card-accent .text-white,
+[data-theme="light"] .vp-card-accent .text-slate-100,
+[data-theme="light"] .vp-card-accent .text-slate-200,
+[data-theme="light"] .vp-sheet .text-white,
+[data-theme="light"] .vp-sheet .text-slate-100,
+[data-theme="light"] .vp-sheet .text-slate-200,
+[data-theme="light"] .vp-onboarding .text-white,
+[data-theme="light"] .vp-onboarding .text-slate-100 {
+  color: #151c19;
+}
+
+[data-theme="light"] .vp-card .text-slate-300,
+[data-theme="light"] .vp-card .text-slate-400,
+[data-theme="light"] .vp-card .text-slate-500,
+[data-theme="light"] .vp-card-accent .text-slate-300,
+[data-theme="light"] .vp-card-accent .text-slate-400,
+[data-theme="light"] .vp-sheet .text-slate-300,
+[data-theme="light"] .vp-sheet .text-slate-400 {
+  color: #4b5d55;
+}
+
+/* Préserver texte blanc sur boutons & pastilles pleins en mode clair */
+[data-theme="light"] .vp-keep-dark,
+[data-theme="light"] .vp-keep-dark *,
+[data-theme="light"] button.bg-emerald-500,
+[data-theme="light"] button.bg-emerald-600,
+[data-theme="light"] button.bg-slate-900,
+[data-theme="light"] button.bg-cyan-500,
+[data-theme="light"] button.bg-rose-500,
+[data-theme="light"] button.bg-amber-500 {
+  color: #ffffff;
+}
+
+[data-theme="light"] .bg-slate-900\/80,
+[data-theme="light"] .bg-slate-950\/70,
+[data-theme="light"] .bg-slate-950\/60,
+[data-theme="light"] .bg-slate-900\/60,
+[data-theme="light"] .bg-\[\#0B1215\] {
+  background-color: var(--vp-surface-2);
+  color: var(--vp-text);
+}
+
+[data-theme="light"] input,
+[data-theme="light"] select,
+[data-theme="light"] textarea {
+  background-color: #ffffff;
+  color: #151c19;
+  border-color: rgba(15, 23, 42, 0.18);
+}
+
+[data-theme="light"] .text-emerald-300,
+[data-theme="light"] .text-emerald-400 {
+  color: #047857;
+}
+
+[data-theme="light"] .text-amber-300,
+[data-theme="light"] .text-amber-200 {
+  color: #b45309;
+}
+
+[data-theme="light"] .text-cyan-300,
+[data-theme="light"] .text-cyan-200 {
+  color: #0e7490;
+}
+
+.vp-sheet {
+  background: var(--vp-surface);
+  color: var(--vp-text);
+  border: 1px solid var(--vp-border);
+  box-shadow: 0 30px 90px -20px rgba(0, 0, 0, 0.75);
+}
+
+.vp-glass-dock {
+  background: var(--vp-surface-glass);
+  border: 1px solid var(--vp-border);
+  box-shadow: 0 18px 44px -14px rgba(0, 0, 0, 0.55);
+}
+
+@supports (backdrop-filter: blur(18px)) {
+  .vp-glass-dock {
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+  }
+}
+
+.vp-gpu-bar {
+  transform-origin: left center;
+  transition: transform 320ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+
+.vp-safe-pb {
+  padding-bottom: max(1rem, var(--vp-safe-bottom));
+}
+
+.vp-main-pb {
+  padding-bottom: var(--vp-dock-clearance);
+}
+
+@media (min-width: 768px) {
+  .vp-main-pb {
+    padding-bottom: 3rem;
+  }
+}
+
+/* Scrollbar discrète */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
 ::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.28);
+  background: rgba(148, 163, 184, 0.25);
   border-radius: 9999px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .vp-card,
+  .vp-gpu-bar {
+    transition: none;
+  }
 }

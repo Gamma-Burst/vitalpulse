@@ -140,6 +140,8 @@ export function buildDemoSeedState(): VitalPulseState {
     specialMode: "standard",
     quietHours: { start: "22:00", end: "07:30" },
     isDemoProfile: true,
+    onboardingCompleted: false,
+    preferredFasting: "16_8",
   };
 
   const d0 = shiftDateKey(0);
@@ -668,7 +670,7 @@ export function buildDemoSeedState(): VitalPulseState {
   ];
 
   return {
-    version: 2,
+    version: 3,
     profile,
     meals,
     fridgeScans: [],
@@ -681,5 +683,40 @@ export function buildDemoSeedState(): VitalPulseState {
     measurements,
     bloodPanels,
     bodyPhotoMetas,
+    fasting: {
+      protocolId: "16_8",
+      fastHours: 16,
+      eatHours: 8,
+      activeStartIso: null,
+      plannedStartIso: null,
+      history: [
+        {
+          id: "fast-demo-1",
+          protocolId: "16_8",
+          startIso: `${d2}T20:00:00.000Z`,
+          endIso: `${d1}T12:15:00.000Z`,
+          durationHours: 16.25,
+          targetHours: 16,
+        },
+        {
+          id: "fast-demo-2",
+          protocolId: "20_4",
+          startIso: `${d4}T18:00:00.000Z`,
+          endIso: `${d3}T14:00:00.000Z`,
+          durationHours: 20,
+          targetHours: 20,
+        },
+      ],
+    },
+    enabledWidgets: [
+      "fasting",
+      "hydration",
+      "steps_watch",
+      "weight_ema",
+      "barcode_meals",
+      "body_blood",
+    ],
+    wearable: { ecosystem: "none" },
+    completedMindsetDates: [],
   };
 }

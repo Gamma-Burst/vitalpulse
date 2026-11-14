@@ -10,6 +10,73 @@ export type SpecialMode =
   | "glycemic_shield"
   | "cardio_low_sodium";
 
+export type FastingProtocolId =
+  | "none"
+  | "12_12"
+  | "14_10"
+  | "16_8"
+  | "18_6"
+  | "20_4"
+  | "omad_23_1"
+  | "5_2"
+  | "custom";
+
+export type FastingPhaseId =
+  | "digestion"
+  | "glycemic_calm"
+  | "metabolic_switch"
+  | "lipolysis"
+  | "ketosis_light"
+  | "autophagy_zone";
+
+export interface CompletedFastRecord {
+  id: string;
+  protocolId: FastingProtocolId;
+  startIso: string;
+  endIso: string;
+  durationHours: number;
+  targetHours: number;
+}
+
+export interface FastingConfig {
+  protocolId: FastingProtocolId;
+  fastHours: number;
+  eatHours: number;
+  activeStartIso: string | null;
+  plannedStartIso: string | null;
+  history: CompletedFastRecord[];
+  safetyAck?: boolean;
+}
+
+export type DashboardWidgetId =
+  | "fasting"
+  | "hydration"
+  | "steps_watch"
+  | "weight_ema"
+  | "barcode_meals"
+  | "body_blood"
+  | "micronutrients"
+  | "weekly_bank"
+  | "mindset_coach";
+
+export type WearableEcosystem =
+  | "none"
+  | "samsung_health"
+  | "apple_watch"
+  | "garmin"
+  | "fitbit_pixel"
+  | "xiaomi_zepp"
+  | "ble_hr";
+
+export interface WearableSyncState {
+  ecosystem: WearableEcosystem;
+  deviceName?: string;
+  lastSyncAt?: string;
+  lastHeartRateBpm?: number;
+  syncedStepsToday?: number;
+  syncedActiveKcalToday?: number;
+}
+
 export interface QuietHours {
   start: string; // HH:mm
   end: string; // HH:mm
@@ -30,6 +97,8 @@ export interface UserProfile {
   specialMode: SpecialMode;
   quietHours: QuietHours;
   isDemoProfile?: boolean;
+  onboardingCompleted?: boolean;
+  preferredFasting?: FastingProtocolId;
 }
 
 export interface MacroTotals {

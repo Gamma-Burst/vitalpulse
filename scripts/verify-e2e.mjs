@@ -133,6 +133,15 @@ async function main() {
     : 0;
   results.blood_provider = bloodJson.analysis?.provider ?? null;
 
+  // 7. Barcode API (/api/barcode)
+  const barcodeRes = await fetch(`${BASE}/api/barcode?code=3017620422003`);
+  const barcodeJson = await barcodeRes.json();
+  results.barcode_status = barcodeRes.status;
+  results.barcode_found = Boolean(barcodeJson.found);
+  results.barcode_kcal = barcodeJson.per100g?.kcal ?? 0;
+  results.barcode_nutriscore = barcodeJson.nutriScore ?? null;
+  results.barcode_nova = barcodeJson.novaGroup ?? null;
+
   console.log(JSON.stringify(results, null, 2));
 
   const allOk =
@@ -149,7 +158,10 @@ async function main() {
     results.push_configured &&
     results.analyze_blood_status === 200 &&
     results.blood_evaluated_count >= 6 &&
-    results.blood_derived_count >= 2;
+    results.blood_derived_count >= 2 &&
+    results.barcode_status === 200 &&
+    results.barcode_found &&
+    results.barcode_kcal >= 500;
 
   if (!allOk) process.exit(1);
 }

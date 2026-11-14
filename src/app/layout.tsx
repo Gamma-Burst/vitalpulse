@@ -1,5 +1,31 @@
 import type { Metadata, Viewport } from "next";
+import {
+  Bricolage_Grotesque,
+  Plus_Jakarta_Sans,
+  JetBrains_Mono,
+} from "next/font/google";
 import "./globals.css";
+
+const bricolage = Bricolage_Grotesque({
+  subsets: ["latin"],
+  weight: ["600", "700", "800"],
+  display: "swap",
+  variable: "--font-display",
+});
+
+const jakarta = Plus_Jakarta_Sans({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  display: "swap",
+  variable: "--font-sans",
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  weight: ["500", "700"],
+  display: "swap",
+  variable: "--font-mono",
+});
 
 export const metadata: Metadata = {
   title: "VitalPulse · Coach Nutrition, Métabolisme & Forme",
@@ -18,10 +44,14 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0B1215",
+  themeColor: [
+    { media: "(prefers-color-scheme: dark)", color: "#070C0B" },
+    { media: "(prefers-color-scheme: light)", color: "#F7F4EE" },
+  ],
   width: "device-width",
   initialScale: 1,
   maximumScale: 5,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
@@ -30,8 +60,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="fr" className="dark">
-      <body className="min-h-screen bg-[#0B1215] text-slate-100 antialiased selection:bg-emerald-500/30">
+    <html
+      lang="fr"
+      data-theme="dark"
+      suppressHydrationWarning
+      className={`${bricolage.variable} ${jakarta.variable} ${jetbrainsMono.variable} dark`}
+    >
+      <body className="min-h-screen font-sans antialiased selection:bg-emerald-500/30">
         {children}
       </body>
     </html>

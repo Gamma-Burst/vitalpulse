@@ -30,6 +30,7 @@ interface MealScannerViewProps {
   onSaveMeal: (meal: MealEntry) => void;
   onUpdateMeal: (meal: MealEntry) => void;
   onDeleteMeal: (mealId: string) => void;
+  onOpenBarcode?: () => void;
 }
 
 function generateSampleRasterPlate(kind: "salmon" | "pasta" | "salad"): {
@@ -120,6 +121,7 @@ export function MealScannerView({
   onSaveMeal,
   onUpdateMeal,
   onDeleteMeal,
+  onOpenBarcode,
 }: MealScannerViewProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
@@ -138,6 +140,8 @@ export function MealScannerView({
   // Historique, révision & comparateur
   const [selectedMeal, setSelectedMeal] = useState<MealEntry | null>(null);
   const [editNotes, setEditNotes] = useState("");
+  const [showSamples, setShowSamples] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const [reanalyzing, setReanalyzing] = useState(false);
   const [compareIds, setCompareIds] = useState<string[]>([]);
 
@@ -366,7 +370,28 @@ export function MealScannerView({
               La Vision détecte les aliments et votre zone de texte juste en dessous corrige les huiles, sauces, poids et cuissons invisibles.
             </p>
           </div>
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {onOpenBarcode && (
+              <button
+                type="button"
+                onClick={onOpenBarcode}
+                className="px-3 py-1.5 rounded-xl bg-amber-500/20 border border-amber-400/40 text-amber-300 text-xs font-bold hover:bg-amber-500/30"
+              >
+                Code-barres EAN
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setShowSamples((v) => !v)}
+              className="px-3 py-1.5 rounded-xl bg-slate-900/90 border border-slate-700 text-xs text-slate-300 hover:border-emerald-400/50"
+            >
+              {showSamples ? "Masquer exemples ▲" : "Exemples démo ▾"}
+            </button>
+          </div>
+        </div>
+
+        {showSamples && (
+          <div className="flex flex-wrap gap-1.5 pt-1">
             {(["salmon", "pasta", "salad"] as const).map((sample) => (
               <button
                 key={sample}
@@ -377,6 +402,7 @@ export function MealScannerView({
                   setUserNotes(s.notes);
                   setMealType(s.mealType);
                   setDraftResult(null);
+                  setShowSamples(false);
                 }}
                 className="px-2.5 py-1.5 rounded-lg bg-slate-900/90 border border-slate-700 hover:border-emerald-400/60 text-[11px] text-slate-200 transition"
               >
@@ -384,7 +410,7 @@ export function MealScannerView({
               </button>
             ))}
           </div>
-        </div>
+        )}
 
         {/* Inputs caméra / galerie */}
         <input
@@ -719,18 +745,26 @@ export function MealScannerView({
         </div>
       )}
 
-      {/* Historique permanent des photos & ré-analyses */}
+      {/* Historique permanent des photos & ré-analyses (repliable pour garder une vue épurée) */}
       <div className="vp-card p-4 sm:p-5 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h3 className="text-base sm:text-lg font-semibold text-white flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setShowHistory((v) => !v)}
+            className="text-base sm:text-lg font-semibold text-white flex items-center gap-2 text-left"
+          >
             <History className="w-5 h-5 text-emerald-400" />
-            Historique permanent des photos &amp; analyses ({photoMeals.length})
-          </h3>
+            <span>Historique permanent des photos ({photoMeals.length})</span>
+            <span className="text-xs font-medium text-emerald-300">
+              {showHistory || comparedMeals.length > 0 ? "▲ Réduire" : "▾ Déplier"}
+            </span>
+          </button>
           <span className="text-xs text-slate-400">
             Cochez 2 plats pour les comparer côte à côte
           </span>
         </div>
 
+        {(showHistory || comparedMeals.length > 0) && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {photoMeals.map((meal) => {
             const isComp = compareIds.includes(meal.id);
@@ -807,6 +841,7 @@ export function MealScannerView({
             );
           })}
         </div>
+        )}
       </div>
 
       {/* Modale d'édition & ré-analyse de photo archivée */}

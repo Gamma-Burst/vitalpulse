@@ -24,6 +24,7 @@ import {
   UserProfile,
 } from "@/types/vitalpulse";
 import { subscribeBrowserToPush } from "@/lib/native-bridge";
+import { DetailSheet } from "@/components/ui/DetailSheet";
 
 interface ProfileChallengesViewProps {
   profile: UserProfile;
@@ -36,6 +37,7 @@ interface ProfileChallengesViewProps {
   onDeleteChallenge: (challengeId: string) => void;
   onStartFreshWithProfile: (next: UserProfile) => void;
   onResetDemo: () => void;
+  onReopenOnboarding?: () => void;
 }
 
 export function ProfileChallengesView({
@@ -49,10 +51,13 @@ export function ProfileChallengesView({
   onDeleteChallenge,
   onStartFreshWithProfile,
   onResetDemo,
+  onReopenOnboarding,
 }: ProfileChallengesViewProps) {
   const [form, setForm] = useState<UserProfile>(profile);
   const [showSources, setShowSources] = useState(false);
   const [profileSavedMsg, setProfileSavedMsg] = useState<string | null>(null);
+  const [profileSheetOpen, setProfileSheetOpen] = useState(false);
+  const [challengeSheetOpen, setChallengeSheetOpen] = useState(false);
 
   // Web Push
   const [pushStatus, setPushStatus] = useState<string | null>(null);
@@ -131,6 +136,7 @@ export function ProfileChallengesView({
     onAddChallenge(item);
     setChTitle("");
     setChDesc("");
+    setChallengeSheetOpen(false);
   }
 
   return (
@@ -247,30 +253,65 @@ export function ProfileChallengesView({
         )}
       </div>
 
-      {/* Formulaire Profil Complet */}
-      <div className="vp-card p-4 sm:p-6 space-y-4">
+      {/* Carte concise Profil + Drawer d'édition */}
+      <div className="vp-card p-4 sm:p-5 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h3 className="text-base sm:text-lg font-bold text-white">
-            Paramètres biométriques &amp; objectifs personnalisés
-          </h3>
+          <div>
+            <h3 className="text-base sm:text-lg font-bold text-white">
+              Profil : {profile.name} ({profile.age} ans · {profile.heightCm} cm · {profile.weightKg} kg)
+            </h3>
+            <p className="text-xs text-slate-400">
+              Cible {profile.targetWeightKg} kg · {profile.dailyStepGoal} pas/j
+            </p>
+          </div>
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
+              onClick={() => setProfileSheetOpen(true)}
+              className="px-3.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs"
+            >
+              Modifier mes mesures / objectifs
+            </button>
+            {onReopenOnboarding && (
+              <button
+                type="button"
+                onClick={onReopenOnboarding}
+                className="px-3 py-2 rounded-xl bg-amber-500/15 border border-amber-400/35 text-amber-200 text-xs font-semibold hover:bg-amber-500/25"
+              >
+                Relancer le questionnaire d&apos;accueil
+              </button>
+            )}
+            <button
+              type="button"
               onClick={() => onStartFreshWithProfile(form)}
-              className="px-3 py-1.5 rounded-xl bg-sky-500/20 border border-sky-400/35 text-sky-200 text-xs font-medium hover:bg-sky-500/30"
+              className="px-3 py-2 rounded-xl bg-sky-500/20 border border-sky-400/35 text-sky-200 text-xs font-medium hover:bg-sky-500/30"
             >
               Démarrer à zéro avec ce profil réel
             </button>
             <button
               type="button"
               onClick={onResetDemo}
-              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-800 text-slate-300 text-xs"
+              className="inline-flex items-center gap-1 px-3 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs"
             >
               <RotateCcw className="w-3 h-3" /> Démo 7j
             </button>
           </div>
         </div>
+        {profileSavedMsg && (
+          <div className="rounded-xl bg-emerald-500/20 border border-emerald-400/40 p-2.5 text-xs text-emerald-200">
+            {profileSavedMsg}
+          </div>
+        )}
+      </div>
 
+      <DetailSheet
+        open={profileSheetOpen}
+        onClose={() => setProfileSheetOpen(false)}
+        title="Paramètres biométriques & objectifs"
+        subtitle="Calibrage instantané de votre IMC, BMR et macros"
+        size="lg"
+      >
+      <div className="space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
           <label className="space-y-1">
             <span className="text-slate-400 block">Prénom / Profil</span>
@@ -452,6 +493,7 @@ export function ProfileChallengesView({
             onClick={() => {
               onSaveProfile({ ...form, isDemoProfile: false });
               setProfileSavedMsg("Profil & calculs métaboliques mis à jour !");
+              setProfileSheetOpen(false);
               setTimeout(() => setProfileSavedMsg(null), 3500);
             }}
             className="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs sm:text-sm"
@@ -459,13 +501,8 @@ export function ProfileChallengesView({
             Enregistrer mon profil
           </button>
         </div>
-
-        {profileSavedMsg && (
-          <div className="rounded-xl bg-emerald-500/20 border border-emerald-400/40 p-2.5 text-xs text-emerald-200">
-            {profileSavedMsg}
-          </div>
-        )}
       </div>
+      </DetailSheet>
 
       {/* Notifications Push & Challenges Personnalisés */}
       <div className="vp-card p-4 sm:p-6 space-y-5">
@@ -570,10 +607,26 @@ export function ProfileChallengesView({
           })}
         </div>
 
-        {/* Formulaire création challenge */}
+        <button
+          type="button"
+          onClick={() => setChallengeSheetOpen(true)}
+          className="inline-flex items-center gap-2 rounded-2xl border border-emerald-400/35 bg-emerald-500/15 px-4 py-2.5 text-xs font-bold text-emerald-200 hover:bg-emerald-500/25"
+        >
+          <PlusCircle className="w-4 h-4" />
+          + Créer un nouveau challenge ou rappel personnalisé
+        </button>
+
+        {/* Modale création challenge */}
+        <DetailSheet
+          open={challengeSheetOpen}
+          onClose={() => setChallengeSheetOpen(false)}
+          title="Nouveau challenge & rappel Push"
+          subtitle="Définissez votre objectif quotidien et l'heure du rappel"
+          size="md"
+        >
         <form
           onSubmit={handleCreateChallenge}
-          className="rounded-xl bg-slate-900/70 border border-slate-800 p-4 space-y-3"
+          className="space-y-3"
         >
           <strong className="text-xs text-emerald-300 flex items-center gap-1.5">
             <PlusCircle className="w-4 h-4" />
@@ -671,6 +724,7 @@ export function ProfileChallengesView({
             </button>
           </div>
         </form>
+        </DetailSheet>
       </div>
     </div>
   );

@@ -1,33 +1,60 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
+import { motion, useReducedMotion } from "framer-motion";
 import {
-  Activity,
   AlertTriangle,
   Camera,
+  Check,
+  ChefHat,
+  ChevronRight,
   Droplets,
-  Flame,
   FlaskConical,
-  Footprints,
   Image as ImageIcon,
-  Plus,
   Ruler,
+  ScanBarcode,
+  SlidersHorizontal,
   Sparkles,
-  TrendingUp,
+  Watch,
 } from "lucide-react";
 import {
   AnthropometricReport,
   BloodPanelEntry,
   BodyMeasurementEntry,
   DailyEnergyBalance,
+  DashboardWidgetId,
+  FastingConfig,
   MealEntry,
   ScaleDecoderInsight,
   UserProfile,
+  WearableSyncState,
   WeightTrendPoint,
 } from "@/types/vitalpulse";
+import type { BodyLabSubTab } from "@/components/BodyLabView";
 import { EnergyActivityChart } from "@/components/EnergyActivityChart";
+import { DetailSheet } from "@/components/ui/DetailSheet";
+import { HeroEnergyOrb, LiveTileIcon } from "@/components/ui/LiveMetricVisuals";
+import { computeFastingLiveStatus } from "@/lib/fasting-engine";
+import {
+  buildWeeklyAdherenceStrip,
+  clampRingProgress,
+  computeWeeklyCalorieBank,
+  evaluateSodiumCeilingStatus,
+} from "@/lib/ui-progressive";
+import { getTodayMindsetLesson } from "@/data/mindset-lessons";
+import { triggerLightHaptic } from "@/lib/native-bridge";
 
-interface DashboardViewProps {
+export type DashboardTabTarget =
+  | "dashboard"
+  | "scanner"
+  | "fridge"
+  | "activity"
+  | "fasting"
+  | "bodylab"
+  | "profile"
+  | "medical";
+
+export interface DashboardViewProps {
   profile: UserProfile;
   anthro: AnthropometricReport;
   todayBalance: DailyEnergyBalance;
@@ -36,51 +63,63 @@ interface DashboardViewProps {
   scaleDecoder: ScaleDecoderInsight | null;
   mealsWithPhotos: MealEntry[];
   rangeDays: 7 | 14 | 30;
-  onRangeChange: (d: 7 | 14 | 30) => void;
+  onRangeChange: (days: 7 | 14 | 30) => void;
   onAddWater: (ml: number) => void;
-  onQuickLogWeight: (kg: number, waistCm?: number) => void;
-  onNavigateTab: (
-    tab: "scanner" | "fridge" | "activity" | "bodylab" | "profile" | "medical",
-    subTab?: "measurements" | "blood" | "photos"
-  ) => void;
+  onQuickLogWeight: (weightKg: number, waistCm?: number) => void;
+  onNavigateTab: (tab: DashboardTabTarget, subTab?: BodyLabSubTab) => void;
   onSelectMealToInspect: (mealId: string) => void;
   onSwitchToRealProfile: () => void;
   latestMeasurement?: BodyMeasurementEntry | null;
   latestBloodPanel?: BloodPanelEntry | null;
   photosCount?: number;
+  fasting?: FastingConfig;
+  enabledWidgets?: DashboardWidgetId[];
+  wearable?: WearableSyncState;
+  completedMindsetDates?: string[];
+  onToggleWidget?: (id: DashboardWidgetId) => void;
+  onOpenWearables?: () => void;
+  onOpenBarcode?: () => void;
+  onToggleMindsetToday?: () => void;
+  onNavigateFasting?: () => void;
 }
 
-function ProgressBar({
-  label,
-  value,
-  target,
-  unit,
-  colorClass,
-}: {
-  label: string;
-  value: number;
-  target: number;
-  unit: string;
-  colorClass: string;
-}) {
-  const pct = Math.min(100, Math.round((value / Math.max(1, target)) * 100));
-  return (
-    <div>
-      <div className="flex justify-between text-xs mb-1">
-        <span className="text-slate-300 font-medium">{label}</span>
-        <span className="text-slate-200 tabular-nums">
-          <strong>{Math.round(value)}</strong> / {target} {unit}
-        </span>
-      </div>
-      <div className="h-2 rounded-full bg-slate-800 overflow-hidden">
-        <div
-          className={`h-full rounded-full transition-all duration-300 ${colorClass}`}
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-    </div>
-  );
-}
+type ActiveSheetKind =
+  | null
+  | "energy"
+  | "fasting"
+  | "hydration"
+  | "steps_watch"
+  | "weight_ema"
+  | "barcode_meals"
+  | "body_blood"
+  | "micronutrients"
+  | "weekly_bank"
+  | "mindset_coach"
+  | "widgets_config";
+
+const WIDGET_LABELS: Record<DashboardWidgetId, string> = {
+  fasting: "Jeûne & OMAD",
+  hydration: "Hydratation",
+  steps_watch: "Pas & Montre",
+  weight_ema: "Poids lissé EMA",
+  barcode_meals: "Assiettes & Scan",
+  body_blood: "Corps & Sang",
+  micronutrients: "Micronutriments",
+  weekly_bank: "Banque 7 jours",
+  mindset_coach: "Leçon du jour",
+};
+
+const DEFAULT_FALLBACK_WIDGETS: DashboardWidgetId[] = [
+  "fasting",
+  "hydration",
+  "steps_watch",
+  "weight_ema",
+  "barcode_meals",
+  "body_blood",
+  "micronutrients",
+  "weekly_bank",
+  "mindset_coach",
+];
 
 export function DashboardView({
   profile,
@@ -100,509 +139,1074 @@ export function DashboardView({
   latestMeasurement = null,
   latestBloodPanel = null,
   photosCount = 0,
+  fasting,
+  enabledWidgets = DEFAULT_FALLBACK_WIDGETS,
+  wearable,
+  completedMindsetDates = [],
+  onToggleWidget,
+  onOpenWearables,
+  onOpenBarcode,
+  onToggleMindsetToday,
+  onNavigateFasting,
 }: DashboardViewProps) {
-  const [inspectPhotoMeal, setInspectPhotoMeal] = useState<MealEntry | null>(null);
+  const shouldReduceMotion = useReducedMotion();
+  const [sheet, setSheet] = useState<ActiveSheetKind>(null);
 
-  const validDays = recentBalances.filter((b) => b.intakeKcal > 0);
-  const half = Math.max(1, Math.floor(validDays.length / 2));
-  const prevPeriod = validDays.slice(0, half);
-  const currPeriod = validDays.slice(half);
+  const weeklyStrip = useMemo(
+    () => buildWeeklyAdherenceStrip(recentBalances),
+    [recentBalances]
+  );
 
-  const avg = (arr: DailyEnergyBalance[], fn: (b: DailyEnergyBalance) => number) =>
-    arr.length ? Math.round(arr.reduce((s, b) => s + fn(b), 0) / arr.length) : 0;
+  const weeklyBank = useMemo(
+    () => computeWeeklyCalorieBank(recentBalances),
+    [recentBalances]
+  );
 
-  const avgCalCurr = avg(currPeriod, (b) => b.intakeKcal);
-  const avgCalPrev = avg(prevPeriod, (b) => b.intakeKcal);
-  const avgStepsCurr = avg(currPeriod, (b) => b.rawSteps);
-  const avgStepsPrev = avg(prevPeriod, (b) => b.rawSteps);
-  const avgProtCurr = avg(currPeriod, (b) => b.macros.proteinG);
-  const cumulativeNetKcal = validDays.reduce((s, b) => s + b.netBalanceKcal, 0);
-  const theoreticalFatDeltaKg = +(cumulativeNetKcal / 7700).toFixed(2);
+  const fastingLive = useMemo(
+    () =>
+      fasting
+        ? computeFastingLiveStatus(fasting)
+        : null,
+    [fasting]
+  );
 
-  const isDeficit = todayBalance.netBalanceKcal <= 0;
+  const todayLesson = useMemo(
+    () => getTodayMindsetLesson(todayBalance.dateKey),
+    [todayBalance.dateKey]
+  );
+  const lessonDoneToday = completedMindsetDates.includes(todayBalance.dateKey);
+
+  const sodiumStatus = evaluateSodiumCeilingStatus(
+    todayBalance.macros.sodiumMg,
+    anthro.targets.sodiumMaxMg
+  );
+
+  const activeBurnedKcal = todayBalance.netStepsKcal + todayBalance.netWorkoutsKcal;
+  const visibleWidgets =
+    enabledWidgets.length > 0 ? enabledWidgets : DEFAULT_FALLBACK_WIDGETS;
+
+  const hasSafetyFlags =
+    Boolean(latestBloodPanel?.analysis.criticalFlags?.length) ||
+    Boolean(latestBloodPanel?.analysis.renalProteinGuardTriggered) ||
+    anthro.safetyFloorApplied;
+
+  const avgStats = useMemo(() => {
+    const validDays = recentBalances.filter((b) => b.intakeKcal > 0);
+    const half = Math.max(1, Math.floor(validDays.length / 2));
+    const prevPeriod = validDays.slice(0, half);
+    const currPeriod = validDays.slice(half);
+    const avg = (
+      arr: DailyEnergyBalance[],
+      fn: (b: DailyEnergyBalance) => number
+    ) => (arr.length ? Math.round(arr.reduce((s, b) => s + fn(b), 0) / arr.length) : 0);
+    return {
+      avgCalPrev: avg(prevPeriod, (b) => b.intakeKcal),
+      avgCalCurr: avg(currPeriod, (b) => b.intakeKcal),
+      avgStepsPrev: avg(prevPeriod, (b) => b.rawSteps),
+      avgStepsCurr: avg(currPeriod, (b) => b.rawSteps),
+    };
+  }, [recentBalances]);
+
+  function openSheet(next: ActiveSheetKind) {
+    triggerLightHaptic();
+    setSheet(next);
+  }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
+      {/* Bannière Mode Démo discrète */}
       {profile.isDemoProfile && (
-        <div className="rounded-2xl border border-amber-400/35 bg-amber-500/10 p-3.5 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-start gap-2.5 text-xs text-amber-100">
-            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-            <div>
-              <strong>Mode Découverte (7 jours d&apos;exemple chargés)</strong> — explorez les graphiques comparatifs et les photos analysées, puis démarrez avec vos vraies mesures dès que vous êtes prêt.
-            </div>
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-amber-400/35 bg-amber-500/10 px-4 py-2.5 text-xs">
+          <div className="flex items-center gap-2 text-amber-200">
+            <Sparkles className="h-4 w-4 text-amber-300 shrink-0" />
+            <span>
+              <strong>Mode Démo actif</strong> · Exemples biologiques et repas préchargés.
+            </span>
           </div>
           <button
             type="button"
             onClick={onSwitchToRealProfile}
-            className="px-3.5 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-semibold text-xs transition shrink-0"
+            className="rounded-full bg-amber-400 px-3 py-1 text-[11px] font-extrabold text-slate-950 hover:bg-amber-300"
           >
-            Démarrer mon vrai profil
+            Créer mon vrai profil
           </button>
         </div>
       )}
 
-      {/* Carte Équation Énergétique du Jour */}
-      <div className="vp-card-accent p-4 sm:p-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-300 bg-emerald-500/15 px-2.5 py-1 rounded-full">
-              <Sparkles className="w-3.5 h-3.5" />
-              Bilan énergétique en temps réel · {todayBalance.dateKey}
-            </span>
-            <h2 className="text-2xl sm:text-3xl font-bold text-white mt-2 tabular-nums">
-              {todayBalance.netBalanceKcal > 0
-                ? `+${todayBalance.netBalanceKcal}`
-                : todayBalance.netBalanceKcal}{" "}
-              kcal{" "}
-              <span className="text-sm sm:text-base font-medium text-emerald-300">
-                ({isDeficit ? "Déficit" : "Surplus"} aujourd&apos;hui)
-              </span>
-            </h2>
-            <p className="text-xs sm:text-sm text-slate-300 mt-1">{todayBalance.statusFr}</p>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => onNavigateTab("scanner")}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold text-xs sm:text-sm transition"
-            >
-              <Camera className="w-4 h-4" />
-              Photo d&apos;un plat
-            </button>
-            <button
-              type="button"
-              onClick={() => onNavigateTab("fridge")}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-medium text-xs sm:text-sm border border-slate-700 transition"
-            >
-              Frigo → Recettes
-            </button>
-            <button
-              type="button"
-              onClick={() => onNavigateTab("bodylab", "measurements")}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-emerald-300 font-medium text-xs sm:text-sm border border-emerald-500/30 transition"
-            >
-              <Ruler className="w-4 h-4" />
-              Corps &amp; Bilans
-            </button>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-5">
-          <div className="rounded-xl bg-slate-950/60 border border-slate-800/80 p-3">
-            <span className="text-xs text-slate-400">Mangé ce jour</span>
-            <p className="text-lg font-bold text-amber-300 tabular-nums mt-0.5">
-              {todayBalance.intakeKcal} kcal
-            </p>
-            <span className="text-[11px] text-slate-400">
-              Reste cible : {todayBalance.remainingToTargetKcal} kcal ({todayBalance.mealsCount} repas)
-            </span>
-          </div>
-
-          <div className="rounded-xl bg-slate-950/60 border border-slate-800/80 p-3">
-            <span className="text-xs text-slate-400">Dépense totale réelle</span>
-            <p className="text-lg font-bold text-emerald-300 tabular-nums mt-0.5">
-              {todayBalance.totalExpenditureKcal} kcal
-            </p>
-            <span className="text-[11px] text-slate-400">
-              BMR {todayBalance.bmrKcal} + Mouv. {todayBalance.netStepsKcal + todayBalance.netWorkoutsKcal + todayBalance.nonAmbulatoryNeatKcal} + TEF {todayBalance.tefKcal}
-            </span>
-          </div>
-
-          <div className="rounded-xl bg-slate-950/60 border border-slate-800/80 p-3">
-            <span className="text-xs text-slate-400 flex items-center gap-1">
-              <Footprints className="w-3.5 h-3.5 text-sky-400" />
-              Pas du jour
-            </span>
-            <p className="text-lg font-bold text-sky-300 tabular-nums mt-0.5">
-              {todayBalance.rawSteps.toLocaleString("fr-FR")}
-            </p>
-            <span className="text-[11px] text-slate-400">
-              {todayBalance.stepDistanceKm} km · {todayBalance.netStepsKcal} kcal nets (hors séance)
-            </span>
-          </div>
-
-          <div className="rounded-xl bg-slate-950/60 border border-slate-800/80 p-3">
-            <span className="text-xs text-slate-400 flex items-center gap-1">
-              <Activity className="w-3.5 h-3.5 text-violet-400" />
-              Vrai Bilan Corporel
-            </span>
-            <p className="text-lg font-bold text-white tabular-nums mt-0.5">
-              IMC {anthro.bmi} {anthro.bri ? `· BRI ${anthro.bri}` : ""}
-            </p>
-            <button
-              type="button"
-              onClick={() => onNavigateTab("profile")}
-              className="text-[11px] text-emerald-400 hover:underline mt-0.5"
-            >
-              {anthro.wthr ? `Ratio taille ${anthro.wthr} (<0,50 sain)` : "Voir bilan complet →"}
-            </button>
-          </div>
-        </div>
-
-        {/* Macros, Fibres, Sodium & Hydratation */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-5 pt-4 border-t border-slate-800/80">
-          <div className="space-y-2.5">
-            <ProgressBar
-              label="Protéines (préservation musculaire)"
-              value={todayBalance.macros.proteinG}
-              target={anthro.targets.proteinG}
-              unit="g"
-              colorClass="bg-emerald-400"
-            />
-            <ProgressBar
-              label="Glucides"
-              value={todayBalance.macros.carbsG}
-              target={anthro.targets.carbsG}
-              unit="g"
-              colorClass="bg-sky-400"
-            />
-            <ProgressBar
-              label="Lipides"
-              value={todayBalance.macros.fatG}
-              target={anthro.targets.fatG}
-              unit="g"
-              colorClass="bg-amber-400"
-            />
-          </div>
-
-          <div className="space-y-2.5">
-            <ProgressBar
-              label="Fibres ANSES (microbiote & satiété)"
-              value={todayBalance.macros.fiberG}
-              target={anthro.targets.fiberG}
-              unit="g"
-              colorClass="bg-lime-400"
-            />
-            <ProgressBar
-              label={`Sodium OMS (seuil ${anthro.targets.sodiumMaxMg} mg)`}
-              value={todayBalance.macros.sodiumMg}
-              target={anthro.targets.sodiumMaxMg}
-              unit="mg"
-              colorClass={
-                todayBalance.macros.sodiumMg > anthro.targets.sodiumMaxMg
-                  ? "bg-rose-400"
-                  : "bg-teal-400"
-              }
-            />
-            <div className="flex items-center justify-between gap-2 pt-1">
-              <div className="flex-1">
-                <ProgressBar
-                  label="Hydratation EFSA"
-                  value={todayBalance.waterMl}
-                  target={anthro.targets.waterMl}
-                  unit="mL"
-                  colorClass="bg-cyan-400"
-                />
+      {/* Alerte clinique permanente si biomarqueur critique / KDIGO / plancher calorique */}
+      {hasSafetyFlags && (
+        <div className="rounded-2xl border border-rose-400/45 bg-rose-500/15 px-4 py-3 text-xs text-rose-100">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div className="flex items-start gap-2.5">
+              <AlertTriangle className="h-4 w-4 text-rose-300 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                {latestBloodPanel?.analysis.criticalFlags?.map((flag, i) => (
+                  <p key={i} className="font-bold">
+                    {flag}
+                  </p>
+                ))}
+                {latestBloodPanel?.analysis.renalProteinGuardTriggered && (
+                  <p className="font-semibold">
+                    Garde rénale KDIGO active : vérifiez votre apport protéique avec votre médecin avant de viser une cible élevée.
+                  </p>
+                )}
+                {anthro.safetyFloorApplied && (
+                  <p>
+                    Plancher calorique clinique actif ({anthro.targetIntakeKcal} kcal/j minimum pour préserver votre métabolisme).
+                  </p>
+                )}
               </div>
+            </div>
+            {latestBloodPanel && (
               <button
                 type="button"
-                onClick={() => onAddWater(250)}
-                className="inline-flex items-center gap-1 px-2.5 py-2 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400/30 text-cyan-200 text-xs font-semibold shrink-0"
+                onClick={() => onNavigateTab("bodylab", "blood")}
+                className="rounded-full border border-rose-300/40 px-3 py-1 text-[11px] font-bold text-rose-100 hover:bg-rose-500/20"
               >
-                <Droplets className="w-3.5 h-3.5" />
-                <Plus className="w-3 h-3" /> 250 mL
+                Voir bilan sanguin →
               </button>
-            </div>
+            )}
           </div>
         </div>
+      )}
+
+      {/* Bandeau supérieur épuré : Salutation + Ruban 7 jours + Config Widgets */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-xs font-medium text-slate-400">
+            Bonjour <strong className="text-white">{profile.name}</strong> · IMC {anthro.bmi}
+          </p>
+          <div className="mt-1.5 flex items-center gap-1.5" aria-label="Régularité 7 derniers jours">
+            {weeklyStrip.map((day) => {
+              const dotClass =
+                day.state === "optimal"
+                  ? "bg-emerald-400 text-slate-950"
+                  : day.state === "gentle"
+                    ? "bg-amber-400/80 text-slate-950"
+                    : day.state === "logged"
+                      ? "bg-cyan-400/80 text-slate-950"
+                      : "bg-slate-500/20 text-slate-400";
+              return (
+                <span
+                  key={day.dateKey}
+                  title={`${day.dateKey}`}
+                  className={`flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-extrabold ${dotClass}`}
+                >
+                  {day.dayLetter}
+                </span>
+              );
+            })}
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => openSheet("widgets_config")}
+          className="inline-flex items-center gap-1.5 rounded-full border border-slate-500/25 bg-slate-500/10 px-3.5 py-1.5 text-xs font-bold text-slate-200 hover:border-emerald-400/40"
+        >
+          <SlidersHorizontal className="h-3.5 w-3.5 text-emerald-400" />
+          Widgets ({visibleWidgets.length})
+        </button>
       </div>
 
-      {/* Graphique Activité + Calories + Courbe Poids EMA */}
-      <EnergyActivityChart
-        balances={recentBalances}
-        weightTrend={weightTrend}
-        scaleDecoder={scaleDecoder}
-        currentWeightKg={profile.weightKg}
-        currentWaistCm={profile.waistCm}
-        rangeDays={rangeDays}
-        onRangeChange={onRangeChange}
-        onQuickLogWeight={onQuickLogWeight}
-      />
+      {/* HERO ENERGIE LEAN : 1 Orbe + 3 chiffres + 3 barres macro -> clic = DetailSheet complet */}
+      <motion.section
+        initial={shouldReduceMotion ? undefined : { opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.25 }}
+      >
+        <button
+          type="button"
+          onClick={() => openSheet("energy")}
+          className="vp-card-accent group w-full rounded-3xl p-4 sm:p-6 text-left transition hover:border-emerald-400/50 active:scale-[0.995]"
+        >
+          <div className="flex flex-col items-center gap-5 sm:flex-row sm:items-center sm:justify-between">
+            <HeroEnergyOrb
+              consumedKcal={todayBalance.intakeKcal}
+              targetKcal={anthro.targetIntakeKcal}
+              burnedKcal={activeBurnedKcal}
+              size={156}
+            />
 
-      {/* Tendances comparatives */}
-      <div className="vp-card p-4 sm:p-5">
-        <div className="flex items-center justify-between gap-2 mb-3">
-          <h3 className="text-base sm:text-lg font-semibold text-white flex items-center gap-2">
-            <TrendingUp className="w-5 h-5 text-emerald-400" />
-            Tendances comparatives ({rangeDays} derniers jours)
-          </h3>
-          <span className="text-xs text-slate-400">
-            Cumul bilan :{" "}
-            <strong className={cumulativeNetKcal <= 0 ? "text-emerald-400" : "text-amber-300"}>
-              {cumulativeNetKcal > 0 ? `+${cumulativeNetKcal}` : cumulativeNetKcal} kcal (≈{" "}
-              {theoreticalFatDeltaKg > 0 ? `+${theoreticalFatDeltaKg}` : theoreticalFatDeltaKg} kg)
-            </strong>
-          </span>
-        </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-          <div className="rounded-xl bg-slate-900/80 border border-slate-800 p-3">
-            <span className="text-slate-400">Moyenne apports récents</span>
-            <p className="text-base font-bold text-white tabular-nums mt-1">{avgCalCurr} kcal/j</p>
-            <span className="text-[11px] text-slate-400">
-              Période préc. : {avgCalPrev} kcal/j ({avgCalCurr - avgCalPrev >= 0 ? "+" : ""}
-              {avgCalCurr - avgCalPrev})
-            </span>
-          </div>
-          <div className="rounded-xl bg-slate-900/80 border border-slate-800 p-3">
-            <span className="text-slate-400">Moyenne pas / jour</span>
-            <p className="text-base font-bold text-sky-300 tabular-nums mt-1">
-              {avgStepsCurr.toLocaleString("fr-FR")} pas
-            </p>
-            <span className="text-[11px] text-slate-400">
-              Période préc. : {avgStepsPrev.toLocaleString("fr-FR")} pas
-            </span>
-          </div>
-          <div className="rounded-xl bg-slate-900/80 border border-slate-800 p-3">
-            <span className="text-slate-400">Protéines moyennes</span>
-            <p className="text-base font-bold text-emerald-300 tabular-nums mt-1">
-              {avgProtCurr} g/j
-            </p>
-            <span className="text-[11px] text-slate-400">
-              Soit {(avgProtCurr / Math.max(40, profile.weightKg)).toFixed(2)} g/kg
-            </span>
-          </div>
-          <div className="rounded-xl bg-slate-900/80 border border-slate-800 p-3">
-            <span className="text-slate-400">Qualité NOVA &amp; Glycémie</span>
-            <p className="text-base font-bold text-lime-300 tabular-nums mt-1">
-              NOVA {todayBalance.avgNovaGroup} · CG {todayBalance.totalGlycemicLoad}
-            </p>
-            <span className="text-[11px] text-slate-400">
-              Cible NOVA idéal ≤ 2,0 (peu transformé)
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Accès rapide Corps, Bilan Sanguin & Photos Avant/Après */}
-      <div className="vp-card p-4 sm:p-5">
-        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-          <div>
-            <h3 className="text-base sm:text-lg font-semibold text-white flex items-center gap-2">
-              <Ruler className="w-5 h-5 text-emerald-400" />
-              Silhouette, Bilan Sanguin &amp; Transformation
-            </h3>
-            <p className="text-xs text-slate-400">
-              Mensurations multi-sites, analyse biologique avec unités FR/SI et comparateur photo local sécurisé
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => onNavigateTab("bodylab", "measurements")}
-            className="text-xs text-emerald-400 hover:underline font-medium"
-          >
-            Ouvrir l&apos;espace Corps &amp; Bilans →
-          </button>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <button
-            type="button"
-            onClick={() => onNavigateTab("bodylab", "measurements")}
-            className="text-left rounded-xl bg-slate-950/70 hover:bg-slate-900 border border-slate-800 hover:border-emerald-500/40 p-3.5 transition"
-          >
-            <div className="flex items-center justify-between text-xs text-emerald-300 font-semibold">
-              <span className="inline-flex items-center gap-1.5">
-                <Ruler className="w-4 h-4" />
-                Mensurations &amp; Graph
-              </span>
-              <span>{latestMeasurement ? latestMeasurement.dateKey : "Nouveau"}</span>
-            </div>
-            <p className="text-sm font-bold text-white mt-1.5 tabular-nums">
-              {latestMeasurement?.waistCm
-                ? `Taille ${latestMeasurement.waistCm} cm · Hanches ${latestMeasurement.hipsCm ?? "--"} cm`
-                : "Enregistrer vos mesures (cm)"}
-            </p>
-            <span className="text-[11px] text-slate-400 block mt-0.5">
-              Tableau comparatif complet &amp; courbe Base 100
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => onNavigateTab("bodylab", "blood")}
-            className="text-left rounded-xl bg-slate-950/70 hover:bg-slate-900 border border-slate-800 hover:border-sky-500/40 p-3.5 transition"
-          >
-            <div className="flex items-center justify-between text-xs text-sky-300 font-semibold">
-              <span className="inline-flex items-center gap-1.5">
-                <FlaskConical className="w-4 h-4" />
-                Bilan Sanguin
-              </span>
-              <span>{latestBloodPanel ? `${latestBloodPanel.analysis.overallScore}/100` : "Prêt"}</span>
-            </div>
-            <p className="text-sm font-bold text-white mt-1.5">
-              {latestBloodPanel
-                ? `${latestBloodPanel.analysis.evaluatedMarkers.length} marqueurs (${latestBloodPanel.dateKey})`
-                : "Coller un bilan ou photo d'ordonnance"}
-            </p>
-            <span className="text-[11px] text-slate-400 block mt-0.5">
-              Normes labo, cibles prévention &amp; CKD-EPI / HOMA-IR / FIB-4
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => onNavigateTab("bodylab", "photos")}
-            className="text-left rounded-xl bg-slate-950/70 hover:bg-slate-900 border border-slate-800 hover:border-violet-500/40 p-3.5 transition"
-          >
-            <div className="flex items-center justify-between text-xs text-violet-300 font-semibold">
-              <span className="inline-flex items-center gap-1.5">
-                <ImageIcon className="w-4 h-4" />
-                Photos Avant / Après
-              </span>
-              <span>{photosCount} photo{photosCount > 1 ? "s" : ""}</span>
-            </div>
-            <p className="text-sm font-bold text-white mt-1.5">
-              {photosCount >= 2 ? "Curseur Avant/Après & Ghost" : "Suivre l'évolution visuelle"}
-            </p>
-            <span className="text-[11px] text-slate-400 block mt-0.5">
-              100 % local sans EXIF, flou visage &amp; mode discret
-            </span>
-          </button>
-        </div>
-      </div>
-
-      {/* Photos analysées visibles directement dans le dashboard */}
-      <div className="vp-card p-4 sm:p-5">
-        <div className="flex items-center justify-between gap-2 mb-3">
-          <div>
-            <h3 className="text-base sm:text-lg font-semibold text-white flex items-center gap-2">
-              <Flame className="w-5 h-5 text-amber-400" />
-              Derniers plats photographiés &amp; analysés
-            </h3>
-            <p className="text-xs text-slate-400">
-              Cliquez sur une photo pour relire l&apos;analyse complète, modifier les notes ou comparer deux plats
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => onNavigateTab("scanner")}
-            className="text-xs text-emerald-400 hover:underline font-medium"
-          >
-            Tout voir &amp; comparer →
-          </button>
-        </div>
-
-        {mealsWithPhotos.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-slate-700 p-6 text-center text-xs text-slate-400">
-            Aucune photo enregistrée pour l&apos;instant. Prenez votre prochain repas en photo dans &laquo;&nbsp;Scanner Plat&nbsp;&raquo;.
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            {mealsWithPhotos.slice(0, 4).map((meal) => (
-              <div
-                key={meal.id}
-                onClick={() => setInspectPhotoMeal(meal)}
-                className="cursor-pointer group rounded-xl overflow-hidden bg-slate-900/90 border border-slate-800 hover:border-emerald-400/50 transition"
-              >
-                {meal.photoDataUrl && (
-                  <img
-                    src={meal.photoDataUrl}
-                    alt={meal.dishTitle}
-                    className="w-full h-36 object-cover group-hover:scale-[1.02] transition"
-                  />
-                )}
-                <div className="p-3 text-xs">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-semibold text-white truncate">{meal.dishTitle}</span>
-                    <span className="text-emerald-400 font-bold tabular-nums shrink-0">
-                      {meal.caloriesCentral} kcal
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-slate-400 mt-1 line-clamp-2">
-                    {meal.userNotes || meal.summaryFr}
+            <div className="w-full flex-1 space-y-4">
+              <div className="grid grid-cols-3 gap-2 text-center sm:text-left">
+                <div>
+                  <p className="text-[11px] text-slate-400">Mangé</p>
+                  <p className="font-display text-lg font-extrabold text-white tabular-nums">
+                    {todayBalance.intakeKcal}{" "}
+                    <span className="text-[11px] font-normal text-slate-400">kcal</span>
                   </p>
-                  <div className="flex items-center justify-between mt-2 text-[11px] text-slate-400">
-                    <span>
-                      P {meal.macros.proteinG}g · G {meal.macros.carbsG}g · L {meal.macros.fatG}g
-                    </span>
-                    <span className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">
-                      NOVA {meal.novaGroup}
-                    </span>
-                  </div>
+                </div>
+                <div>
+                  <p className="text-[11px] text-slate-400">Bougé</p>
+                  <p className="font-display text-lg font-extrabold text-emerald-300 tabular-nums">
+                    +{activeBurnedKcal}{" "}
+                    <span className="text-[11px] font-normal text-slate-400">kcal</span>
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[11px] text-slate-400">Bilan net</p>
+                  <p
+                    className={`font-display text-lg font-extrabold tabular-nums ${
+                      todayBalance.netBalanceKcal <= 0 ? "text-cyan-300" : "text-amber-300"
+                    }`}
+                  >
+                    {todayBalance.netBalanceKcal > 0
+                      ? `+${todayBalance.netBalanceKcal}`
+                      : todayBalance.netBalanceKcal}
+                  </p>
                 </div>
               </div>
-            ))}
+
+              {/* 3 Barres Macro GPU scaleX */}
+              <div className="grid grid-cols-3 gap-3">
+                {[
+                  {
+                    label: "Protéines",
+                    val: todayBalance.macros.proteinG,
+                    target: anthro.targets.proteinG,
+                    color: "bg-emerald-400",
+                  },
+                  {
+                    label: "Glucides",
+                    val: todayBalance.macros.carbsG,
+                    target: anthro.targets.carbsG,
+                    color: "bg-cyan-400",
+                  },
+                  {
+                    label: "Lipides",
+                    val: todayBalance.macros.fatG,
+                    target: anthro.targets.fatG,
+                    color: "bg-amber-400",
+                  },
+                ].map((macro) => {
+                  const pct = clampRingProgress(macro.val, macro.target);
+                  return (
+                    <div key={macro.label}>
+                      <div className="flex justify-between text-[11px] tabular-nums">
+                        <span className="text-slate-400">{macro.label}</span>
+                        <span className="font-bold text-white">{Math.round(macro.val)} g</span>
+                      </div>
+                      <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-slate-500/20">
+                        <div
+                          className={`vp-gpu-bar h-full w-full rounded-full ${macro.color}`}
+                          style={{ transform: `scaleX(${Math.max(0.04, pct)})` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="flex items-center justify-between text-xs text-slate-400">
+                <span>
+                  {todayBalance.mealsCount} repas · Cible {anthro.targetIntakeKcal} kcal/j
+                </span>
+                <span className="inline-flex items-center gap-1 font-semibold text-emerald-300 group-hover:translate-x-0.5 transition">
+                  Courbes &amp; détails
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </span>
+              </div>
+            </div>
           </div>
+        </button>
+      </motion.section>
+
+      {/* Raccourcis rapides Photo / Code-barres / Frigo (1 ligne compacte) */}
+      <div className="grid grid-cols-3 gap-2.5">
+        <button
+          type="button"
+          onClick={() => {
+            triggerLightHaptic();
+            onNavigateTab("scanner");
+          }}
+          className="vp-card flex items-center justify-center gap-2 rounded-2xl px-3 py-2.5 text-xs font-bold text-white hover:border-emerald-400/40"
+        >
+          <Camera className="h-4 w-4 text-emerald-400" />
+          <span className="truncate">Photo Plat</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            triggerLightHaptic();
+            if (onOpenBarcode) onOpenBarcode();
+            else onNavigateTab("scanner");
+          }}
+          className="vp-card flex items-center justify-center gap-2 rounded-2xl px-3 py-2.5 text-xs font-bold text-white hover:border-amber-400/40"
+        >
+          <ScanBarcode className="h-4 w-4 text-amber-300" />
+          <span className="truncate">Code-barres</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            triggerLightHaptic();
+            onNavigateTab("fridge");
+          }}
+          className="vp-card flex items-center justify-center gap-2 rounded-2xl px-3 py-2.5 text-xs font-bold text-white hover:border-cyan-400/40"
+        >
+          <ChefHat className="h-4 w-4 text-cyan-300" />
+          <span className="truncate">Photo Frigo</span>
+        </button>
+      </div>
+
+      {/* GRILLE BENTO DES WIDGETS PERSONNALISABLES (Lean : 1 icône animée + 1 chiffre clé) */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+        {visibleWidgets.includes("fasting") && (
+          <button
+            type="button"
+            onClick={() => openSheet("fasting")}
+            className="vp-card flex flex-col justify-between gap-2.5 rounded-3xl p-4 text-left hover:border-amber-400/45"
+          >
+            <div className="flex w-full items-start justify-between gap-2">
+              <LiveTileIcon
+                kind="fasting"
+                ratio={fastingLive?.progress ?? 0.25}
+                active={fastingLive?.mode === "fasting"}
+              />
+              <span className="rounded-full border border-amber-400/30 bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-300">
+                {fastingLive?.protocol.badge || "16:8"}
+              </span>
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold text-slate-400">Jeûne &amp; OMAD</p>
+              <p className="font-display text-lg font-extrabold text-white tabular-nums">
+                {fastingLive?.mode === "fasting"
+                  ? fastingLive.countdownHms
+                  : fastingLive?.mode === "scheduled"
+                    ? "Planifié"
+                    : "Prêt"}
+              </p>
+              <p className="mt-0.5 truncate text-[11px] text-slate-400">
+                {fastingLive?.mode === "fasting"
+                  ? fastingLive.currentPhase.titleFr
+                  : "Chrono & 6 phases"}
+              </p>
+            </div>
+          </button>
+        )}
+
+        {visibleWidgets.includes("hydration") && (
+          <div className="vp-card flex flex-col justify-between gap-2 rounded-3xl p-4">
+            <button
+              type="button"
+              onClick={() => openSheet("hydration")}
+              className="flex flex-col items-start gap-2.5 text-left"
+            >
+              <div className="flex w-full items-start justify-between gap-2">
+                <LiveTileIcon
+                  kind="hydration"
+                  ratio={clampRingProgress(todayBalance.waterMl, anthro.targets.waterMl)}
+                />
+                <span className="text-[11px] font-bold text-sky-300 tabular-nums">
+                  {Math.round(
+                    clampRingProgress(todayBalance.waterMl, anthro.targets.waterMl) * 100
+                  )}{" "}
+                  %
+                </span>
+              </div>
+              <div>
+                <p className="text-[11px] font-semibold text-slate-400">Hydratation</p>
+                <p className="font-display text-lg font-extrabold text-white tabular-nums">
+                  {todayBalance.waterMl} mL
+                </p>
+                <p className="mt-0.5 text-[11px] text-slate-400">
+                  Cible {anthro.targets.waterMl} mL
+                </p>
+              </div>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                triggerLightHaptic();
+                onAddWater(250);
+              }}
+              className="w-full rounded-xl bg-sky-500/15 py-1.5 text-xs font-bold text-sky-300 border border-sky-400/30 hover:bg-sky-500/25"
+            >
+              +250 mL
+            </button>
+          </div>
+        )}
+
+        {visibleWidgets.includes("steps_watch") && (
+          <button
+            type="button"
+            onClick={() => openSheet("steps_watch")}
+            className="vp-card flex flex-col justify-between gap-2.5 rounded-3xl p-4 text-left hover:border-emerald-400/45"
+          >
+            <div className="flex w-full items-start justify-between gap-2">
+              <LiveTileIcon
+                kind="steps_watch"
+                ratio={clampRingProgress(todayBalance.rawSteps, profile.dailyStepGoal)}
+              />
+              {wearable?.lastHeartRateBpm ? (
+                <span className="rounded-full bg-rose-500/15 px-2 py-0.5 text-[10px] font-bold text-rose-300 tabular-nums">
+                  {wearable.lastHeartRateBpm} BPM
+                </span>
+              ) : (
+                <Watch className="h-4 w-4 text-slate-400" />
+              )}
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold text-slate-400">Pas &amp; Montre</p>
+              <p className="font-display text-lg font-extrabold text-white tabular-nums">
+                {todayBalance.rawSteps.toLocaleString("fr-FR")}
+              </p>
+              <p className="mt-0.5 truncate text-[11px] text-slate-400">
+                Objectif {profile.dailyStepGoal.toLocaleString("fr-FR")} ·{" "}
+                {todayBalance.stepDistanceKm} km
+              </p>
+            </div>
+          </button>
+        )}
+
+        {visibleWidgets.includes("weight_ema") && (
+          <button
+            type="button"
+            onClick={() => openSheet("weight_ema")}
+            className="vp-card flex flex-col justify-between gap-2.5 rounded-3xl p-4 text-left hover:border-cyan-400/45"
+          >
+            <div className="flex w-full items-start justify-between gap-2">
+              <LiveTileIcon kind="weight_ema" />
+              <span className="text-[11px] font-bold text-cyan-300 tabular-nums">
+                Cible {profile.targetWeightKg} kg
+              </span>
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold text-slate-400">Poids lissé EMA</p>
+              <p className="font-display text-lg font-extrabold text-white tabular-nums">
+                {profile.weightKg} kg
+              </p>
+              <p className="mt-0.5 truncate text-[11px] text-slate-400">
+                {scaleDecoder?.triggered ? scaleDecoder.headlineFr : "Courbe anti-yo-yo"}
+              </p>
+            </div>
+          </button>
+        )}
+
+        {visibleWidgets.includes("barcode_meals") && (
+          <button
+            type="button"
+            onClick={() => openSheet("barcode_meals")}
+            className="vp-card flex flex-col justify-between gap-2.5 rounded-3xl p-4 text-left hover:border-amber-400/45"
+          >
+            <div className="flex w-full items-start justify-between gap-2">
+              <LiveTileIcon kind="barcode_meals" />
+              <span className="rounded-full bg-slate-500/15 px-2 py-0.5 text-[10px] font-bold text-slate-300 tabular-nums">
+                {mealsWithPhotos.length} photos
+              </span>
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold text-slate-400">Assiettes &amp; Scan</p>
+              <p className="font-display text-lg font-extrabold text-white tabular-nums">
+                {todayBalance.mealsCount} repas
+              </p>
+              <p className="mt-0.5 truncate text-[11px] text-slate-400">
+                Galerie plats + code-barres
+              </p>
+            </div>
+          </button>
+        )}
+
+        {visibleWidgets.includes("body_blood") && (
+          <button
+            type="button"
+            onClick={() => openSheet("body_blood")}
+            className="vp-card flex flex-col justify-between gap-2.5 rounded-3xl p-4 text-left hover:border-rose-400/45"
+          >
+            <div className="flex w-full items-start justify-between gap-2">
+              <LiveTileIcon kind="body_blood" />
+              <span className="rounded-full bg-rose-500/15 px-2 py-0.5 text-[10px] font-bold text-rose-300 tabular-nums">
+                {latestBloodPanel ? `${latestBloodPanel.analysis.overallScore}/100` : `${photosCount} photos`}
+              </span>
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold text-slate-400">Corps &amp; Sang</p>
+              <p className="font-display text-lg font-extrabold text-white tabular-nums">
+                {latestMeasurement?.waistCm
+                  ? `${latestMeasurement.waistCm} cm`
+                  : `IMC ${anthro.bmi}`}
+              </p>
+              <p className="mt-0.5 truncate text-[11px] text-slate-400">
+                Mensurations, bilan &amp; évolution
+              </p>
+            </div>
+          </button>
+        )}
+
+        {visibleWidgets.includes("micronutrients") && (
+          <button
+            type="button"
+            onClick={() => openSheet("micronutrients")}
+            className="vp-card flex flex-col justify-between gap-2.5 rounded-3xl p-4 text-left hover:border-violet-400/45"
+          >
+            <div className="flex w-full items-start justify-between gap-2">
+              <LiveTileIcon
+                kind="micronutrients"
+                ratio={clampRingProgress(
+                  todayBalance.macros.fiberG,
+                  anthro.targets.fiberG
+                )}
+              />
+              <span
+                className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                  sodiumStatus === "exceeded"
+                    ? "bg-rose-500/20 text-rose-300"
+                    : sodiumStatus === "near_limit"
+                      ? "bg-amber-500/20 text-amber-300"
+                      : "bg-emerald-500/15 text-emerald-300"
+                }`}
+              >
+                {sodiumStatus === "exceeded"
+                  ? "Sel élevé"
+                  : sodiumStatus === "near_limit"
+                    ? "Sel proche"
+                    : "Sel OK"}
+              </span>
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold text-slate-400">Micronutriments</p>
+              <p className="font-display text-lg font-extrabold text-white tabular-nums">
+                {Math.round(todayBalance.macros.fiberG)} / {anthro.targets.fiberG} g
+              </p>
+              <p className="mt-0.5 truncate text-[11px] text-slate-400">
+                Fibres, Fer, Mg, Vit D &amp; Sodium
+              </p>
+            </div>
+          </button>
+        )}
+
+        {visibleWidgets.includes("weekly_bank") && (
+          <button
+            type="button"
+            onClick={() => openSheet("weekly_bank")}
+            className="vp-card flex flex-col justify-between gap-2.5 rounded-3xl p-4 text-left hover:border-emerald-400/45"
+          >
+            <div className="flex w-full items-start justify-between gap-2">
+              <LiveTileIcon kind="weekly_bank" />
+              <span className="text-[10px] font-bold text-slate-400">7 jours</span>
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold text-slate-400">Banque hebdo</p>
+              <p className="font-display text-lg font-extrabold text-white tabular-nums">
+                {weeklyBank.pleasureMarginKcal >= 0 ? "+" : ""}
+                {weeklyBank.pleasureMarginKcal} kcal
+              </p>
+              <p className="mt-0.5 truncate text-[11px] text-slate-400">
+                Marge plaisir &amp; équilibre
+              </p>
+            </div>
+          </button>
+        )}
+
+        {visibleWidgets.includes("mindset_coach") && (
+          <button
+            type="button"
+            onClick={() => openSheet("mindset_coach")}
+            className="vp-card flex flex-col justify-between gap-2.5 rounded-3xl p-4 text-left hover:border-amber-400/45"
+          >
+            <div className="flex w-full items-start justify-between gap-2">
+              <LiveTileIcon kind="mindset_coach" />
+              <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-300">
+                {lessonDoneToday ? "Lu ✓" : todayLesson.durationLabel}
+              </span>
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold text-slate-400">Déclic du jour</p>
+              <p className="line-clamp-2 text-xs font-bold leading-snug text-white">
+                {todayLesson.titleFr}
+              </p>
+            </div>
+          </button>
         )}
       </div>
 
-      {inspectPhotoMeal && (
-        <div
-          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
-          onClick={() => setInspectPhotoMeal(null)}
-        >
-          <div
-            className="vp-card max-w-lg w-full overflow-hidden shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {inspectPhotoMeal.photoDataUrl && (
-              <img
-                src={inspectPhotoMeal.photoDataUrl}
-                alt={inspectPhotoMeal.dishTitle}
-                className="w-full max-h-64 object-cover"
-              />
-            )}
-            <div className="p-5 space-y-3 text-sm">
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <h4 className="text-lg font-bold text-white">{inspectPhotoMeal.dishTitle}</h4>
-                  <p className="text-xs text-slate-400">{inspectPhotoMeal.dateKey}</p>
-                </div>
-                <span className="px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 font-bold tabular-nums">
-                  {inspectPhotoMeal.caloriesCentral} kcal ({inspectPhotoMeal.caloriesMin}–
-                  {inspectPhotoMeal.caloriesMax})
-                </span>
-              </div>
-              <p className="text-xs text-slate-300">{inspectPhotoMeal.summaryFr}</p>
-              {inspectPhotoMeal.userNotes && (
-                <div className="rounded-lg bg-slate-900 p-2.5 text-xs text-slate-300 border border-slate-800">
-                  <strong>Vos précisions :</strong> {inspectPhotoMeal.userNotes}
-                </div>
-              )}
-              <div className="grid grid-cols-4 gap-2 text-center text-xs">
-                <div className="rounded-lg bg-slate-900 p-2">
-                  <span className="text-slate-400 block">Protéines</span>
-                  <strong className="text-emerald-300">{inspectPhotoMeal.macros.proteinG} g</strong>
-                </div>
-                <div className="rounded-lg bg-slate-900 p-2">
-                  <span className="text-slate-400 block">Glucides</span>
-                  <strong className="text-sky-300">{inspectPhotoMeal.macros.carbsG} g</strong>
-                </div>
-                <div className="rounded-lg bg-slate-900 p-2">
-                  <span className="text-slate-400 block">Lipides</span>
-                  <strong className="text-amber-300">{inspectPhotoMeal.macros.fatG} g</strong>
-                </div>
-                <div className="rounded-lg bg-slate-900 p-2">
-                  <span className="text-slate-400 block">Fibres</span>
-                  <strong className="text-lime-300">{inspectPhotoMeal.macros.fiberG} g</strong>
-                </div>
-              </div>
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setInspectPhotoMeal(null)}
-                  className="px-4 py-2 rounded-xl bg-slate-800 text-slate-200 text-xs font-medium"
-                >
-                  Fermer
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const id = inspectPhotoMeal.id;
-                    setInspectPhotoMeal(null);
-                    onSelectMealToInspect(id);
-                  }}
-                  className="px-4 py-2 rounded-xl bg-emerald-500 text-slate-950 text-xs font-semibold"
-                >
-                  Modifier / Ré-analyser
-                </button>
-              </div>
+      {/* SHEET 1 : Énergie & Graphique complet */}
+      <DetailSheet
+        open={sheet === "energy"}
+        onClose={() => setSheet(null)}
+        title="Bilan énergétique & tendances"
+        subtitle="Calibré Mifflin-St Jeor + ANSES + dépenses réelles sans double comptage"
+        size="xl"
+      >
+        <div className="space-y-5">
+          <EnergyActivityChart
+            balances={recentBalances}
+            weightTrend={weightTrend}
+            scaleDecoder={scaleDecoder}
+            currentWeightKg={profile.weightKg}
+            currentWaistCm={profile.waistCm}
+            rangeDays={rangeDays}
+            onRangeChange={onRangeChange}
+            onQuickLogWeight={onQuickLogWeight}
+          />
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="rounded-2xl border border-slate-500/20 bg-slate-500/10 p-4 text-xs">
+              <p className="font-bold text-white">Moyenne apports sur {rangeDays} j</p>
+              <p className="mt-1 font-display text-xl font-extrabold text-emerald-300 tabular-nums">
+                {avgStats.avgCalCurr} kcal/j
+              </p>
+              <p className="mt-0.5 text-slate-400">
+                Période précédente : {avgStats.avgCalPrev} kcal/j
+              </p>
+            </div>
+
+            <div className="rounded-2xl border border-slate-500/20 bg-slate-500/10 p-4 text-xs">
+              <p className="font-bold text-white">Moyenne pas sur {rangeDays} j</p>
+              <p className="mt-1 font-display text-xl font-extrabold text-cyan-300 tabular-nums">
+                {avgStats.avgStepsCurr.toLocaleString("fr-FR")} pas/j
+              </p>
+              <p className="mt-0.5 text-slate-400">
+                Période précédente : {avgStats.avgStepsPrev.toLocaleString("fr-FR")} pas/j
+              </p>
             </div>
           </div>
         </div>
-      )}
+      </DetailSheet>
+
+      {/* SHEET 2 : Jeûne aperçu */}
+      <DetailSheet
+        open={sheet === "fasting"}
+        onClose={() => setSheet(null)}
+        title="Jeûne intermittent & OMAD"
+        subtitle={fastingLive?.protocol.title || "Protocole 16:8"}
+        size="md"
+      >
+        <div className="space-y-4">
+          <div className="rounded-2xl border border-amber-400/30 bg-amber-500/10 p-4">
+            <p className="text-xs font-semibold text-amber-300">
+              {fastingLive?.headlineFr || "Prêt"}
+            </p>
+            <p className="mt-1 font-display text-3xl font-extrabold text-white tabular-nums">
+              {fastingLive?.countdownHms || "16:00:00"}
+            </p>
+            <p className="mt-1 text-xs text-slate-300">
+              {fastingLive?.currentPhase.physiologicalSummaryFr}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setSheet(null);
+              if (onNavigateFasting) onNavigateFasting();
+              else onNavigateTab("fasting");
+            }}
+            className="w-full rounded-2xl bg-emerald-500 px-4 py-3 text-sm font-extrabold text-slate-950 hover:bg-emerald-400"
+          >
+            Ouvrir le minuteur &amp; les 6 phases →
+          </button>
+        </div>
+      </DetailSheet>
+
+      {/* SHEET 3 : Hydratation */}
+      <DetailSheet
+        open={sheet === "hydration"}
+        onClose={() => setSheet(null)}
+        title="Hydratation quotidienne"
+        subtitle="Repère EFSA : ~35 mL / kg de poids corporel"
+        icon={<Droplets className="h-5 w-5 text-sky-300" />}
+        size="md"
+      >
+        <div className="space-y-4">
+          <div className="rounded-2xl border border-sky-400/30 bg-sky-500/10 p-4 text-center">
+            <p className="font-display text-3xl font-extrabold text-white tabular-nums">
+              {todayBalance.waterMl} / {anthro.targets.waterMl} mL
+            </p>
+            <p className="mt-1 text-xs text-sky-200">
+              L&apos;hydratation soutient la satiété, la concentration et limite les coups de fatigue pendant un jeûne.
+            </p>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            {[250, 500, 750].map((ml) => (
+              <button
+                key={ml}
+                type="button"
+                onClick={() => {
+                  triggerLightHaptic();
+                  onAddWater(ml);
+                }}
+                className="rounded-2xl border border-sky-400/35 bg-sky-500/15 py-3 text-sm font-bold text-sky-200 hover:bg-sky-500/25"
+              >
+                +{ml} mL
+              </button>
+            ))}
+          </div>
+        </div>
+      </DetailSheet>
+
+      {/* SHEET 4 : Pas & Montre */}
+      <DetailSheet
+        open={sheet === "steps_watch"}
+        onClose={() => setSheet(null)}
+        title="Activité, Pas & Montre connectée"
+        subtitle="Podomètre & synchronisation wearable"
+        icon={<Watch className="h-5 w-5 text-emerald-300" />}
+        size="md"
+      >
+        <div className="space-y-4 text-xs">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-2xl bg-slate-500/10 p-3.5">
+              <p className="text-slate-400">Pas aujourd&apos;hui</p>
+              <p className="font-display text-2xl font-extrabold text-white tabular-nums">
+                {todayBalance.rawSteps.toLocaleString("fr-FR")}
+              </p>
+              <p className="text-emerald-300">{todayBalance.stepDistanceKm} km estimés</p>
+            </div>
+            <div className="rounded-2xl bg-slate-500/10 p-3.5">
+              <p className="text-slate-400">Dépense mouvement</p>
+              <p className="font-display text-2xl font-extrabold text-emerald-300 tabular-nums">
+                +{activeBurnedKcal} kcal
+              </p>
+              <p className="text-slate-400">{todayBalance.workoutMinutes} min de séance</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {onOpenWearables && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSheet(null);
+                  onOpenWearables();
+                }}
+                className="rounded-2xl bg-cyan-500 px-4 py-3 text-xs font-extrabold text-slate-950 hover:bg-cyan-400"
+              >
+                Connecter / Importer ma montre
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                setSheet(null);
+                onNavigateTab("activity");
+              }}
+              className="rounded-2xl bg-emerald-500 px-4 py-3 text-xs font-extrabold text-slate-950 hover:bg-emerald-400"
+            >
+              Ouvrir coach exercices →
+            </button>
+          </div>
+        </div>
+      </DetailSheet>
+
+      {/* SHEET 5 : Poids EMA */}
+      <DetailSheet
+        open={sheet === "weight_ema"}
+        onClose={() => setSheet(null)}
+        title="Courbe de poids lissée EMA"
+        subtitle="Décodeur eau / glycogène / graisse réelle"
+        size="xl"
+      >
+        <EnergyActivityChart
+          balances={recentBalances}
+          weightTrend={weightTrend}
+          scaleDecoder={scaleDecoder}
+          currentWeightKg={profile.weightKg}
+          currentWaistCm={profile.waistCm}
+          rangeDays={rangeDays}
+          onRangeChange={onRangeChange}
+          onQuickLogWeight={onQuickLogWeight}
+        />
+      </DetailSheet>
+
+      {/* SHEET 6 : Assiettes, Photos & Code-barres */}
+      <DetailSheet
+        open={sheet === "barcode_meals"}
+        onClose={() => setSheet(null)}
+        title="Assiettes, Galerie Photo & Code-Barres"
+        subtitle="Appuyez sur une photo pour réviser les ingrédients ou portions"
+        size="lg"
+      >
+        <div className="space-y-4">
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setSheet(null);
+                onNavigateTab("scanner");
+              }}
+              className="inline-flex items-center gap-1.5 rounded-2xl bg-emerald-500 px-4 py-2.5 text-xs font-extrabold text-slate-950"
+            >
+              <Camera className="h-4 w-4" />
+              Photographier un plat
+            </button>
+            {onOpenBarcode && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSheet(null);
+                  onOpenBarcode();
+                }}
+                className="inline-flex items-center gap-1.5 rounded-2xl bg-amber-500 px-4 py-2.5 text-xs font-extrabold text-slate-950"
+              >
+                <ScanBarcode className="h-4 w-4" />
+                Scanner un code-barres
+              </button>
+            )}
+          </div>
+
+          {mealsWithPhotos.length === 0 ? (
+            <p className="rounded-2xl border border-slate-500/20 bg-slate-500/10 p-4 text-xs text-slate-300">
+              Aucune photo de plat enregistrée pour le moment.
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {mealsWithPhotos.slice(0, 6).map((meal) => (
+                <button
+                  key={meal.id}
+                  type="button"
+                  onClick={() => {
+                    setSheet(null);
+                    onSelectMealToInspect(meal.id);
+                  }}
+                  className="flex items-center gap-3 rounded-2xl border border-slate-500/20 bg-slate-500/10 p-2.5 text-left hover:border-emerald-400/50"
+                >
+                  <img
+                    src={meal.photoDataUrl}
+                    alt={meal.dishTitle}
+                    className="h-16 w-16 rounded-xl object-cover shrink-0"
+                  />
+                  <div className="min-w-0">
+                    <p className="truncate text-xs font-bold text-white">{meal.dishTitle}</p>
+                    <p className="text-[11px] font-bold text-emerald-300 tabular-nums">
+                      {meal.caloriesCentral} kcal · {meal.macros.proteinG}g prot
+                    </p>
+                    <p className="text-[10px] text-slate-400">{meal.dateKey}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </DetailSheet>
+
+      {/* SHEET 7 : Corps & Sang */}
+      <DetailSheet
+        open={sheet === "body_blood"}
+        onClose={() => setSheet(null)}
+        title="Silhouette, Mensurations & Bilan Sanguin"
+        subtitle="Accédez à vos 3 laboratoires spécialisés"
+        size="md"
+      >
+        <div className="space-y-3">
+          <button
+            type="button"
+            onClick={() => {
+              setSheet(null);
+              onNavigateTab("bodylab", "measurements");
+            }}
+            className="flex w-full items-center justify-between rounded-2xl border border-emerald-400/30 bg-emerald-500/10 p-4 text-left"
+          >
+            <div>
+              <p className="flex items-center gap-2 text-sm font-bold text-white">
+                <Ruler className="h-4 w-4 text-emerald-300" />
+                Mensurations &amp; Courbe Base 100
+              </p>
+              <p className="mt-0.5 text-xs text-slate-300">
+                {latestMeasurement?.waistCm
+                  ? `Dernier tour de taille : ${latestMeasurement.waistCm} cm`
+                  : "Enregistrer vos mensurations (cm)"}
+              </p>
+            </div>
+            <ChevronRight className="h-4 w-4 text-slate-400" />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setSheet(null);
+              onNavigateTab("bodylab", "blood");
+            }}
+            className="flex w-full items-center justify-between rounded-2xl border border-sky-400/30 bg-sky-500/10 p-4 text-left"
+          >
+            <div>
+              <p className="flex items-center gap-2 text-sm font-bold text-white">
+                <FlaskConical className="h-4 w-4 text-sky-300" />
+                Analyse de Bilan Sanguin (FR/SI)
+              </p>
+              <p className="mt-0.5 text-xs text-slate-300">
+                {latestBloodPanel
+                  ? `Score ${latestBloodPanel.analysis.overallScore}/100 · ${latestBloodPanel.analysis.evaluatedMarkers.length} marqueurs`
+                  : "Photo d'ordonnance ou saisie biomarqueurs"}
+              </p>
+            </div>
+            <ChevronRight className="h-4 w-4 text-slate-400" />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setSheet(null);
+              onNavigateTab("bodylab", "photos");
+            }}
+            className="flex w-full items-center justify-between rounded-2xl border border-violet-400/30 bg-violet-500/10 p-4 text-left"
+          >
+            <div>
+              <p className="flex items-center gap-2 text-sm font-bold text-white">
+                <ImageIcon className="h-4 w-4 text-violet-300" />
+                Photos Avant / Après ({photosCount})
+              </p>
+              <p className="mt-0.5 text-xs text-slate-300">
+                Stockage local chiffré sans serveur · floutage visage optionnel
+              </p>
+            </div>
+            <ChevronRight className="h-4 w-4 text-slate-400" />
+          </button>
+        </div>
+      </DetailSheet>
+
+      {/* SHEET 8 : Micronutriments (Cronometer) */}
+      <DetailSheet
+        open={sheet === "micronutrients"}
+        onClose={() => setSheet(null)}
+        title="Micronutriments & Plafond Sodium"
+        subtitle="Vitamines, minéraux, fibres (ANSES) et plafond sel (OMS)"
+        size="md"
+      >
+        <div className="space-y-3 text-xs">
+          {[
+            { label: "Fibres", val: todayBalance.macros.fiberG, target: anthro.targets.fiberG, unit: "g", color: "bg-emerald-400" },
+            { label: "Sodium (plafond max)", val: todayBalance.macros.sodiumMg, target: anthro.targets.sodiumMaxMg, unit: "mg", color: sodiumStatus === "exceeded" ? "bg-rose-400" : "bg-amber-400" },
+            { label: "Fer", val: todayBalance.micronutrients.ironMg, target: profile.sex === "female" ? 16 : 11, unit: "mg", color: "bg-rose-400" },
+            { label: "Magnésium", val: todayBalance.micronutrients.magnesiumMg, target: 380, unit: "mg", color: "bg-violet-400" },
+            { label: "Calcium", val: todayBalance.micronutrients.calciumMg, target: 950, unit: "mg", color: "bg-cyan-400" },
+            { label: "Potassium", val: todayBalance.micronutrients.potassiumMg, target: 3500, unit: "mg", color: "bg-teal-400" },
+            { label: "Vitamine C", val: todayBalance.micronutrients.vitCMg, target: 110, unit: "mg", color: "bg-amber-300" },
+            { label: "Vitamine D", val: todayBalance.micronutrients.vitDUg, target: 15, unit: "µg", color: "bg-yellow-300" },
+          ].map((m) => {
+            const pct = clampRingProgress(m.val, m.target);
+            return (
+              <div key={m.label} className="rounded-xl bg-slate-500/10 p-3">
+                <div className="flex justify-between font-bold tabular-nums">
+                  <span className="text-white">{m.label}</span>
+                  <span className="text-slate-300">
+                    {Number(m.val.toFixed(1))} / {m.target} {m.unit}
+                  </span>
+                </div>
+                <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-slate-500/20">
+                  <div
+                    className={`vp-gpu-bar h-full w-full rounded-full ${m.color}`}
+                    style={{ transform: `scaleX(${Math.max(0.03, pct)})` }}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </DetailSheet>
+
+      {/* SHEET 9 : Banque 7 jours (Le Secret du Poids) */}
+      <DetailSheet
+        open={sheet === "weekly_bank"}
+        onClose={() => setSheet(null)}
+        title="Banque calorique sur 7 jours"
+        subtitle="Lisser les repas festifs sans jamais culpabiliser"
+        size="md"
+      >
+        <div className="space-y-4">
+          <div className="rounded-2xl border border-emerald-400/30 bg-emerald-500/10 p-4 text-center">
+            <p className="text-xs text-slate-300">Marge hebdomadaire actuelle</p>
+            <p className="mt-1 font-display text-3xl font-extrabold text-emerald-300 tabular-nums">
+              {weeklyBank.pleasureMarginKcal >= 0 ? "+" : ""}
+              {weeklyBank.pleasureMarginKcal} kcal
+            </p>
+            <p className="mt-2 text-xs leading-relaxed text-slate-200">
+              {weeklyBank.guidanceFr}
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-3 text-xs">
+            <div className="rounded-xl bg-slate-500/10 p-3">
+              <p className="text-slate-400">Consommé (7 j)</p>
+              <p className="font-bold text-white tabular-nums">
+                {weeklyBank.weeklyIntakeKcal.toLocaleString("fr-FR")} kcal
+              </p>
+            </div>
+            <div className="rounded-xl bg-slate-500/10 p-3">
+              <p className="text-slate-400">Budget cible (7 j)</p>
+              <p className="font-bold text-white tabular-nums">
+                {weeklyBank.weeklyTargetKcal.toLocaleString("fr-FR")} kcal
+              </p>
+            </div>
+          </div>
+        </div>
+      </DetailSheet>
+
+      {/* SHEET 10 : Leçon Mindset du jour (Noom) */}
+      <DetailSheet
+        open={sheet === "mindset_coach"}
+        onClose={() => setSheet(null)}
+        title={todayLesson.titleFr}
+        subtitle={`${todayLesson.tagFr} · Lecture ${todayLesson.durationLabel}`}
+        size="md"
+      >
+        <div className="space-y-4">
+          <div className="rounded-2xl border border-amber-400/30 bg-amber-500/10 p-4 text-sm leading-relaxed text-slate-100">
+            {todayLesson.insightFr}
+          </div>
+          <div className="rounded-2xl border border-emerald-400/30 bg-emerald-500/10 p-4 text-xs">
+            <p className="font-bold text-emerald-300">Action concrète aujourd&apos;hui</p>
+            <p className="mt-1 text-slate-200">{todayLesson.actionFr}</p>
+            <p className="mt-2 text-[10px] text-slate-400">Réf. : {todayLesson.scienceRef}</p>
+          </div>
+          {onToggleMindsetToday && (
+            <button
+              type="button"
+              onClick={() => {
+                triggerLightHaptic();
+                onToggleMindsetToday();
+              }}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-4 py-3 text-sm font-extrabold text-slate-950 hover:bg-emerald-400"
+            >
+              <Check className="h-4 w-4" />
+              {lessonDoneToday ? "Marquée comme lue ✓" : "Valider la leçon du jour"}
+            </button>
+          )}
+        </div>
+      </DetailSheet>
+
+      {/* SHEET 11 : Personnaliser Widgets */}
+      <DetailSheet
+        open={sheet === "widgets_config"}
+        onClose={() => setSheet(null)}
+        title="Personnaliser vos widgets"
+        subtitle="Affichez uniquement les indicateurs essentiels sur l'accueil"
+        size="md"
+      >
+        <div className="space-y-2">
+          {(Object.keys(WIDGET_LABELS) as DashboardWidgetId[]).map((id) => {
+            const active = visibleWidgets.includes(id);
+            return (
+              <button
+                key={id}
+                type="button"
+                disabled={!onToggleWidget}
+                onClick={() => {
+                  triggerLightHaptic();
+                  onToggleWidget?.(id);
+                }}
+                className={`flex w-full items-center justify-between rounded-2xl border px-4 py-3 text-left text-xs font-bold transition ${
+                  active
+                    ? "border-emerald-400 bg-emerald-500/15 text-white"
+                    : "border-slate-500/20 bg-slate-500/5 text-slate-400"
+                }`}
+              >
+                <span>{WIDGET_LABELS[id]}</span>
+                <span
+                  className={`flex h-5 w-5 items-center justify-center rounded-full border ${
+                    active
+                      ? "border-emerald-400 bg-emerald-500 text-slate-950"
+                      : "border-slate-500/40"
+                  }`}
+                >
+                  {active ? <Check className="h-3 w-3" /> : null}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </DetailSheet>
     </div>
   );
 }

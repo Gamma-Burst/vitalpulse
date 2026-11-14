@@ -4,14 +4,27 @@ import {
   BodyPhotoMeta,
   CustomChallenge,
   DailyStepLog,
+  DashboardWidgetId,
+  FastingConfig,
   FridgeScanSession,
   MealEntry,
   UserProfile,
   WaterLog,
+  WearableSyncState,
   WeightEntry,
   WorkoutSession,
 } from "@/types/vitalpulse";
 import { buildDemoSeedState, DEMO_BODY_PHOTOS } from "@/data/demo-seed";
+import { getProtocolSpec } from "@/lib/fasting-engine";
+
+export const DEFAULT_ENABLED_WIDGETS: DashboardWidgetId[] = [
+  "fasting",
+  "hydration",
+  "steps_watch",
+  "weight_ema",
+  "barcode_meals",
+  "body_blood",
+];
 
 export interface VitalPulseState {
   version: number;
@@ -27,6 +40,10 @@ export interface VitalPulseState {
   measurements: BodyMeasurementEntry[];
   bloodPanels: BloodPanelEntry[];
   bodyPhotoMetas: BodyPhotoMeta[];
+  fasting: FastingConfig;
+  enabledWidgets: DashboardWidgetId[];
+  wearable: WearableSyncState;
+  completedMindsetDates: string[];
   pushEndpoint?: string;
 }
 
@@ -72,8 +89,17 @@ export function migrateVitalPulseState(raw: Partial<VitalPulseState>): VitalPuls
           note: w.note,
         }));
 
+  const defaultFasting: FastingConfig = {
+    protocolId: "16_8",
+    fastHours: 16,
+    eatHours: 8,
+    activeStartIso: null,
+    plannedStartIso: null,
+    history: [],
+  };
+
   return {
-    version: 2,
+    version: 3,
     profile: raw.profile as UserProfile,
     meals: Array.isArray(raw.meals) ? raw.meals : [],
     fridgeScans: Array.isArray(raw.fridgeScans) ? raw.fridgeScans : [],
@@ -86,6 +112,25 @@ export function migrateVitalPulseState(raw: Partial<VitalPulseState>): VitalPuls
     measurements: migratedMeasurements,
     bloodPanels: Array.isArray(raw.bloodPanels) ? raw.bloodPanels : [],
     bodyPhotoMetas: Array.isArray(raw.bodyPhotoMetas) ? raw.bodyPhotoMetas : [],
+    fasting:
+      raw.fasting && typeof raw.fasting === "object"
+        ? {
+            ...defaultFasting,
+            ...raw.fasting,
+            history: Array.isArray(raw.fasting.history) ? raw.fasting.history : [],
+          }
+        : defaultFasting,
+    enabledWidgets:
+      Array.isArray(raw.enabledWidgets) && raw.enabledWidgets.length > 0
+        ? raw.enabledWidgets
+        : [...DEFAULT_ENABLED_WIDGETS],
+    wearable:
+      raw.wearable && typeof raw.wearable === "object"
+        ? raw.wearable
+        : { ecosystem: "none" },
+    completedMindsetDates: Array.isArray(raw.completedMindsetDates)
+      ? raw.completedMindsetDates
+      : [],
     pushEndpoint: raw.pushEndpoint,
   };
 }
@@ -105,7 +150,7 @@ export async function loadVitalPulseState(): Promise<VitalPulseState> {
     });
     if (existing && existing.profile) {
       const migrated = migrateVitalPulseState(existing);
-      if ((existing.version ?? 1) < 2) {
+      if ((existing.version ?? 1) < 3) {
         await saveVitalPulseState(migrated);
       }
       return migrated;
@@ -200,11 +245,18 @@ export function getRecentDateKeys(days: number, endDate: Date = new Date()): str
   return keys;
 }
 
-export function buildFreshUserState(profile: UserProfile): VitalPulseState {
+export function buildFreshUserState(
+  profile: UserProfile,
+  options?: {
+    enabledWidgets?: DashboardWidgetId[];
+    wearable?: WearableSyncState;
+  }
+): VitalPulseState {
   const todayKey = formatDateKey();
+  const protoSpec = getProtocolSpec(profile.preferredFasting ?? "16_8");
   return {
-    version: 2,
-    profile: { ...profile, isDemoProfile: false },
+    version: 3,
+    profile: { ...profile, isDemoProfile: false, onboardingCompleted: true },
     meals: [],
     fridgeScans: [],
     steps: [{ dateKey: todayKey, steps: 0, source: "manual", updatedAt: new Date().toISOString() }],
@@ -232,6 +284,20 @@ export function buildFreshUserState(profile: UserProfile): VitalPulseState {
     ],
     bloodPanels: [],
     bodyPhotoMetas: [],
+    fasting: {
+      protocolId: profile.preferredFasting ?? "16_8",
+      fastHours: protoSpec.fastHours,
+      eatHours: protoSpec.eatHours,
+      activeStartIso: null,
+      plannedStartIso: null,
+      history: [],
+    },
+    enabledWidgets:
+      options?.enabledWidgets && options.enabledWidgets.length > 0
+        ? options.enabledWidgets
+        : [...DEFAULT_ENABLED_WIDGETS],
+    wearable: options?.wearable ?? { ecosystem: "none" },
+    completedMindsetDates: [],
     challenges: [
       {
         id: "chal-steps-8000",

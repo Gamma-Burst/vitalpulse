@@ -15,6 +15,7 @@ import {
 import { EXERCISES_COMPENDIUM } from "@/data/exercises-compendium";
 import { computeWorkoutNetCalories } from "@/lib/metabolic-engine";
 import { detectPlatformCapabilities } from "@/lib/native-bridge";
+import { DetailSheet } from "@/components/ui/DetailSheet";
 import {
   DailyEnergyBalance,
   ExerciseCategory,
@@ -68,6 +69,8 @@ export function ActivityCoachView({
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
   const [rpe, setRpe] = useState(6);
   const [toast, setToast] = useState<string | null>(null);
+  const [playerSheetOpen, setPlayerSheetOpen] = useState(false);
+  const [showManualSteps, setShowManualSteps] = useState(false);
 
   useEffect(() => {
     setCaps(detectPlatformCapabilities());
@@ -133,6 +136,7 @@ export function ActivityCoachView({
     setCustomMinutes(ex.defaultMinutes);
     setSecondsLeft(ex.defaultMinutes * 60);
     setRpe(ex.difficulty === "Très facile" ? 4 : ex.difficulty === "Modéré" ? 6 : 8);
+    setPlayerSheetOpen(true);
   }
 
   function finishAndLogExercise(ex: ExerciseDefinition, mins: number) {
@@ -154,6 +158,7 @@ export function ActivityCoachView({
     onLogWorkout(session);
     setActiveExercise(null);
     setSecondsLeft(null);
+    setPlayerSheetOpen(false);
     setToast(
       `Bravo ! "${ex.title}" (${mins} min) enregistré : +${netKcal} kcal nets dépensés.`
     );
@@ -205,8 +210,8 @@ export function ActivityCoachView({
             </div>
             <div className="h-3 rounded-full bg-slate-900 overflow-hidden border border-slate-800">
               <div
-                className="h-full bg-gradient-to-r from-sky-400 to-emerald-400 transition-all duration-300"
-                style={{ width: `${stepPct}%` }}
+                className="vp-gpu-bar h-full w-full bg-gradient-to-r from-sky-400 to-emerald-400"
+                style={{ transform: `scaleX(${Math.max(0.02, stepPct / 100)})` }}
               />
             </div>
             <p className="text-[11px] text-slate-400">
@@ -218,7 +223,16 @@ export function ActivityCoachView({
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="space-y-2">
+            <button
+              type="button"
+              onClick={() => setShowManualSteps((v) => !v)}
+              className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-semibold text-slate-300 hover:border-sky-400"
+            >
+              {showManualSteps ? "Masquer saisie manuelle ▲" : "Ajuster les pas manuellement ▾"}
+            </button>
+            {showManualSteps && (
+            <div className="flex flex-wrap items-center gap-2">
             {[500, 1000, 2500].map((inc) => (
               <button
                 key={inc}
@@ -251,6 +265,8 @@ export function ActivityCoachView({
                 OK
               </button>
             </form>
+            </div>
+            )}
           </div>
         </div>
       </div>
@@ -300,16 +316,48 @@ export function ActivityCoachView({
         </div>
       )}
 
-      {/* Lecteur Guidé d'Exercice Actif */}
+      {/* Bannière persistante si minuteur réduit */}
+      {activeExercise && !playerSheetOpen && (
+        <div className="vp-card-accent flex items-center justify-between gap-3 rounded-2xl p-3.5 text-xs">
+          <div className="flex items-center gap-2.5">
+            <Timer className="h-4 w-4 text-emerald-400 animate-pulse shrink-0" />
+            <div>
+              <p className="font-bold text-white">{activeExercise.title}</p>
+              <p className="text-emerald-300 tabular-nums">
+                Minuteur en cours :{" "}
+                {secondsLeft !== null
+                  ? `${Math.floor(secondsLeft / 60)}:${String(secondsLeft % 60).padStart(2, "0")}`
+                  : `${customMinutes}:00`}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setPlayerSheetOpen(true)}
+            className="rounded-xl bg-emerald-500 px-3 py-2 font-bold text-slate-950"
+          >
+            Ouvrir la séance
+          </button>
+        </div>
+      )}
+
+      {/* Lecteur Guidé d'Exercice Actif dans DetailSheet */}
+      <DetailSheet
+        open={Boolean(activeExercise) && playerSheetOpen}
+        onClose={() => setPlayerSheetOpen(false)}
+        title={activeExercise?.title || "Séance guidée"}
+        subtitle={
+          activeExercise
+            ? `${activeExercise.met} MET (Compendium 2024) · vous pouvez réduire ce tiroir, le minuteur continue`
+            : undefined
+        }
+        size="lg"
+      >
       {activeExercise && (
-        <div className="vp-card p-5 border-emerald-400/50 space-y-4">
+        <div className="space-y-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <span className="text-xs text-emerald-300 font-semibold">
-                Séance guidée en direct · {activeExercise.met} MET (Compendium 2024)
-              </span>
-              <h3 className="text-xl font-bold text-white mt-0.5">{activeExercise.title}</h3>
-              <p className="text-xs text-slate-300 mt-1">{activeExercise.antiDemotivationTip}</p>
+              <p className="text-xs text-slate-300">{activeExercise.antiDemotivationTip}</p>
             </div>
             <div className="text-right">
               <div className="text-3xl font-bold text-emerald-300 tabular-nums">
@@ -381,6 +429,7 @@ export function ActivityCoachView({
                   onClick={() => {
                     setActiveExercise(null);
                     setSecondsLeft(null);
+                    setPlayerSheetOpen(false);
                   }}
                   className="px-3.5 py-2.5 rounded-xl bg-slate-800 text-slate-300"
                 >
@@ -391,6 +440,7 @@ export function ActivityCoachView({
           </div>
         </div>
       )}
+      </DetailSheet>
 
       {/* Séances déjà effectuées aujourd'hui */}
       {todayWorkouts.length > 0 && (

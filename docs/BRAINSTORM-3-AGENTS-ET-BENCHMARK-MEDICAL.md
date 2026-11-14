@@ -70,3 +70,26 @@
 - **ESC/EAS Dyslipidaemias & EFLM** : LDL, non-HDL, ratio TG/HDL et règle stricte à jeun pour triglycérides / insulinémie.
 - **KDIGO 2024 (CKD-EPI 2021 sans facteur ethnique)** : DFG estimé et garde-fou automatique d'apport protéique si `DFG < 60 mL/min/1,73m²`.
 - **EASL / EASD / EASO MASLD 2024** : score hépatique `FIB-4` (âge ≥ 35, ASAT, ALAT, plaquettes).
+
+---
+
+## Brainstorm v3.0 — Refonte Lean, Top-10 Concurrence, Jeûne/OMAD & Montres Connectées (14 novembre 2026)
+
+Suite au retour testeur (*« trop d'informations d'un coup, besoin d'une interface plus lean avec icônes animées cliquables, questions d'onboarding, jeûne/OMAD, widgets et connexion montres Samsung/Apple »*), un second audit croisé **Claude + Codex** et une analyse du Top-10 du marché (**YAZIO, MyFitnessPal, Lifesum, Foodvisor, Le Secret du Poids, Lose It!, FatSecret, Cronometer, Bodly, Noom**) ont guidé **VitalPulse v3.0** :
+
+1. **Divulgation progressive (« Lean First ») & Motion Design 60 fps (`framer-motion`)** :
+   - Hero épuré : orbe métabolique animée `HeroEnergyOrb` + 3 jauges macros + tuiles Bento personnalisables (`10 max`, `9` dans le cockpit principal) ouvrant des tiroirs accessibles `DetailSheet`.
+   - Icônes SVG animées sur-mesure `64×64` (`FlamePulseIcon`, `StepWalkerIcon`, `WaterWaveIcon`, `FastArcIcon`, `MacroRingIcon`, `HeartbeatWatchIcon`, `MealPlateIcon`, `ScaleTrendIcon`) respectant `prefers-reduced-motion` (`<MotionConfig reducedMotion="user">`).
+   - Double thème **Obsidian** (sombre par défaut) & **Porcelaine** (clair chaleureux) avec typographies `Bricolage Grotesque`, `Plus Jakarta Sans` et `JetBrains Mono` en chiffres tabulaires.
+
+2. **Onboarding en 5 étapes + Jeûne Intermittent & OMAD (inspiration YAZIO)** :
+   - Assistant de premier lancement (`OnboardingWizard`) pré-remplissant profil, IMC en direct, objectif de pas, protocole alimentaire/jeûne, écosystème montre et sélection des widgets visibles (avec option `Passer → Explorer la démo`).
+   - Moteur `fasting-engine.ts` couvrant `12:12`, `14:10`, `16:8`, `18:6`, `20:4`, **OMAD (`23:1`)**, `5:2` et personnalisé, avec arc fer à cheval `270°`, mode programmé (*« Préparez-vous à jeûner ! »*), édition de l'heure de début, 6 phases physiologiques de `0h` à `20h+`, et contre-indications cliniques bloquantes (grossesse/allaitement, mineur, antécédents TCA, diabète insulinodépendant, insuffisance pondérale `IMC < 18,5`).
+
+3. **Couverture fonctionnelle Top-10 & Montres Connectées** :
+   - **Foodvisor + MyFitnessPal + Lifesum** : scan photo assiette/frigo IA + scanner code-barres `/api/barcode` (OpenFoodFacts + cache local français) + Nutri-Score & NOVA.
+   - **Cronometer** : tiroir micronutriments (sodium avec alerte plafond OMS `2 300 mg`, fibres, fer, potassium, vitamine D, calcium, oméga-3).
+   - **Le Secret du Poids + Noom** : banque calorique hebdomadaire sur 7 jours (`computeWeeklyCalorieBank`) + mini-leçon comportementale du jour sans culpabilisation.
+   - **Bodly** : mensurations 8 sites, bilans sanguins et comparateur photo avant/après à la demande.
+   - **Montres & Widget Android** : Web Bluetooth fréquence cardiaque (`0x180D` temps réel sur Android Chrome/Edge), import réel de fichiers exportés **Apple Santé (XML)**, **Samsung Health (CSV)** et **Garmin (JSON)**, bouton de simulation de test explicitement étiqueté, dock mobile flottant à 5 emplacements avec `+` central, et **widget natif écran d'accueil Android** (`VitalPulseWidgetProvider`).
+

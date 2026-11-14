@@ -178,3 +178,78 @@ export async function subscribeBrowserToPush(publicKey: string): Promise<PushSub
   });
   return sub;
 }
+
+export function triggerLightHaptic(): void {
+  if (typeof window === "undefined") return;
+  const isNative = Boolean(
+    (window as Window & { Capacitor?: { isNativePlatform?: () => boolean } })
+      .Capacitor?.isNativePlatform?.(),
+  );
+  if (isNative) {
+    void import("@capacitor/haptics")
+      .then(({ Haptics, ImpactStyle }) =>
+        Haptics.impact({ style: ImpactStyle.Light }),
+      )
+      .catch(() => {
+        if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+          navigator.vibrate(10);
+        }
+      });
+    return;
+  }
+  if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+    try {
+      navigator.vibrate(10);
+    } catch {
+      // Ignorer si navigateur bloque la vibration sans geste utilisateur
+    }
+  }
+}
+
+type BackInterceptHandler = () => boolean;
+const backInterceptStack: BackInterceptHandler[] = [];
+let backListenerBound = false;
+
+function ensureCapacitorBackListener(): void {
+  if (backListenerBound || typeof window === "undefined") return;
+  const isNative = Boolean(
+    (window as Window & { Capacitor?: { isNativePlatform?: () => boolean } })
+      .Capacitor?.isNativePlatform?.(),
+  );
+  if (!isNative) return;
+  backListenerBound = true;
+  void import("@capacitor/app")
+    .then(({ App }) =>
+      App.addListener("backButton", ({ canGoBack }) => {
+        for (let i = backInterceptStack.length - 1; i >= 0; i -= 1) {
+          try {
+            if (backInterceptStack[i]()) {
+              return;
+            }
+          } catch {
+            // Poursuivre vers le handler inférieur
+          }
+        }
+        if (canGoBack && window.history.length > 1) {
+          window.history.back();
+        } else {
+          void App.exitApp();
+        }
+      }),
+    )
+    .catch(() => {
+      backListenerBound = false;
+    });
+}
+
+export function pushBackIntercept(handler: BackInterceptHandler): () => void {
+  backInterceptStack.push(handler);
+  ensureCapacitorBackListener();
+  return () => {
+    const idx = backInterceptStack.lastIndexOf(handler);
+    if (idx !== -1) {
+      backInterceptStack.splice(idx, 1);
+    }
+  };
+}
+

@@ -37,6 +37,7 @@ import {
   loadBodyPhotoDataUrl,
   saveBodyPhotoDataUrl,
 } from "@/lib/storage-db";
+import { DetailSheet } from "@/components/ui/DetailSheet";
 import {
   BloodBiomarkerKey,
   BloodMarkerInput,
@@ -163,6 +164,13 @@ export function BodyLabView({
   onDeleteBodyPhotoMeta,
 }: BodyLabViewProps) {
   const [subTab, setSubTab] = useState<BodyLabSubTab>(initialSubTab);
+  const [measSheetOpen, setMeasSheetOpen] = useState(false);
+  const [bloodSheetOpen, setBloodSheetOpen] = useState(false);
+  const [photoSheetOpen, setPhotoSheetOpen] = useState(false);
+
+  useEffect(() => {
+    setSubTab(initialSubTab);
+  }, [initialSubTab]);
 
   // ---------------- 1. MENSURATIONS ----------------
   const sortedMeas = useMemo(
@@ -339,6 +347,7 @@ export function BodyLabView({
   const bodyPhotoInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    if (subTab !== "photos") return;
     let active = true;
     async function hydrate() {
       const entries: [string, string][] = [];
@@ -354,7 +363,7 @@ export function BodyLabView({
     return () => {
       active = false;
     };
-  }, [bodyPhotoMetas]);
+  }, [subTab, bodyPhotoMetas]);
 
   useEffect(() => {
     if (filteredPhotos.length >= 1 && (!beforeId || !filteredPhotos.some((p) => p.id === beforeId))) {
@@ -393,6 +402,7 @@ export function BodyLabView({
     setAngleFilter(newPhotoAngle);
     setAfterId(id);
     setNewPhotoNote("");
+    setPhotoSheetOpen(false);
   }
 
   async function handleRemoveBodyPhoto(id: string) {
@@ -507,13 +517,34 @@ export function BodyLabView({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-            {/* Formulaire guidé de saisie */}
-            <form onSubmit={handleAddMeasurement} className="vp-card p-4 sm:p-5 lg:col-span-5 space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="text-base font-semibold text-white">Nouveau relevé de mensurations</h3>
-                <span className="text-[11px] text-slate-400">Le matin à jeun</span>
-              </div>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs text-slate-400">
+              Courbe multi-sites &amp; Base 100 puis tableau chronologique détaillé
+            </p>
+            <button
+              type="button"
+              onClick={() => setMeasSheetOpen(true)}
+              className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 px-4 py-2 text-xs font-bold text-slate-950"
+            >
+              <Plus className="w-4 h-4" />
+              Nouveau relevé (cm)
+            </button>
+          </div>
+
+          <DetailSheet
+            open={measSheetOpen}
+            onClose={() => setMeasSheetOpen(false)}
+            title="Nouveau relevé de mensurations"
+            subtitle="À mesurer le matin à jeun"
+            size="md"
+          >
+            <form
+              onSubmit={(e) => {
+                handleAddMeasurement(e);
+                setMeasSheetOpen(false);
+              }}
+              className="space-y-3"
+            >
 
               <div className="grid grid-cols-2 gap-2.5 text-xs">
                 <label className="space-y-1">
@@ -641,9 +672,11 @@ export function BodyLabView({
                 Enregistrer ces mensurations
               </button>
             </form>
+          </DetailSheet>
 
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
             {/* Graphique d'évolution SVG multi-séries */}
-            <div className="vp-card p-4 sm:p-5 lg:col-span-7 space-y-3">
+            <div className="vp-card p-4 sm:p-5 lg:col-span-12 space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <h3 className="text-base font-semibold text-white">Graphique d&apos;évolution corporelle</h3>
@@ -990,13 +1023,34 @@ export function BodyLabView({
             <strong>Cadre médical transparent :</strong> cet analyseur vulgarise vos marqueurs à partir des référentiels officiels (<strong>HAS</strong>, <strong>ESC/EAS</strong>, <strong>ADA</strong>, <strong>KDIGO 2024</strong>, <strong>OMS</strong>) avec conversion automatique des unités françaises (<code>g/L</code> ↔ <code>mmol/L</code>, <code>mg/L</code> ↔ <code>µmol/L</code>). Il ne remplace jamais l&apos;avis de votre médecin.
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-            {/* Formulaire d'entrée / Scan */}
-            <form onSubmit={handleAnalyzeBlood} className="vp-card p-4 sm:p-5 lg:col-span-5 space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-base font-semibold text-white">Analyser un bilan sanguin</h3>
-                <span className="text-[11px] text-emerald-300">FR &amp; SI auto</span>
-              </div>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs text-slate-400">
+              Unités FR &amp; SI converties automatiquement · Calcul HOMA-IR, CKD-EPI 2021 &amp; FIB-4
+            </p>
+            <button
+              type="button"
+              onClick={() => setBloodSheetOpen(true)}
+              className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 px-4 py-2 text-xs font-bold text-slate-950"
+            >
+              <Plus className="w-4 h-4" />
+              Analyser un nouveau bilan
+            </button>
+          </div>
+
+          <DetailSheet
+            open={bloodSheetOpen}
+            onClose={() => setBloodSheetOpen(false)}
+            title="Analyser un bilan sanguin"
+            subtitle="Conversion FR / SI auto · photo ou collage PDF labo"
+            size="lg"
+          >
+            <form
+              onSubmit={async (e) => {
+                await handleAnalyzeBlood(e);
+                setBloodSheetOpen(false);
+              }}
+              className="space-y-4"
+            >
 
               <div className="grid grid-cols-2 gap-2.5 text-xs">
                 <label className="space-y-1">
@@ -1129,30 +1183,36 @@ export function BodyLabView({
                 {bloodBusy ? "Analyse médicale en cours..." : "Analyser mon bilan sanguin"}
               </button>
             </form>
+          </DetailSheet>
 
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
             {/* Résultats & Comparaison Longitudinale */}
-            <div className="lg:col-span-7 space-y-4">
+            <div className="lg:col-span-12 space-y-4">
               {sortedPanels.length > 0 && (
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-xs text-slate-400">Bilans enregistrés :</span>
                   {sortedPanels.map((panel) => (
                     <div
                       key={panel.id}
-                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs border cursor-pointer ${
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs border ${
                         activePanel?.id === panel.id
                           ? "bg-emerald-500/20 border-emerald-400/50 text-emerald-200 font-semibold"
                           : "bg-slate-900 border-slate-800 text-slate-300"
                       }`}
-                      onClick={() => setSelectedPanelId(panel.id)}
                     >
-                      <span>{panel.dateKey}</span>
-                      {panel.context.labName && <span className="text-[10px] opacity-75">· {panel.context.labName}</span>}
                       <button
                         type="button"
-                        onClick={(ev) => {
-                          ev.stopPropagation();
-                          onDeleteBloodPanel(panel.id);
-                        }}
+                        onClick={() => setSelectedPanelId(panel.id)}
+                        className="inline-flex items-center gap-1.5 text-left"
+                      >
+                        <span>{panel.dateKey}</span>
+                        {panel.context.labName && (
+                          <span className="text-[10px] opacity-75">· {panel.context.labName}</span>
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onDeleteBloodPanel(panel.id)}
                         className="text-slate-400 hover:text-rose-400 ml-1"
                         title="Supprimer ce bilan"
                       >
@@ -1319,24 +1379,39 @@ export function BodyLabView({
                 <strong>Coffre photo 100 % local (IndexedDB sur votre appareil)</strong> — vos photos corporelles ne sont <strong>jamais</strong> envoyées sur un serveur, leurs métadonnées EXIF/GPS sont purgées automatiquement, et vous pouvez flouter le visage d&apos;un clic.
               </div>
             </div>
-            <button
-              type="button"
-              onClick={() => setDiscreteBlur((v) => !v)}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition ${
-                discreteBlur
-                  ? "bg-amber-500 text-slate-950 border-amber-400"
-                  : "bg-slate-900 text-slate-200 border-slate-700"
-              }`}
-            >
-              {discreteBlur ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-              {discreteBlur ? "Désactiver mode discret" : "Mode discret (flouter)"}
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setPhotoSheetOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Ajouter une photo
+              </button>
+              <button
+                type="button"
+                onClick={() => setDiscreteBlur((v) => !v)}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition ${
+                  discreteBlur
+                    ? "bg-amber-500 text-slate-950 border-amber-400"
+                    : "bg-slate-900 text-slate-200 border-slate-700"
+                }`}
+              >
+                {discreteBlur ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                {discreteBlur ? "Désactiver mode discret" : "Mode discret (flouter)"}
+              </button>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+          <DetailSheet
+            open={photoSheetOpen}
+            onClose={() => setPhotoSheetOpen(false)}
+            title="Ajouter une photo d'évolution"
+            subtitle="Stockée uniquement localement sur cet appareil"
+            size="md"
+          >
             {/* Ajout nouvelle photo */}
-            <div className="vp-card p-4 sm:p-5 lg:col-span-4 space-y-3">
-              <h3 className="text-base font-semibold text-white">Ajouter une photo d&apos;évolution</h3>
+            <div className="space-y-3">
 
               <div className="grid grid-cols-2 gap-2.5 text-xs">
                 <label className="space-y-1">
@@ -1426,9 +1501,11 @@ export function BodyLabView({
                 </div>
               )}
             </div>
+          </DetailSheet>
 
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
             {/* Comparateur Interactif Avant / Après */}
-            <div className="vp-card p-4 sm:p-5 lg:col-span-8 space-y-4">
+            <div className="vp-card p-4 sm:p-5 lg:col-span-12 space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex gap-1 bg-slate-900 p-1 rounded-lg border border-slate-800 text-xs">
                   {(["front", "side", "back"] as BodyPhotoAngle[]).map((ang) => (
