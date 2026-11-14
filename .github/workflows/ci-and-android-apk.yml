@@ -1,0 +1,48 @@
+name: VitalPulse CI & Android APK Build
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  web-test-and-build:
+    name: Typecheck, Unit Tests & Next.js Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  android-apk-build:
+    name: Build Android Debug APK (Capacitor)
+    needs: web-test-and-build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "21"
+      - run: npm ci
+      - run: npx cap sync android
+      - name: Build Debug APK with Gradle
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+      - name: Upload VitalPulse Android APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: VitalPulse-Android-Debug-APK
+          path: android/app/build/outputs/apk/debug/*.apk

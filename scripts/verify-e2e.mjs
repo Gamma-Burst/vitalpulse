@@ -1,0 +1,136 @@
+import zlib from "zlib";
+
+const BASE = process.env.VITALPULSE_BASE_URL || "http://localhost:3080";
+
+function makeTinyPngDataUrl() {
+  function crc32(buf) {
+    let c = -1;
+    for (let i = 0; i < buf.length; i++) {
+      let x = (c ^ buf[i]) & 0xff;
+      for (let k = 0; k < 8; k++) x = x & 1 ? 0xedb88320 ^ (x >>> 1) : x >>> 1;
+      c = (c >>> 8) ^ x;
+    }
+    return (c ^ -1) >>> 0;
+  }
+  function chunk(type, data) {
+    const len = Buffer.alloc(4);
+    len.writeUInt32BE(data.length, 0);
+    const t = Buffer.from(type, "ascii");
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(crc32(Buffer.concat([t, data])), 0);
+    return Buffer.concat([len, t, data, crc]);
+  }
+  const size = 64;
+  const raw = Buffer.alloc(size * (size * 4 + 1));
+  for (let y = 0; y < size; y++) {
+    const row = y * (size * 4 + 1);
+    raw[row] = 0;
+    for (let x = 0; x < size; x++) {
+      const idx = row + 1 + x * 4;
+      const dist = Math.hypot(x - 32, y - 32);
+      // Simple dish-like circle: salmon coral + green broccoli + white plate
+      if (dist > 26) {
+        raw[idx] = 30; raw[idx + 1] = 40; raw[idx + 2] = 48; raw[idx + 3] = 255;
+      } else if (x < 32 && y < 34) {
+        raw[idx] = 240; raw[idx + 1] = 120; raw[idx + 2] = 110; raw[idx + 3] = 255;
+      } else if (x >= 32 && y >= 32) {
+        raw[idx] = 60; raw[idx + 1] = 180; raw[idx + 2] = 85; raw[idx + 3] = 255;
+      } else {
+        raw[idx] = 242; raw[idx + 1] = 235; raw[idx + 2] = 210; raw[idx + 3] = 255;
+      }
+    }
+  }
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(size, 0);
+  ihdr.writeUInt32BE(size, 4);
+  ihdr[8] = 8; ihdr[9] = 6;
+  const png = Buffer.concat([
+    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    chunk("IHDR", ihdr),
+    chunk("IDAT", zlib.deflateSync(raw)),
+    chunk("IEND", Buffer.alloc(0)),
+  ]);
+  return `data:image/png;base64,${png.toString("base64")}`;
+}
+
+async function main() {
+  const results = {};
+
+  // 1. Home page + manifest
+  const homeRes = await fetch(BASE);
+  const homeHtml = await homeRes.text();
+  results.home_status = homeRes.status;
+  results.has_manifest_link = homeHtml.includes("manifest.webmanifest");
+
+  // 2. Analyze meal (Raster PNG + User Notes)
+  const mealRes = await fetch(`${BASE}/api/analyze-meal`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      imageBase64: makeTinyPngDataUrl(),
+      userNotes: "Pavé de saumon 150g, riz basmati 140g, brocolis, cuit avec 1 c.à.s d'huile d'olive, assiette 26cm, mangé aux 3/4",
+      plateDiameterCm: 26,
+      portionEatenPct: 75,
+      mealType: "lunch",
+      specialMode: "standard",
+    }),
+  });
+  const mealJson = await mealRes.json();
+  results.analyze_meal_status = mealRes.status;
+  results.analyze_meal_provider = mealJson.analysisProvider;
+  results.analyze_meal_kcal = mealJson.caloriesCentral;
+  results.analyze_meal_range_valid = mealJson.caloriesMin < mealJson.caloriesCentral && mealJson.caloriesCentral < mealJson.caloriesMax;
+
+  // 3. Analyze fridge
+  const fridgeRes = await fetch(`${BASE}/api/analyze-fridge`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      userNotes: "3 œufs, courgettes, tomates cerises, filets de poulet, yaourt grec, riz basmati",
+      remainingKcal: 620,
+      remainingProteinG: 42,
+      remainingFiberG: 10,
+      maxMinutes: 20,
+    }),
+  });
+  const fridgeJson = await fridgeRes.json();
+  results.analyze_fridge_status = fridgeRes.status;
+  results.fridge_recipes_count = Array.isArray(fridgeJson.recipes) ? fridgeJson.recipes.length : 0;
+  results.fridge_first_recipe_steps = fridgeJson.recipes?.[0]?.steps?.length ?? 0;
+
+  // 4. Live PubMed Medical feed
+  const medRes = await fetch(`${BASE}/api/medical-feed?topic=weight_loss`);
+  const medJson = await medRes.json();
+  results.medical_feed_status = medRes.status;
+  results.pubmed_live_ok = medJson.pubmedLiveOk;
+  results.pubmed_articles_count = Array.isArray(medJson.liveArticles) ? medJson.liveArticles.length : 0;
+  results.first_pmid = medJson.liveArticles?.[0]?.pmid ?? null;
+
+  // 5. VAPID public key
+  const pkRes = await fetch(`${BASE}/api/push/public-key`);
+  const pkJson = await pkRes.json();
+  results.push_pk_status = pkRes.status;
+  results.push_configured = pkJson.configured;
+
+  console.log(JSON.stringify(results, null, 2));
+
+  const allOk =
+    results.home_status === 200 &&
+    results.has_manifest_link &&
+    results.analyze_meal_status === 200 &&
+    results.analyze_meal_kcal > 0 &&
+    results.analyze_meal_range_valid &&
+    results.analyze_fridge_status === 200 &&
+    results.fridge_recipes_count === 3 &&
+    results.fridge_first_recipe_steps >= 3 &&
+    results.medical_feed_status === 200 &&
+    results.push_pk_status === 200 &&
+    results.push_configured;
+
+  if (!allOk) process.exit(1);
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

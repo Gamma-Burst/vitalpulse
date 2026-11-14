@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>VitalPulse · Chargement</title>
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: #0b1215;
+      color: #f1f5f9;
+      font-family: system-ui, -apple-system, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      text-align: center;
+    }
+    .card {
+      max-width: 420px;
+      background: #121d23;
+      border: 1px solid rgba(52, 211, 153, 0.35);
+      border-radius: 18px;
+      padding: 24px;
+    }
+    h1 { color: #34d399; margin-top: 0; font-size: 1.4rem; }
+    p { font-size: 0.92rem; line-height: 1.5; color: #cbd5e1; }
+    code { color: #38bdf8; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>VitalPulse Android</h1>
+    <p>
+      Ce conteneur Capacitor charge votre instance Web/API sécurisée Vercel dès que
+      <code>NEXT_PUBLIC_APP_URL=https://votre-app.vercel.app</code> est définie avant
+      <code>npx cap sync android</code>.
+    </p>
+  </div>
+</body>
+</html>
