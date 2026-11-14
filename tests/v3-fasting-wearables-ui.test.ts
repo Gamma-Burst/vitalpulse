@@ -94,6 +94,53 @@ describe("fasting-engine (16:8, OMAD, scheduled & physiological phases)", () => 
     expect(autophagyStatus.mode).toBe("fasting");
     expect(autophagyStatus.currentPhase.id).toBe("autophagy_zone");
   });
+
+  it("tracks recurring OMAD daily schedule between eating_window and fasting in local time", () => {
+    const omadConfig: FastingConfig = {
+      ...baseFasting,
+      protocolId: "omad_23_1",
+      fastHours: 23,
+      eatHours: 1,
+      dailyScheduleEnabled: true,
+      eatingWindowStartHm: "19:00",
+      notificationsEnabled: true,
+      activeStartIso: null,
+      plannedStartIso: null,
+      eatingWindowStartIso: null,
+    };
+
+    const duringMeal = new Date(2026, 10, 14, 19, 20, 0).getTime();
+    const eatingLive = computeFastingLiveStatus(omadConfig, duringMeal);
+    expect(eatingLive.mode).toBe("eating_window");
+    expect(eatingLive.eatWindowHours).toBe(1);
+    expect(eatingLive.allowedEatSummaryFr).toContain("autorisé à manger pendant 1 heure");
+    expect(eatingLive.notificationPayload?.body).toContain("autorisé à manger pendant 1 heure");
+
+    const duringFast = new Date(2026, 10, 14, 14, 0, 0).getTime();
+    const fastingLive = computeFastingLiveStatus(omadConfig, duringFast);
+    expect(fastingLive.mode).toBe("fasting");
+    expect(fastingLive.notificationPayload?.title).toContain("jeûne");
+    expect(fastingLive.endIso).toBeTruthy();
+  });
+
+  it("rolls an active 23h fast over into eating_window after fastHours elapse", () => {
+    const now = new Date(2026, 10, 14, 19, 30, 0).getTime();
+    const rolled = computeFastingLiveStatus(
+      {
+        ...baseFasting,
+        protocolId: "omad_23_1",
+        fastHours: 23,
+        eatHours: 1,
+        dailyScheduleEnabled: false,
+        activeStartIso: new Date(now - 23.5 * 3600 * 1000).toISOString(),
+        plannedStartIso: null,
+      },
+      now
+    );
+    expect(rolled.mode).toBe("eating_window");
+    expect(rolled.headlineFr).toContain("Fenêtre repas ouverte");
+    expect(rolled.allowedEatSummaryFr).toContain("autorisé à manger pendant 1 heure");
+  });
 });
 
 describe("ui-progressive helpers (clamping, wave geometry, sodium & weekly bank)", () => {

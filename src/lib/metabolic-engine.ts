@@ -115,24 +115,47 @@ export function computeAnthropometrics(profile: UserProfile): AnthropometricRepo
     : Math.max(clinicalFloor, Math.min(estimatedMaintenanceKcal + 600, uncappedTarget));
 
   const referenceMass =
-    profile.primaryGoal === "fat_loss" && profile.targetWeightKg < weightKg
+    (profile.primaryGoal === "fat_loss" || profile.primaryGoal === "rebalancing") &&
+    profile.targetWeightKg < weightKg
       ? Math.max(45, (weightKg + profile.targetWeightKg) / 2)
       : weightKg;
 
-  const proteinPerKg =
-    profile.specialMode === "glp1_muscle_guard" || profile.primaryGoal === "recomposition"
-      ? 1.85
-      : profile.primaryGoal === "fat_loss"
-        ? 1.75
-        : 1.55;
+  let proteinG: number;
+  let fatG: number;
+  let carbsG: number;
+  let fiberG: number;
+  let waterMl = Math.round(weightKg * 35); // EFSA ~35 mL/kg
+  let sodiumMaxMg = profile.specialMode === "cardio_low_sodium" ? 1500 : 2000; // OMS < 5g sel/j
 
-  const proteinG = Math.round(referenceMass * proteinPerKg);
-  const fatG = Math.max(45, Math.round((targetIntakeKcal * 0.28) / 9));
-  const remainingCarbsKcal = Math.max(200, targetIntakeKcal - proteinG * 4 - fatG * 9);
-  const carbsG = Math.round(remainingCarbsKcal / 4);
-  const fiberG = profile.sex === "male" ? 32 : 28; // ANSES repère ~30g/j
-  const waterMl = Math.round(weightKg * 35); // EFSA ~35 mL/kg
-  const sodiumMaxMg = profile.specialMode === "cardio_low_sodium" ? 1500 : 2000; // OMS < 5g sel/j
+  if (profile.specialMode === "ketogenic" && !minorSafetyLock) {
+    proteinG = Math.round(referenceMass * 1.65);
+    carbsG = Math.max(20, Math.min(35, Math.round((targetIntakeKcal * 0.06) / 4)));
+    fatG = Math.max(
+      50,
+      Math.round(Math.max(360, targetIntakeKcal - proteinG * 4 - carbsG * 4) / 9)
+    );
+    fiberG = profile.sex === "male" ? 26 : 24;
+    waterMl = Math.round(weightKg * 40);
+    sodiumMaxMg = 2300;
+  } else if (profile.specialMode === "rebalancing" || profile.primaryGoal === "rebalancing") {
+    proteinG = Math.round(referenceMass * 1.6);
+    fatG = Math.max(45, Math.round((targetIntakeKcal * 0.3) / 9));
+    carbsG = Math.round(Math.max(200, targetIntakeKcal - proteinG * 4 - fatG * 9) / 4);
+    fiberG = profile.sex === "male" ? 34 : 30;
+  } else {
+    const proteinPerKg =
+      profile.specialMode === "glp1_muscle_guard" || profile.primaryGoal === "recomposition"
+        ? 1.85
+        : profile.primaryGoal === "fat_loss"
+          ? 1.75
+          : 1.55;
+
+    proteinG = Math.round(referenceMass * proteinPerKg);
+    fatG = Math.max(45, Math.round((targetIntakeKcal * 0.28) / 9));
+    const remainingCarbsKcal = Math.max(200, targetIntakeKcal - proteinG * 4 - fatG * 9);
+    carbsG = Math.round(remainingCarbsKcal / 4);
+    fiberG = profile.sex === "male" ? 32 : 28; // ANSES repère ~30g/j
+  }
 
   return {
     bmi,

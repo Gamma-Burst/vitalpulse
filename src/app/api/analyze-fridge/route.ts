@@ -13,6 +13,7 @@ function buildFallbackFridgeResult(params: {
   remainingKcal: number;
   remainingProteinG: number;
   maxMinutes: number;
+  specialMode?: string;
 }) {
   const txt = (params.userNotes || "").toLowerCase();
   const detectedIngredients: FridgeIngredient[] = [];
@@ -45,32 +46,55 @@ function buildFallbackFridgeResult(params: {
   const targetKcal = Math.max(320, Math.min(720, Math.round(params.remainingKcal || 540)));
   const targetProt = Math.max(25, Math.min(52, Math.round(params.remainingProteinG || 36)));
 
+  const isKeto = params.specialMode === "ketogenic";
+
   const recipes: StepByStepRecipe[] = [
     {
       id: "rec-shakshuka-protein",
-      title: "Poêlée express œufs-légumes façon Shakshuka légère",
+      title: isKeto
+        ? "Poêlée cétogène œufs-avocat-courgettes façon Shakshuka (< 9 g glucides)"
+        : "Poêlée express œufs-légumes façon Shakshuka légère",
       prepMinutes: 4,
       cookMinutes: Math.min(12, params.maxMinutes || 12),
       servings: 1,
       caloriesPerServing: Math.round(targetKcal * 0.85),
-      macros: {
-        proteinG: Math.round(targetProt * 0.85),
-        carbsG: 24,
-        fatG: 18,
-        fiberG: 7.5,
-        sugarG: 6.2,
-        satFatG: 4.5,
-        sodiumMg: 480,
-      },
+      macros: isKeto
+        ? {
+            proteinG: Math.round(targetProt * 0.85),
+            carbsG: 9,
+            fatG: 34,
+            fiberG: 6.2,
+            sugarG: 4.1,
+            satFatG: 8.5,
+            sodiumMg: 520,
+          }
+        : {
+            proteinG: Math.round(targetProt * 0.85),
+            carbsG: 24,
+            fatG: 18,
+            fiberG: 7.5,
+            sugarG: 6.2,
+            satFatG: 4.5,
+            sodiumMg: 480,
+          },
       novaGroup: 1,
-      glycemicLoad: 9,
-      whyItFitsToday: `Calibrée pour « fermer votre journée » : apporte ~${Math.round(targetProt * 0.85)} g de protéines rassasiantes et 7,5 g de fibres sans pic glycémique avant le coucher.`,
-      ingredients: [
-        "3 œufs entiers + 1 blanc d'œuf (ou 150 g de tofu/poulet)",
-        "250 g de courgettes / tomates / poivrons coupés en dés",
-        "1 c.à.c d'huile d'olive (5 g), cumin, paprika, ail",
-        "1 tranche de pain complet ou 80 g de pois chiches",
-      ],
+      glycemicLoad: isKeto ? 3 : 9,
+      whyItFitsToday: isKeto
+        ? `Recette cétogène stricte (< 9 g de glucides) avec ~${Math.round(targetProt * 0.85)} g de protéines et bonnes graisses (huile d'olive / avocat).`
+        : `Calibrée pour « fermer votre journée » : apporte ~${Math.round(targetProt * 0.85)} g de protéines rassasiantes et 7,5 g de fibres sans pic glycémique avant le coucher.`,
+      ingredients: isKeto
+        ? [
+            "3 œufs entiers + 1/2 avocat ou 30 g de feta",
+            "200 g de courgettes et épinards en dés",
+            "1,5 c.à.s d'huile d'olive vierge extra, cumin, paprika, ail",
+            "Herbes fraîches, poivre et sel modéré",
+          ]
+        : [
+            "3 œufs entiers + 1 blanc d'œuf (ou 150 g de tofu/poulet)",
+            "250 g de courgettes / tomates / poivrons coupés en dés",
+            "1 c.à.c d'huile d'olive (5 g), cumin, paprika, ail",
+            "1 tranche de pain complet ou 80 g de pois chiches",
+          ],
       steps: [
         {
           stepNumber: 1,
@@ -79,9 +103,9 @@ function buildFallbackFridgeResult(params: {
         },
         {
           stepNumber: 2,
-          instruction: "Faites revenir les légumes à feu moyen avec 1 c.à.c d'huile d'olive, ail, cumin et un fond d'eau.",
+          instruction: "Faites revenir les légumes à feu moyen avec de l'huile d'olive, ail, cumin et un fond d'eau.",
           timerSeconds: 300,
-          tip: "Le filet d'eau évite d'ajouter trop d'huile tout en rendant les légumes fondants.",
+          tip: "Le filet d'eau évite de brûler les épices tout en gardant les légumes fondants.",
         },
         {
           stepNumber: 3,
@@ -90,10 +114,14 @@ function buildFallbackFridgeResult(params: {
         },
         {
           stepNumber: 4,
-          instruction: "Servez immédiatement avec du poivre, herbes fraîches et la tranche de pain complet.",
+          instruction: isKeto
+            ? "Servez aussitôt avec les lamelles d'avocat / feta et les herbes fraîches (sans féculents)."
+            : "Servez immédiatement avec du poivre, herbes fraîches et la tranche de pain complet.",
         },
       ],
-      clinicalNote: "Score NOVA 1 · Riche en choline, lutéine et fibres solubles.",
+      clinicalNote: isKeto
+        ? "Score NOVA 1 · Cétogène (< 9 g glucides nets), très rassasiant."
+        : "Score NOVA 1 · Riche en choline, lutéine et fibres solubles.",
     },
     {
       id: "rec-bowl-saumon-citron",
@@ -212,7 +240,11 @@ export async function POST(req: NextRequest) {
         const prompt = [
           `Tu es chef cuisinier nutritionniste. Analyse le contenu du réfrigérateur/placard (image et/ou texte utilisateur).`,
           `Budget nutritionnel « Ferme ta journée » restant pour l'utilisateur : ~${remainingKcal} kcal, ~${remainingProteinG} g protéines, ~${remainingFiberG} g fibres.`,
-          `Temps de préparation+cuisson maximum souhaité : ${maxMinutes} minutes. Mode clinique : ${specialMode}.`,
+          specialMode === "ketogenic"
+            ? `Temps de préparation+cuisson maximum souhaité : ${maxMinutes} minutes. Mode clinique : ketogenic — IMPÉRATIF CÉTOGÈNE (Keto) : propose 3 recettes à < 10 g de glucides par portion (zéro pain, zéro riz, zéro pâtes, zéro sucre ; privilégie œufs, poissons/viandes, avocat, légumes verts, huile d'olive, fromage).`
+            : specialMode === "rebalancing"
+              ? `Temps de préparation+cuisson maximum souhaité : ${maxMinutes} minutes. Mode clinique : rebalancing — Rééquilibrage alimentaire équilibré ANSES NOVA 1-2 (légumes + protéines + féculents complets sans frustration).`
+              : `Temps de préparation+cuisson maximum souhaité : ${maxMinutes} minutes. Mode clinique : ${specialMode}.`,
           userNotes
             ? `PRÉCISIONS UTILISATEUR SUR CE QU'IL Y A DANS LE FRIGO / ENVIES : "${userNotes}"`
             : "",
@@ -298,7 +330,13 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json(
-      buildFallbackFridgeResult({ userNotes, remainingKcal, remainingProteinG, maxMinutes })
+      buildFallbackFridgeResult({
+        userNotes,
+        remainingKcal,
+        remainingProteinG,
+        maxMinutes,
+        specialMode,
+      })
     );
   } catch (err) {
     console.error("analyze-fridge error:", err);

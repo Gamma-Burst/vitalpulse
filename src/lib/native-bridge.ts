@@ -253,3 +253,104 @@ export function pushBackIntercept(handler: BackInterceptHandler): () => void {
   };
 }
 
+export async function requestFastingNotificationPermission(): Promise<boolean> {
+  if (typeof window === "undefined" || typeof Notification === "undefined") {
+    return false;
+  }
+  try {
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js").catch(() => {});
+    }
+    if (Notification.permission === "granted") return true;
+    if (Notification.permission === "denied") return false;
+    const perm = await Notification.requestPermission();
+    return perm === "granted";
+  } catch {
+    return false;
+  }
+}
+
+export async function sendFastingTransitionAlert(payload: {
+  key: string;
+  title: string;
+  body: string;
+}): Promise<{ deliveredVia: "service-worker" | "web-notification" | "push" | "in-app-only" }> {
+  triggerLightHaptic();
+  if (typeof window === "undefined" || typeof Notification === "undefined") {
+    return { deliveredVia: "in-app-only" };
+  }
+  if (Notification.permission !== "granted") {
+    return { deliveredVia: "in-app-only" };
+  }
+
+  let deliveredVia: "service-worker" | "web-notification" | "push" | "in-app-only" = "in-app-only";
+
+  if ("serviceWorker" in navigator) {
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      await reg.showNotification(payload.title, {
+        body: payload.body,
+        icon: "/icons/icon-192.png",
+        badge: "/icons/icon-192.png",
+        tag: payload.key,
+        data: { url: "/" },
+      });
+      deliveredVia = "service-worker";
+
+      if ("PushManager" in window) {
+        const sub = await reg.pushManager.getSubscription();
+        if (sub) {
+          void fetch("/api/push/send", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              subscription: sub.toJSON(),
+              title: payload.title,
+              body: payload.body,
+              url: "/",
+            }),
+          }).catch(() => {});
+          deliveredVia = "push";
+        }
+      }
+      return { deliveredVia };
+    } catch {
+      // Poursuivre sur Notification directe
+    }
+  }
+
+  try {
+    new Notification(payload.title, {
+      body: payload.body,
+      icon: "/icons/icon-192.png",
+      tag: payload.key,
+    });
+    return { deliveredVia: "web-notification" };
+  } catch {
+    return { deliveredVia: "in-app-only" };
+  }
+}
+
+export function scheduleServiceWorkerFastingAlert(params: {
+  delayMs: number;
+  key: string;
+  title: string;
+  body: string;
+}): void {
+  if (typeof window === "undefined" || !("serviceWorker" in navigator)) return;
+  if (params.delayMs <= 0 || params.delayMs > 2 * 3600_000) return;
+  if (typeof Notification !== "undefined" && Notification.permission !== "granted") return;
+
+  try {
+    const controller = navigator.serviceWorker.controller;
+    if (controller) {
+      controller.postMessage({
+        type: "VP_SCHEDULE_FASTING_ALERT",
+        ...params,
+      });
+    }
+  } catch {
+    // Ignore background worker message errors
+  }
+}
+

@@ -23,12 +23,19 @@ import {
   FASTING_PHASES,
   FASTING_PROTOCOLS,
   FASTING_SAFETY_CONTRAINDICATIONS,
+  formatAllowedDurationFr,
+  formatClockHm,
   formatFrenchShortDateTime,
+  getDefaultEatingStartHm,
   getProtocolSpec,
 } from "@/lib/fasting-engine";
 import { FastingHorseshoeArc } from "@/components/ui/LiveMetricVisuals";
 import { DetailSheet } from "@/components/ui/DetailSheet";
-import { triggerLightHaptic } from "@/lib/native-bridge";
+import {
+  requestFastingNotificationPermission,
+  sendFastingTransitionAlert,
+  triggerLightHaptic,
+} from "@/lib/native-bridge";
 
 export interface FastingViewProps {
   fasting: FastingConfig;
@@ -76,11 +83,15 @@ export function FastingView({
     const fastHours =
       id === "custom" ? customHours ?? fasting.fastHours ?? 16 : spec.fastHours;
     const eatHours = Math.max(0, 24 - fastHours);
+    const supportsDailyCycle = id !== "none" && id !== "5_2" && id !== "custom";
     onUpdateFasting({
       ...fasting,
       protocolId: id,
       fastHours,
       eatHours,
+      dailyScheduleEnabled:
+        id === "none" ? false : supportsDailyCycle ? true : fasting.dailyScheduleEnabled,
+      eatingWindowStartHm: fasting.eatingWindowStartHm || getDefaultEatingStartHm(id),
     });
   }
 
@@ -91,6 +102,7 @@ export function FastingView({
       protocolId: fasting.protocolId === "none" ? "16_8" : fasting.protocolId,
       activeStartIso: new Date().toISOString(),
       plannedStartIso: null,
+      eatingWindowStartIso: null,
     });
   }
 
@@ -194,17 +206,31 @@ export function FastingView({
           {live.headlineFr}
         </h2>
         <p className="mt-1 text-xs text-slate-400">
-          {live.mode === "fasting"
-            ? `Phase actuelle : ${live.currentPhase.titleFr} (${live.currentPhase.shortBadge})`
-            : live.mode === "scheduled"
-              ? "Votre fenêtre de jeûne démarrera automatiquement à l'heure planifiée"
-              : `${live.protocol.title} · ${live.protocol.subtitle}`}
+          {live.mode === "eating_window"
+            ? `${live.allowedEatSummaryFr} · reprise du jeûne à ${
+                live.endIso ? formatClockHm(live.endIso) : "--:--"
+              }`
+            : live.mode === "fasting"
+              ? `Phase actuelle : ${live.currentPhase.titleFr} (${live.currentPhase.shortBadge}) · Repas à ${
+                  live.endIso ? formatClockHm(live.endIso) : "--:--"
+                }`
+              : live.mode === "scheduled"
+                ? "Votre fenêtre de jeûne démarrera automatiquement à l'heure planifiée"
+                : `${live.protocol.title} · ${live.protocol.subtitle}`}
         </p>
 
         <div className="mt-4">
           <FastingHorseshoeArc
             progressPct={Math.round(live.progress * 100)}
-            status={live.mode === "fasting" ? "fasting" : live.mode === "scheduled" ? "scheduled" : "idle"}
+            status={
+              live.mode === "eating_window"
+                ? "eating_window"
+                : live.mode === "fasting"
+                  ? "fasting"
+                  : live.mode === "scheduled"
+                    ? "scheduled"
+                    : "idle"
+            }
             eyebrow={live.countdownLabelFr}
             countdownText={live.countdownHms}
             protocolLabel={
@@ -213,9 +239,11 @@ export function FastingView({
                 : live.protocol.badge
             }
             onEditProtocol={() => setProtocolSheetOpen(true)}
-            phaseIcon={live.mode === "scheduled" ? "fork" : "flame"}
+            phaseIcon={
+              live.mode === "scheduled" || live.mode === "eating_window" ? "fork" : "flame"
+            }
             startCaption={startCaption}
-            startActionLabel="Début"
+            startActionLabel={live.mode === "eating_window" ? "Ouverture" : "Début"}
             onEditStart={() => {
               setDraftDateTime(
                 toDatetimeLocalValue(live.startIso || new Date().toISOString())
@@ -223,7 +251,7 @@ export function FastingView({
               setStartSheetOpen(true);
             }}
             endCaption={endCaption}
-            endLabel="Fin"
+            endLabel={live.mode === "eating_window" ? "Fin repas" : "Fin"}
           />
         </div>
 
@@ -266,17 +294,176 @@ export function FastingView({
                 Démarrer tout de suite maintenant
               </button>
             </>
-          ) : (
+          ) : live.mode === "eating_window" ? (
             <button
               type="button"
-              onClick={handleCancelOrFinish}
-              className="vp-keep-dark inline-flex w-full items-center justify-center gap-2 rounded-full bg-slate-900 px-6 py-3.5 text-sm font-extrabold text-white shadow-lg ring-1 ring-white/15 hover:bg-slate-800"
+              onClick={handleStartNow}
+              className="vp-keep-dark inline-flex w-full items-center justify-center gap-2 rounded-full bg-emerald-500 px-6 py-3.5 text-sm font-extrabold text-slate-950 shadow-lg hover:bg-emerald-400"
             >
               <Square className="h-4 w-4 fill-current" />
-              Terminer le jeûne ({live.elapsedHours.toFixed(1)} h accomplies)
+              Terminer mon repas &amp; reprendre le jeûne maintenant
             </button>
+          ) : (
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={handleCancelOrFinish}
+                className="vp-keep-dark inline-flex w-full items-center justify-center gap-2 rounded-full bg-slate-900 px-6 py-3.5 text-sm font-extrabold text-white shadow-lg ring-1 ring-white/15 hover:bg-slate-800"
+              >
+                <Square className="h-4 w-4 fill-current" />
+                Terminer le jeûne ({live.elapsedHours.toFixed(1)} h accomplies)
+              </button>
+              {live.eatWindowHours > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerLightHaptic();
+                    onUpdateFasting({
+                      ...fasting,
+                      activeStartIso: null,
+                      plannedStartIso: null,
+                      eatingWindowStartIso: new Date().toISOString(),
+                    });
+                  }}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-emerald-400/35 bg-emerald-500/10 px-4 py-2 text-xs font-bold text-emerald-300 hover:bg-emerald-500/20"
+                >
+                  Ouvrir ma fenêtre repas maintenant (
+                  {formatAllowedDurationFr(live.eatWindowHours)})
+                </button>
+              )}
+            </div>
           )}
         </div>
+
+        {/* Cycle quotidien & Notifications automatiques Repas / Jeûne */}
+        {fasting.protocolId !== "none" && fasting.protocolId !== "5_2" && (
+          <div className="mx-auto mt-5 max-w-xl rounded-2xl border border-white/10 bg-slate-950/65 p-4 text-left space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-xs font-extrabold text-white">
+                  Cycle quotidien &amp; Alertes Repas / Jeûne
+                </p>
+                <p className="text-[11px] text-slate-400">
+                  Vous êtes autorisé à manger pendant{" "}
+                  <strong className="text-emerald-300">
+                    {formatAllowedDurationFr(live.eatWindowHours)}
+                  </strong>{" "}
+                  chaque jour à l&apos;heure choisie
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  triggerLightHaptic();
+                  const nextEnabled = !fasting.dailyScheduleEnabled;
+                  onUpdateFasting({
+                    ...fasting,
+                    dailyScheduleEnabled: nextEnabled,
+                    eatingWindowStartHm:
+                      fasting.eatingWindowStartHm || getDefaultEatingStartHm(fasting.protocolId),
+                    ...(nextEnabled
+                      ? { activeStartIso: null, plannedStartIso: null, eatingWindowStartIso: null }
+                      : {}),
+                  });
+                }}
+                className={`rounded-full px-3 py-1 text-[11px] font-bold transition-all ${
+                  fasting.dailyScheduleEnabled
+                    ? "bg-emerald-500 text-slate-950"
+                    : "border border-white/15 bg-slate-900 text-slate-300"
+                }`}
+              >
+                {fasting.dailyScheduleEnabled ? "Cycle auto : ACTIF" : "Activer le cycle"}
+              </button>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="text-[11px] text-slate-300">
+                Début fenêtre repas :
+                <input
+                  type="time"
+                  value={
+                    fasting.eatingWindowStartHm || getDefaultEatingStartHm(fasting.protocolId)
+                  }
+                  onChange={(e) =>
+                    onUpdateFasting({
+                      ...fasting,
+                      dailyScheduleEnabled: true,
+                      eatingWindowStartHm: e.target.value,
+                      activeStartIso: null,
+                      plannedStartIso: null,
+                      eatingWindowStartIso: null,
+                    })
+                  }
+                  className="ml-2 rounded-lg border border-white/15 bg-slate-900 px-2.5 py-1 text-xs font-bold text-white"
+                />
+              </label>
+              {["12:00", "16:00", "18:00", "19:00"].map((preset) => (
+                <button
+                  key={preset}
+                  type="button"
+                  onClick={() =>
+                    onUpdateFasting({
+                      ...fasting,
+                      dailyScheduleEnabled: true,
+                      eatingWindowStartHm: preset,
+                      activeStartIso: null,
+                      plannedStartIso: null,
+                      eatingWindowStartIso: null,
+                    })
+                  }
+                  className={`rounded-lg border px-2 py-1 text-[11px] font-bold ${
+                    (fasting.eatingWindowStartHm || getDefaultEatingStartHm(fasting.protocolId)) ===
+                    preset
+                      ? "border-emerald-400/60 bg-emerald-500/20 text-emerald-200"
+                      : "border-white/10 bg-slate-900/70 text-slate-300 hover:border-white/25"
+                  }`}
+                >
+                  {preset}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-white/10 pt-2.5">
+              <label className="flex items-center gap-2 text-xs text-slate-200">
+                <input
+                  type="checkbox"
+                  checked={fasting.notificationsEnabled !== false}
+                  onChange={async (e) => {
+                    const enabled = e.target.checked;
+                    if (enabled) {
+                      await requestFastingNotificationPermission();
+                    }
+                    onUpdateFasting({
+                      ...fasting,
+                      notificationsEnabled: enabled,
+                    });
+                  }}
+                  className="h-4 w-4 accent-emerald-500"
+                />
+                Me notifier à l&apos;ouverture repas et reprise du jeûne
+              </label>
+              <button
+                type="button"
+                onClick={async () => {
+                  triggerLightHaptic();
+                  await requestFastingNotificationPermission();
+                  const startHm =
+                    fasting.eatingWindowStartHm || getDefaultEatingStartHm(fasting.protocolId);
+                  await sendFastingTransitionAlert({
+                    key: `test-${Date.now()}`,
+                    title: `VitalPulse · Fenêtre repas (${live.protocol.badge})`,
+                    body: `Vous êtes autorisé à manger pendant ${formatAllowedDurationFr(
+                      live.eatWindowHours
+                    )} (démarrage réglé à ${startHm}).`,
+                  });
+                }}
+                className="rounded-xl border border-amber-400/35 bg-amber-500/15 px-3 py-1.5 text-[11px] font-bold text-amber-200 hover:bg-amber-500/25"
+              >
+                Tester l&apos;alerte repas
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Sélecteur rapide des protocoles populaires */}
         <div className="mt-5 flex flex-wrap items-center justify-center gap-1.5">

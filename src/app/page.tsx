@@ -35,8 +35,18 @@ import {
   VitalPulseState,
 } from "@/lib/storage-db";
 import { buildDemoSeedState } from "@/data/demo-seed";
-import { getProtocolSpec } from "@/lib/fasting-engine";
-import { triggerLightHaptic } from "@/lib/native-bridge";
+import {
+  computeFastingLiveStatus,
+  formatAllowedDurationFr,
+  formatClockHm,
+  getDefaultEatingStartHm,
+  getProtocolSpec,
+} from "@/lib/fasting-engine";
+import {
+  scheduleServiceWorkerFastingAlert,
+  sendFastingTransitionAlert,
+  triggerLightHaptic,
+} from "@/lib/native-bridge";
 import { DashboardView, DashboardTabTarget } from "@/components/DashboardView";
 import { MealScannerView } from "@/components/MealScannerView";
 import { FridgeChefView } from "@/components/FridgeChefView";
@@ -203,6 +213,74 @@ export default function VitalPulseApp() {
     return [...state.bloodPanels].sort((a, b) => b.dateKey.localeCompare(a.dateKey))[0];
   }, [state]);
 
+  const [fastingBannerAlert, setFastingBannerAlert] = useState<{
+    key: string;
+    title: string;
+    body: string;
+  } | null>(null);
+
+  const fastingCfg = state?.fasting;
+
+  useEffect(() => {
+    if (!fastingCfg || fastingCfg.protocolId === "none") return;
+    if (fastingCfg.notificationsEnabled === false) return;
+
+    const checkTransition = () => {
+      const live = computeFastingLiveStatus(fastingCfg, Date.now());
+      const payload = live.notificationPayload;
+
+      if (live.endIso) {
+        const endMs = Date.parse(live.endIso);
+        const delayMs = endMs - Date.now();
+        if (Number.isFinite(delayMs) && delayMs > 2000 && delayMs <= 24 * 3600 * 1000) {
+          const isFastNow = live.mode === "fasting";
+          const eatDuration = formatAllowedDurationFr(live.eatWindowHours);
+          scheduleServiceWorkerFastingAlert({
+            delayMs,
+            key: `auto-end:${fastingCfg.protocolId}:${live.endIso}`,
+            title: isFastNow
+              ? `Fenêtre repas ouverte · ${live.protocol.badge}`
+              : `Reprise du jeûne · ${live.protocol.badge}`,
+            body: isFastNow
+              ? `Vous êtes autorisé à manger pendant ${eatDuration} (jusqu'à ${formatClockHm(
+                  endMs + live.eatWindowHours * 3600 * 1000
+                )}).`
+              : `Votre fenêtre repas de ${eatDuration} est terminée. Reprise du jeûne maintenant.`,
+          });
+        }
+      }
+
+      if (!payload || payload.key === fastingCfg.lastNotifiedTransitionKey) return;
+
+      setFastingBannerAlert(payload);
+      void sendFastingTransitionAlert(payload);
+
+      setState((prev) => {
+        if (!prev || prev.fasting.lastNotifiedTransitionKey === payload.key) return prev;
+        const next = {
+          ...prev,
+          fasting: {
+            ...prev.fasting,
+            lastNotifiedTransitionKey: payload.key,
+          },
+        };
+        void saveVitalPulseState(next);
+        return next;
+      });
+    };
+
+    checkTransition();
+    const timer = window.setInterval(checkTransition, 15000);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") checkTransition();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [fastingCfg]);
+
   if (!state || !anthro || !todayBalance) {
     return (
       <div className="min-h-screen bg-[var(--vp-bg)] flex items-center justify-center p-6">
@@ -235,6 +313,8 @@ export default function VitalPulseApp() {
   function handleOnboardingCompleteFresh(payload: {
     profile: UserProfile;
     fastingProtocol: FastingProtocolId;
+    eatingWindowStartHm: string;
+    fastingNotifications: boolean;
     enabledWidgets: DashboardWidgetId[];
     wearableEcosystem: WearableEcosystem;
   }) {
@@ -250,15 +330,25 @@ export default function VitalPulseApp() {
         wearable: { ecosystem: payload.wearableEcosystem },
       }
     );
-    fresh.fasting = {
+    const initialFasting = {
       protocolId: payload.fastingProtocol,
       fastHours: spec.fastHours,
       eatHours: spec.eatHours,
+      eatingWindowStartHm:
+        payload.eatingWindowStartHm || getDefaultEatingStartHm(payload.fastingProtocol),
+      dailyScheduleEnabled:
+        payload.fastingProtocol !== "none" && payload.fastingProtocol !== "5_2",
+      notificationsEnabled: payload.fastingNotifications,
       activeStartIso: null,
       plannedStartIso: null,
+      eatingWindowStartIso: null,
+      lastNotifiedTransitionKey: null as string | null,
       history: [],
       safetyAck: true,
     };
+    const initialLive = computeFastingLiveStatus(initialFasting, Date.now());
+    initialFasting.lastNotifiedTransitionKey = initialLive.notificationPayload?.key ?? null;
+    fresh.fasting = initialFasting;
     setState(fresh);
     void saveVitalPulseState(fresh);
     setShowOnboardingOverride(false);
@@ -524,6 +614,37 @@ export default function VitalPulseApp() {
           )}
 
           <main className="max-w-6xl mx-auto p-4 sm:p-6">
+            {fastingBannerAlert && (
+              <div
+                role="status"
+                aria-live="polite"
+                className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-400/50 bg-emerald-500/15 px-4 py-3 text-xs shadow-lg"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="font-extrabold text-emerald-200">{fastingBannerAlert.title}</p>
+                  <p className="mt-0.5 text-slate-100">{fastingBannerAlert.body}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveTab("fasting");
+                      setFastingBannerAlert(null);
+                    }}
+                    className="rounded-xl bg-emerald-500 px-3 py-1.5 font-bold text-slate-950 hover:bg-emerald-400"
+                  >
+                    Voir minuteur
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFastingBannerAlert(null)}
+                    className="rounded-xl border border-white/15 px-2.5 py-1.5 font-semibold text-slate-200 hover:bg-white/10"
+                  >
+                    Fermer
+                  </button>
+                </div>
+              </div>
+            )}
             {activeTab === "dashboard" && (
               <DashboardView
                 profile={state.profile}

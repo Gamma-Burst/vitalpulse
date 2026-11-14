@@ -2,10 +2,17 @@ export type Sex = "male" | "female";
 
 export type ActivityProfile = "sedentary" | "lightly_active" | "active" | "very_active";
 
-export type PrimaryGoal = "fat_loss" | "recomposition" | "maintenance" | "muscle_gain";
+export type PrimaryGoal =
+  | "fat_loss"
+  | "rebalancing"
+  | "recomposition"
+  | "maintenance"
+  | "muscle_gain";
 
 export type SpecialMode =
   | "standard"
+  | "rebalancing"
+  | "ketogenic"
   | "glp1_muscle_guard"
   | "glycemic_shield"
   | "cardio_low_sodium";
@@ -42,6 +49,11 @@ export interface FastingConfig {
   protocolId: FastingProtocolId;
   fastHours: number;
   eatHours: number;
+  eatingWindowStartHm?: string; // ex. "19:00" pour OMAD, "12:00" pour 16:8
+  dailyScheduleEnabled?: boolean;
+  notificationsEnabled?: boolean;
+  eatingWindowStartIso?: string | null;
+  lastNotifiedTransitionKey?: string | null;
   activeStartIso: string | null;
   plannedStartIso: string | null;
   history: CompletedFastRecord[];

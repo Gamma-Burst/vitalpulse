@@ -221,3 +221,30 @@ describe("analyzeMealDeterministically", () => {
     expect(full.caloriesMax).toBeGreaterThan(full.caloriesCentral);
   });
 });
+
+describe("rebalancing and ketogenic modes in computeAnthropometrics", () => {
+  it("calibrates ketogenic macros below 35g carbs with elevated fat and hydration", () => {
+    const standard = computeAnthropometrics(baseProfile);
+    const keto = computeAnthropometrics({
+      ...baseProfile,
+      specialMode: "ketogenic",
+    });
+    expect(keto.targets.carbsG).toBeGreaterThanOrEqual(20);
+    expect(keto.targets.carbsG).toBeLessThanOrEqual(35);
+    expect(keto.targets.fatG).toBeGreaterThan(standard.targets.fatG);
+    expect(keto.targets.waterMl).toBeGreaterThanOrEqual(standard.targets.waterMl);
+    expect(keto.targets.sodiumMaxMg).toBeGreaterThanOrEqual(2300);
+  });
+
+  it("supports rebalancing as primaryGoal and specialMode with sustained fiber & protein", () => {
+    const rebal = computeAnthropometrics({
+      ...baseProfile,
+      primaryGoal: "rebalancing",
+      specialMode: "rebalancing",
+    });
+    expect(rebal.targetIntakeKcal).toBeLessThan(rebal.estimatedMaintenanceKcal);
+    expect(rebal.targets.fiberG).toBeGreaterThanOrEqual(34);
+    expect(rebal.targets.proteinG).toBeGreaterThan(100);
+    expect(rebal.targets.carbsG).toBeGreaterThan(60);
+  });
+});

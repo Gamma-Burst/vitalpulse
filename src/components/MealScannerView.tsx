@@ -144,6 +144,13 @@ export function MealScannerView({
   const [showHistory, setShowHistory] = useState(false);
   const [reanalyzing, setReanalyzing] = useState(false);
   const [compareIds, setCompareIds] = useState<string[]>([]);
+  const [itemGramDrafts, setItemGramDrafts] = useState<Record<number, string>>({});
+  const hasDraftResult = draftResult !== null;
+  const draftDishTitle = draftResult?.dishTitle ?? "";
+
+  useEffect(() => {
+    setItemGramDrafts({});
+  }, [hasDraftResult, draftDishTitle]);
 
   useEffect(() => {
     if (highlightedMealId) {
@@ -667,13 +674,30 @@ export function MealScannerView({
                     <div className="flex items-center gap-3">
                       <label className="inline-flex items-center gap-1 text-slate-400">
                         <input
-                          type="number"
-                          min={5}
-                          max={1500}
-                          value={item.grams}
-                          onChange={(e) =>
-                            updateDraftItemGrams(idx, Math.max(5, Number(e.target.value) || 5))
-                          }
+                          type="text"
+                          inputMode="numeric"
+                          value={itemGramDrafts[idx] ?? String(item.grams)}
+                          onChange={(e) => {
+                            const cleaned = e.target.value.replace(/[^\d]/g, "");
+                            setItemGramDrafts((prev) => ({ ...prev, [idx]: cleaned }));
+                            if (!cleaned) return;
+                            const n = Number.parseInt(cleaned, 10);
+                            if (Number.isFinite(n) && n >= 5) {
+                              updateDraftItemGrams(idx, Math.min(1500, n));
+                            }
+                          }}
+                          onBlur={() => {
+                            const raw = itemGramDrafts[idx];
+                            setItemGramDrafts((prev) => {
+                              const next = { ...prev };
+                              delete next[idx];
+                              return next;
+                            });
+                            if (raw === undefined) return;
+                            const n = Number.parseInt(raw, 10);
+                            if (!Number.isFinite(n)) return;
+                            updateDraftItemGrams(idx, Math.min(1500, Math.max(5, n)));
+                          }}
                           className="w-16 rounded bg-slate-950 border border-slate-700 px-2 py-1 text-white text-right tabular-nums"
                         />
                         g

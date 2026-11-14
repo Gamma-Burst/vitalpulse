@@ -40,7 +40,11 @@ export async function POST(req: NextRequest) {
           `Type de repas : ${mealType}.`,
           `Diamètre de l'assiette déclaré : ${plateDiameterCm} cm (repère d'échelle).`,
           `Pourcentage effectivement consommé : ${portionEatenPct}% (applique ce ratio sur TOUS les résultats !).`,
-          `Mode clinique utilisateur : ${specialMode}.`,
+          specialMode === "ketogenic"
+            ? `Mode clinique utilisateur : ketogenic — Mode CÉTOGÈNE (Keto) : vérifie que les glucides nets restent très bas (< 12 g sur le repas), valorise les bonnes graisses et signale les sucres/féculents cachés.`
+            : specialMode === "rebalancing"
+              ? `Mode clinique utilisateur : rebalancing — Mode RÉÉQUILIBRAGE ALIMENTAIRE : assiette équilibrée ANSES NOVA 1-2 sans culpabilisation, légumes + protéines + féculents complets.`
+              : `Mode clinique utilisateur : ${specialMode}.`,
           requestedOilLevel
             ? `Niveau d'huile/sauce choisi par l'utilisateur : ${requestedOilLevel}.`
             : "",

@@ -72,3 +72,26 @@ self.addEventListener("notificationclick", (event) => {
     })
   );
 });
+
+self.addEventListener("message", (event) => {
+  const data = event.data;
+  if (!data || data.type !== "VP_SCHEDULE_FASTING_ALERT") return;
+  const delayMs = Number(data.delayMs);
+  if (!Number.isFinite(delayMs) || delayMs <= 0 || delayMs > 2 * 3600 * 1000) return;
+
+  if (self.__vpFastTimer) {
+    clearTimeout(self.__vpFastTimer);
+  }
+  self.__vpFastTimer = setTimeout(() => {
+    self.registration.showNotification(
+      data.title || "VitalPulse · Cycle Jeûne & Repas",
+      {
+        body: data.body || "Votre fenêtre alimentaire vient de changer.",
+        icon: "/icons/icon-192.png",
+        badge: "/icons/icon-192.png",
+        tag: data.key || "vitalpulse-fast-transition",
+        data: { url: "/" },
+      }
+    );
+  }, delayMs);
+});

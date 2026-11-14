@@ -211,10 +211,56 @@ export function formatFrenchShortDateTime(iso: string, nowMs: number = Date.now(
   return `${day}, ${hhmm}`;
 }
 
+export function getDefaultEatingStartHm(id: FastingProtocolId): string {
+  switch (id) {
+    case "omad_23_1":
+      return "19:00";
+    case "20_4":
+      return "17:00";
+    case "18_6":
+      return "13:00";
+    case "16_8":
+      return "12:00";
+    case "14_10":
+      return "10:00";
+    case "12_12":
+      return "08:00";
+    default:
+      return "12:00";
+  }
+}
+
+export function formatAllowedDurationFr(hours: number): string {
+  if (hours <= 0) return "0 minute";
+  if (hours < 1) {
+    const mins = Math.max(1, Math.round(hours * 60));
+    return mins === 1 ? "1 minute" : `${mins} minutes`;
+  }
+  if (Math.abs(hours - 1) < 0.05) return "1 heure";
+  if (Number.isInteger(hours)) return `${hours} heures`;
+  return `${hours.toFixed(1).replace(".0", "")} heures`;
+}
+
+export function formatClockHm(isoOrMs: string | number): string {
+  const d = typeof isoOrMs === "number" ? new Date(isoOrMs) : new Date(isoOrMs);
+  if (Number.isNaN(d.getTime())) return "--";
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+function parseHmPair(hm?: string, fallbackId: FastingProtocolId = "16_8"): { hh: number; mm: number } {
+  const source = hm && /^\d{1,2}:\d{2}$/.test(hm.trim()) ? hm.trim() : getDefaultEatingStartHm(fallbackId);
+  const [hStr, mStr] = source.split(":");
+  return {
+    hh: Math.max(0, Math.min(23, Number(hStr) || 0)),
+    mm: Math.max(0, Math.min(59, Number(mStr) || 0)),
+  };
+}
+
 export interface FastingLiveStatus {
-  mode: "idle" | "scheduled" | "fasting";
+  mode: "idle" | "scheduled" | "fasting" | "eating_window";
   protocol: FastingProtocolSpec;
   targetHours: number;
+  eatWindowHours: number;
   headlineFr: string;
   countdownLabelFr: string;
   countdownHms: string;
@@ -223,9 +269,128 @@ export interface FastingLiveStatus {
   remainingHours: number;
   startIso: string | null;
   endIso: string | null;
+  allowedEatSummaryFr: string;
+  transitionKey: string | null;
+  notificationPayload: { key: string; title: string; body: string } | null;
   currentPhase: FastingPhaseSpec;
   nextPhase: FastingPhaseSpec | null;
   hoursUntilNextPhase: number | null;
+}
+
+function buildFastingActiveStatus(params: {
+  fastStartMs: number;
+  fastEndMs: number;
+  nowMs: number;
+  targetHours: number;
+  eatWindowHours: number;
+  protocol: FastingProtocolSpec;
+}): FastingLiveStatus {
+  const { fastStartMs, fastEndMs, nowMs, targetHours, eatWindowHours, protocol } = params;
+  const elapsedMs = Math.max(0, nowMs - fastStartMs);
+  const elapsedHours = +(elapsedMs / 3600_000).toFixed(2);
+  const spanMs = Math.max(1, fastEndMs - fastStartMs);
+  const remainingMs = Math.max(0, fastEndMs - nowMs);
+  const progress = Math.max(0, Math.min(1, elapsedMs / spanMs));
+
+  let phaseIdx = 0;
+  for (let i = 0; i < FASTING_PHASES.length; i++) {
+    if (elapsedHours >= FASTING_PHASES[i].minHours) phaseIdx = i;
+  }
+  const currentPhase = FASTING_PHASES[phaseIdx];
+  const nextPhase = phaseIdx + 1 < FASTING_PHASES.length ? FASTING_PHASES[phaseIdx + 1] : null;
+  const hoursUntilNextPhase = nextPhase
+    ? +Math.max(0, nextPhase.minHours - elapsedHours).toFixed(1)
+    : null;
+
+  const nextMealClock = formatClockHm(fastEndMs);
+  const eatDurationText = eatWindowHours > 0 ? formatAllowedDurationFr(eatWindowHours) : "";
+  const key = `fast-${new Date(fastStartMs).toISOString().slice(0, 16)}`;
+
+  return {
+    mode: "fasting",
+    protocol,
+    targetHours,
+    eatWindowHours,
+    headlineFr: remainingMs === 0 ? "Objectif atteint !" : "Période de jeûne en cours",
+    countdownLabelFr: remainingMs === 0 ? "Temps accompli" : "Il reste",
+    countdownHms: remainingMs === 0 ? formatDurationHms(elapsedMs) : formatDurationHms(remainingMs),
+    progress,
+    elapsedHours,
+    remainingHours: +(remainingMs / 3600_000).toFixed(2),
+    startIso: new Date(fastStartMs).toISOString(),
+    endIso: new Date(fastEndMs).toISOString(),
+    allowedEatSummaryFr:
+      eatWindowHours > 0
+        ? `En période de jeûne (${protocol.badge}) · Prochain repas autorisé à ${nextMealClock} pendant ${eatDurationText}`
+        : `En période de jeûne (${protocol.badge}) · Fin prévue à ${nextMealClock}`,
+    transitionKey: key,
+    notificationPayload: {
+      key,
+      title: `⏳ Période de jeûne démarrée (${protocol.badge})`,
+      body:
+        eatWindowHours > 0
+          ? `Votre fenêtre repas est terminée. Période de jeûne active pour ${targetHours} h — prochain repas autorisé à ${nextMealClock} pendant ${eatDurationText}.`
+          : `Période de jeûne active pour ${targetHours} h — fin prévue à ${nextMealClock}. Hydratez-vous bien.`,
+    },
+    currentPhase,
+    nextPhase,
+    hoursUntilNextPhase,
+  };
+}
+
+function buildEatingWindowStatus(params: {
+  eatStartMs: number;
+  eatEndMs: number;
+  nowMs: number;
+  targetHours: number;
+  eatWindowHours: number;
+  protocol: FastingProtocolSpec;
+}): FastingLiveStatus {
+  const { eatStartMs, eatEndMs, nowMs, targetHours, eatWindowHours, protocol } = params;
+  const remainingMs = Math.max(0, eatEndMs - nowMs);
+  const spanMs = Math.max(1, eatEndMs - eatStartMs);
+  const progress = Math.max(0, Math.min(1, (nowMs - eatStartMs) / spanMs));
+  const durationLabel = formatAllowedDurationFr(eatWindowHours);
+  const startClock = formatClockHm(eatStartMs);
+  const endClock = formatClockHm(eatEndMs);
+
+  const isClosingSoon = eatWindowHours >= 1 && remainingMs > 0 && remainingMs <= 15 * 60_000;
+  const eatKey = `eat-${new Date(eatStartMs).toISOString().slice(0, 16)}`;
+  const closingKey = `closing15m-${new Date(eatEndMs).toISOString().slice(0, 16)}`;
+  const key = isClosingSoon ? closingKey : eatKey;
+
+  const notificationPayload = isClosingSoon
+    ? {
+        key: closingKey,
+        title: "⏰ Fin de fenêtre repas dans moins de 15 min",
+        body: `Il vous reste ${Math.max(1, Math.ceil(remainingMs / 60_000))} min pour terminer votre repas et boire de l'eau avant la reprise du jeûne (${targetHours} h).`,
+      }
+    : {
+        key: eatKey,
+        title: `🍽️ Vous pouvez manger ! (${protocol.badge})`,
+        body: `Vous êtes autorisé à manger pendant ${durationLabel} (jusqu'à ${endClock}). Privilégiez protéines, fibres et hydratation.`,
+      };
+
+  return {
+    mode: "eating_window",
+    protocol,
+    targetHours,
+    eatWindowHours,
+    headlineFr: "Fenêtre repas ouverte — Vous pouvez manger !",
+    countdownLabelFr: "Temps autorisé restant",
+    countdownHms: formatDurationHms(remainingMs),
+    progress,
+    elapsedHours: +((nowMs - eatStartMs) / 3600_000).toFixed(2),
+    remainingHours: +(remainingMs / 3600_000).toFixed(2),
+    startIso: new Date(eatStartMs).toISOString(),
+    endIso: new Date(eatEndMs).toISOString(),
+    allowedEatSummaryFr: `Vous êtes autorisé à manger pendant ${durationLabel} (de ${startClock} à ${endClock})`,
+    transitionKey: key,
+    notificationPayload,
+    currentPhase: FASTING_PHASES[0],
+    nextPhase: null,
+    hoursUntilNextPhase: null,
+  };
 }
 
 export function computeFastingLiveStatus(
@@ -234,89 +399,182 @@ export function computeFastingLiveStatus(
 ): FastingLiveStatus {
   const protocol = getProtocolSpec(config.protocolId);
   const targetHours = Math.max(12, Math.min(36, config.fastHours || protocol.fastHours || 16));
+  const eatWindowHours =
+    config.protocolId === "5_2"
+      ? 0
+      : Math.max(0, config.eatHours ?? protocol.eatHours ?? Math.max(0, 24 - targetHours));
   const targetMs = targetHours * 3600_000;
+  const eatMs = eatWindowHours * 3600_000;
 
-  let effectiveStartMs: number | null = null;
-  let scheduledMs: number | null = null;
-
-  if (config.activeStartIso) {
-    const parsed = Date.parse(config.activeStartIso);
-    if (Number.isFinite(parsed)) {
-      effectiveStartMs = parsed;
-    }
-  } else if (config.plannedStartIso) {
-    const parsed = Date.parse(config.plannedStartIso);
-    if (Number.isFinite(parsed)) {
-      if (parsed > nowMs) {
-        scheduledMs = parsed;
-      } else {
-        // L'heure prévue est arrivée : activation automatique du jeûne
-        effectiveStartMs = parsed;
-      }
-    }
-  }
-
-  if (scheduledMs !== null) {
-    const untilStartMs = Math.max(0, scheduledMs - nowMs);
-    const endIso = new Date(scheduledMs + targetMs).toISOString();
+  if (config.protocolId === "none") {
     return {
-      mode: "scheduled",
+      mode: "idle",
       protocol,
       targetHours,
-      headlineFr: "Préparez-vous à jeûner !",
-      countdownLabelFr: "Débute dans",
-      countdownHms: formatDurationHms(untilStartMs),
+      eatWindowHours: 0,
+      headlineFr: "Prêt quand vous l'êtes",
+      countdownLabelFr: "Sans jeûne actif",
+      countdownHms: "--:--:--",
       progress: 0,
       elapsedHours: 0,
-      remainingHours: targetHours,
-      startIso: new Date(scheduledMs).toISOString(),
-      endIso,
+      remainingHours: 0,
+      startIso: null,
+      endIso: null,
+      allowedEatSummaryFr:
+        "Aucun protocole de jeûne activé — alimentation classique sans contrainte horaire.",
+      transitionKey: null,
+      notificationPayload: null,
       currentPhase: FASTING_PHASES[0],
       nextPhase: FASTING_PHASES[1],
       hoursUntilNextPhase: 4,
     };
   }
 
+  if (config.plannedStartIso) {
+    const parsedPlanned = Date.parse(config.plannedStartIso);
+    if (Number.isFinite(parsedPlanned) && parsedPlanned > nowMs) {
+      const untilStartMs = Math.max(0, parsedPlanned - nowMs);
+      const endIso = new Date(parsedPlanned + targetMs).toISOString();
+      return {
+        mode: "scheduled",
+        protocol,
+        targetHours,
+        eatWindowHours,
+        headlineFr: "Préparez-vous à jeûner !",
+        countdownLabelFr: "Débute dans",
+        countdownHms: formatDurationHms(untilStartMs),
+        progress: 0,
+        elapsedHours: 0,
+        remainingHours: targetHours,
+        startIso: new Date(parsedPlanned).toISOString(),
+        endIso,
+        allowedEatSummaryFr: `Début prévu à ${formatClockHm(parsedPlanned)} · Prochain repas autorisé ensuite à ${formatClockHm(parsedPlanned + targetMs)}`,
+        transitionKey: null,
+        notificationPayload: null,
+        currentPhase: FASTING_PHASES[0],
+        nextPhase: FASTING_PHASES[1],
+        hoursUntilNextPhase: 4,
+      };
+    }
+  }
+
+  let effectiveStartMs: number | null = null;
+  if (config.eatingWindowStartIso && eatMs > 0) {
+    const eatStartMs = Date.parse(config.eatingWindowStartIso);
+    if (Number.isFinite(eatStartMs)) {
+      if (nowMs < eatStartMs + eatMs) {
+        return buildEatingWindowStatus({
+          eatStartMs,
+          eatEndMs: eatStartMs + eatMs,
+          nowMs,
+          targetHours,
+          eatWindowHours,
+          protocol,
+        });
+      }
+      effectiveStartMs = eatStartMs + eatMs;
+    }
+  }
+
+  if (effectiveStartMs === null && config.activeStartIso) {
+    const parsed = Date.parse(config.activeStartIso);
+    if (Number.isFinite(parsed)) effectiveStartMs = parsed;
+  } else if (effectiveStartMs === null && config.plannedStartIso) {
+    const parsed = Date.parse(config.plannedStartIso);
+    if (Number.isFinite(parsed) && parsed <= nowMs) effectiveStartMs = parsed;
+  }
+
   if (effectiveStartMs !== null) {
     const elapsedMs = Math.max(0, nowMs - effectiveStartMs);
-    const elapsedHours = +(elapsedMs / 3600_000).toFixed(2);
-    const remainingMs = Math.max(0, targetMs - elapsedMs);
-    const progress = Math.max(0, Math.min(1, elapsedMs / targetMs));
-    const endIso = new Date(effectiveStartMs + targetMs).toISOString();
-
-    let phaseIdx = 0;
-    for (let i = 0; i < FASTING_PHASES.length; i++) {
-      const p = FASTING_PHASES[i];
-      if (elapsedHours >= p.minHours) phaseIdx = i;
+    if (elapsedMs < targetMs || eatMs <= 0) {
+      return buildFastingActiveStatus({
+        fastStartMs: effectiveStartMs,
+        fastEndMs: effectiveStartMs + targetMs,
+        nowMs,
+        targetHours,
+        eatWindowHours,
+        protocol,
+      });
     }
-    const currentPhase = FASTING_PHASES[phaseIdx];
-    const nextPhase = phaseIdx + 1 < FASTING_PHASES.length ? FASTING_PHASES[phaseIdx + 1] : null;
-    const hoursUntilNextPhase = nextPhase
-      ? +Math.max(0, nextPhase.minHours - elapsedHours).toFixed(1)
-      : null;
-
-    return {
-      mode: "fasting",
-      protocol,
+    const cycleMs = targetMs + eatMs;
+    const cycleIndex = Math.floor(elapsedMs / cycleMs);
+    const cycleOffsetMs = elapsedMs % cycleMs;
+    const cycleBaseMs = effectiveStartMs + cycleIndex * cycleMs;
+    if (cycleOffsetMs >= targetMs) {
+      return buildEatingWindowStatus({
+        eatStartMs: cycleBaseMs + targetMs,
+        eatEndMs: cycleBaseMs + cycleMs,
+        nowMs,
+        targetHours,
+        eatWindowHours,
+        protocol,
+      });
+    }
+    return buildFastingActiveStatus({
+      fastStartMs: cycleBaseMs,
+      fastEndMs: cycleBaseMs + targetMs,
+      nowMs,
       targetHours,
-      headlineFr: remainingMs === 0 ? "Objectif atteint !" : "Jeûne en cours",
-      countdownLabelFr: remainingMs === 0 ? "Temps accompli" : "Il reste",
-      countdownHms: remainingMs === 0 ? formatDurationHms(elapsedMs) : formatDurationHms(remainingMs),
-      progress,
-      elapsedHours,
-      remainingHours: +(remainingMs / 3600_000).toFixed(2),
-      startIso: new Date(effectiveStartMs).toISOString(),
-      endIso,
-      currentPhase,
-      nextPhase,
-      hoursUntilNextPhase,
-    };
+      eatWindowHours,
+      protocol,
+    });
+  }
+
+  if (config.dailyScheduleEnabled && eatMs > 0) {
+    const { hh, mm } = parseHmPair(config.eatingWindowStartHm, config.protocolId);
+    const dNow = new Date(nowMs);
+    const candidateToday = new Date(
+      dNow.getFullYear(),
+      dNow.getMonth(),
+      dNow.getDate(),
+      hh,
+      mm,
+      0,
+      0
+    );
+    const eatStartDate =
+      candidateToday.getTime() > nowMs
+        ? new Date(dNow.getFullYear(), dNow.getMonth(), dNow.getDate() - 1, hh, mm, 0, 0)
+        : candidateToday;
+    const eatStartMs = eatStartDate.getTime();
+    const eatEndMs = eatStartMs + eatMs;
+
+    if (nowMs >= eatStartMs && nowMs < eatEndMs) {
+      return buildEatingWindowStatus({
+        eatStartMs,
+        eatEndMs,
+        nowMs,
+        targetHours,
+        eatWindowHours,
+        protocol,
+      });
+    }
+
+    const nextEatStartMs = new Date(
+      eatStartDate.getFullYear(),
+      eatStartDate.getMonth(),
+      eatStartDate.getDate() + 1,
+      hh,
+      mm,
+      0,
+      0
+    ).getTime();
+
+    return buildFastingActiveStatus({
+      fastStartMs: eatEndMs,
+      fastEndMs: nextEatStartMs,
+      nowMs,
+      targetHours,
+      eatWindowHours,
+      protocol,
+    });
   }
 
   return {
     mode: "idle",
     protocol,
     targetHours,
+    eatWindowHours,
     headlineFr: "Prêt quand vous l'êtes",
     countdownLabelFr: "Durée cible",
     countdownHms: formatDurationHms(targetMs),
@@ -325,6 +583,12 @@ export function computeFastingLiveStatus(
     remainingHours: targetHours,
     startIso: null,
     endIso: null,
+    allowedEatSummaryFr:
+      eatWindowHours > 0
+        ? `Protocole ${protocol.badge} · ${targetHours} h de jeûne, repas autorisé pendant ${formatAllowedDurationFr(eatWindowHours)}.`
+        : protocol.subtitle,
+    transitionKey: null,
+    notificationPayload: null,
     currentPhase: FASTING_PHASES[0],
     nextPhase: FASTING_PHASES[1],
     hoursUntilNextPhase: 4,

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import {
   AlertTriangle,
@@ -34,7 +34,11 @@ import type { BodyLabSubTab } from "@/components/BodyLabView";
 import { EnergyActivityChart } from "@/components/EnergyActivityChart";
 import { DetailSheet } from "@/components/ui/DetailSheet";
 import { HeroEnergyOrb, LiveTileIcon } from "@/components/ui/LiveMetricVisuals";
-import { computeFastingLiveStatus } from "@/lib/fasting-engine";
+import {
+  computeFastingLiveStatus,
+  formatAllowedDurationFr,
+  formatClockHm,
+} from "@/lib/fasting-engine";
 import {
   buildWeeklyAdherenceStrip,
   clampRingProgress,
@@ -151,6 +155,13 @@ export function DashboardView({
 }: DashboardViewProps) {
   const shouldReduceMotion = useReducedMotion();
   const [sheet, setSheet] = useState<ActiveSheetKind>(null);
+  const [nowMs, setNowMs] = useState<number>(() => Date.now());
+
+  useEffect(() => {
+    if (!fasting || fasting.protocolId === "none") return;
+    const id = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [fasting]);
 
   const weeklyStrip = useMemo(
     () => buildWeeklyAdherenceStrip(recentBalances),
@@ -163,12 +174,28 @@ export function DashboardView({
   );
 
   const fastingLive = useMemo(
-    () =>
-      fasting
-        ? computeFastingLiveStatus(fasting)
-        : null,
-    [fasting]
+    () => (fasting ? computeFastingLiveStatus(fasting, nowMs) : null),
+    [fasting, nowMs]
   );
+
+  const dietBadge = useMemo(() => {
+    if (profile.specialMode === "ketogenic") {
+      return { label: "Cétogène (Keto)", cls: "border-emerald-400/35 bg-emerald-500/15 text-emerald-300" };
+    }
+    if (profile.specialMode === "rebalancing" || profile.primaryGoal === "rebalancing") {
+      return { label: "Rééquilibrage", cls: "border-sky-400/35 bg-sky-500/15 text-sky-300" };
+    }
+    if (profile.specialMode === "glp1_muscle_guard") {
+      return { label: "GLP-1 Protection", cls: "border-violet-400/35 bg-violet-500/15 text-violet-300" };
+    }
+    if (profile.specialMode === "glycemic_shield") {
+      return { label: "Bouclier glycémique", cls: "border-amber-400/35 bg-amber-500/15 text-amber-300" };
+    }
+    if (profile.specialMode === "cardio_low_sodium") {
+      return { label: "Cardio <1500mg Na", cls: "border-rose-400/35 bg-rose-500/15 text-rose-300" };
+    }
+    return null;
+  }, [profile.primaryGoal, profile.specialMode]);
 
   const todayLesson = useMemo(
     () => getTodayMindsetLesson(todayBalance.dateKey),
@@ -273,9 +300,18 @@ export function DashboardView({
       {/* Bandeau supérieur épuré : Salutation + Ruban 7 jours + Config Widgets */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="text-xs font-medium text-slate-400">
-            Bonjour <strong className="text-white">{profile.name}</strong> · IMC {anthro.bmi}
-          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-xs font-medium text-slate-400">
+              Bonjour <strong className="text-white">{profile.name}</strong> · IMC {anthro.bmi}
+            </p>
+            {dietBadge && (
+              <span
+                className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${dietBadge.cls}`}
+              >
+                {dietBadge.label}
+              </span>
+            )}
+          </div>
           <div className="mt-1.5 flex items-center gap-1.5" aria-label="Régularité 7 derniers jours">
             {weeklyStrip.map((day) => {
               const dotClass =
@@ -308,6 +344,78 @@ export function DashboardView({
           Widgets ({visibleWidgets.length})
         </button>
       </div>
+
+      {/* Bandeau temps réel Jeûne / Fenêtre repas autorisée */}
+      {fasting && fasting.protocolId !== "none" && fastingLive && (
+        <div
+          className={`flex flex-wrap items-center justify-between gap-3 rounded-3xl border px-4 py-3 transition-all ${
+            fastingLive.mode === "eating_window"
+              ? "border-emerald-400/45 bg-emerald-500/12 shadow-[0_0_24px_rgba(16,185,129,0.16)]"
+              : fastingLive.mode === "fasting"
+                ? "border-amber-400/40 bg-amber-500/10"
+                : "border-cyan-400/35 bg-cyan-500/10"
+          }`}
+        >
+          <div className="min-w-0 flex-1 space-y-0.5">
+            <div className="flex flex-wrap items-center gap-2">
+              <span
+                className={`rounded-full px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wider ${
+                  fastingLive.mode === "eating_window"
+                    ? "bg-emerald-400/20 text-emerald-200"
+                    : fastingLive.mode === "fasting"
+                      ? "bg-amber-400/20 text-amber-200"
+                      : "bg-cyan-400/20 text-cyan-200"
+                }`}
+              >
+                {fastingLive.mode === "eating_window"
+                  ? `Autorisé à manger · ${fastingLive.protocol.badge}`
+                  : fastingLive.mode === "fasting"
+                    ? `En période de jeûne · ${fastingLive.protocol.badge}`
+                    : fastingLive.mode === "scheduled"
+                      ? `Jeûne planifié · ${fastingLive.protocol.badge}`
+                      : `${fastingLive.protocol.badge} prêt`}
+              </span>
+              {fasting.dailyScheduleEnabled && fasting.eatingWindowStartHm && (
+                <span className="text-[11px] font-medium text-slate-300">
+                  Cycle quotidien · repas à {fasting.eatingWindowStartHm}
+                </span>
+              )}
+            </div>
+            <p className="text-sm font-extrabold text-white">
+              {fastingLive.mode === "eating_window"
+                ? `Vous êtes autorisé à manger pendant ${formatAllowedDurationFr(
+                    fastingLive.eatWindowHours
+                  )} · reste ${fastingLive.countdownHms}`
+                : fastingLive.mode === "fasting"
+                  ? `${fastingLive.currentPhase.titleFr} (${fastingLive.currentPhase.shortBadge}) · encore ${fastingLive.countdownHms}`
+                  : fastingLive.mode === "scheduled"
+                    ? `${fastingLive.headlineFr} · début dans ${fastingLive.countdownHms}`
+                    : "Activez le cycle automatique ou démarrez votre minuteur"}
+            </p>
+            <p className="text-[11px] text-slate-300">
+              {fastingLive.mode === "eating_window"
+                ? `Fin de fenêtre repas / reprise du jeûne à ${
+                    fastingLive.endIso ? formatClockHm(fastingLive.endIso) : "--:--"
+                  }`
+                : fastingLive.mode === "fasting"
+                  ? `Vous serez autorisé à manger à ${
+                      fastingLive.endIso ? formatClockHm(fastingLive.endIso) : "--:--"
+                    } pendant ${formatAllowedDurationFr(fastingLive.eatWindowHours)}`
+                  : fastingLive.currentPhase.physiologicalSummaryFr}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              if (onNavigateFasting) onNavigateFasting();
+              else onNavigateTab("fasting");
+            }}
+            className="shrink-0 rounded-2xl border border-white/15 bg-slate-900/80 px-3.5 py-2 text-xs font-bold text-white hover:border-emerald-400/50 hover:text-emerald-200"
+          >
+            Minuteur &amp; cycle →
+          </button>
+        </div>
+      )}
 
       {/* HERO ENERGIE LEAN : 1 Orbe + 3 chiffres + 3 barres macro -> clic = DetailSheet complet */}
       <motion.section
@@ -458,31 +566,51 @@ export function DashboardView({
           <button
             type="button"
             onClick={() => openSheet("fasting")}
-            className="vp-card flex flex-col justify-between gap-2.5 rounded-3xl p-4 text-left hover:border-amber-400/45"
+            className={`vp-card flex flex-col justify-between gap-2.5 rounded-3xl p-4 text-left ${
+              fastingLive?.mode === "eating_window"
+                ? "border-emerald-400/50 hover:border-emerald-400/75"
+                : "hover:border-amber-400/45"
+            }`}
           >
             <div className="flex w-full items-start justify-between gap-2">
               <LiveTileIcon
                 kind="fasting"
                 ratio={fastingLive?.progress ?? 0.25}
-                active={fastingLive?.mode === "fasting"}
+                active={fastingLive?.mode === "fasting" || fastingLive?.mode === "eating_window"}
               />
-              <span className="rounded-full border border-amber-400/30 bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-300">
+              <span
+                className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${
+                  fastingLive?.mode === "eating_window"
+                    ? "border-emerald-400/35 bg-emerald-500/15 text-emerald-300"
+                    : "border-amber-400/30 bg-amber-500/15 text-amber-300"
+                }`}
+              >
                 {fastingLive?.protocol.badge || "16:8"}
               </span>
             </div>
             <div>
-              <p className="text-[11px] font-semibold text-slate-400">Jeûne &amp; OMAD</p>
+              <p className="text-[11px] font-semibold text-slate-400">
+                {fastingLive?.mode === "eating_window"
+                  ? "Fenêtre repas ouverte"
+                  : fastingLive?.mode === "fasting"
+                    ? "Jeûne en cours"
+                    : "Jeûne & OMAD"}
+              </p>
               <p className="font-display text-lg font-extrabold text-white tabular-nums">
-                {fastingLive?.mode === "fasting"
+                {fastingLive?.mode === "fasting" || fastingLive?.mode === "eating_window"
                   ? fastingLive.countdownHms
                   : fastingLive?.mode === "scheduled"
                     ? "Planifié"
                     : "Prêt"}
               </p>
               <p className="mt-0.5 truncate text-[11px] text-slate-400">
-                {fastingLive?.mode === "fasting"
-                  ? fastingLive.currentPhase.titleFr
-                  : "Chrono & 6 phases"}
+                {fastingLive?.mode === "eating_window"
+                  ? `Autorisé ${formatAllowedDurationFr(fastingLive.eatWindowHours)}`
+                  : fastingLive?.mode === "fasting"
+                    ? `${fastingLive.currentPhase.titleFr} · repas ${
+                        fastingLive.endIso ? formatClockHm(fastingLive.endIso) : ""
+                      }`
+                    : "Chrono & 6 phases"}
               </p>
             </div>
           </button>
@@ -776,15 +904,37 @@ export function DashboardView({
         size="md"
       >
         <div className="space-y-4">
-          <div className="rounded-2xl border border-amber-400/30 bg-amber-500/10 p-4">
-            <p className="text-xs font-semibold text-amber-300">
+          <div
+            className={`rounded-2xl border p-4 ${
+              fastingLive?.mode === "eating_window"
+                ? "border-emerald-400/40 bg-emerald-500/12"
+                : "border-amber-400/30 bg-amber-500/10"
+            }`}
+          >
+            <p
+              className={`text-xs font-semibold ${
+                fastingLive?.mode === "eating_window" ? "text-emerald-300" : "text-amber-300"
+              }`}
+            >
               {fastingLive?.headlineFr || "Prêt"}
             </p>
             <p className="mt-1 font-display text-3xl font-extrabold text-white tabular-nums">
               {fastingLive?.countdownHms || "16:00:00"}
             </p>
             <p className="mt-1 text-xs text-slate-300">
-              {fastingLive?.currentPhase.physiologicalSummaryFr}
+              {fastingLive?.mode === "eating_window"
+                ? `Vous êtes autorisé à manger pendant ${formatAllowedDurationFr(
+                    fastingLive.eatWindowHours
+                  )} (reprise du jeûne à ${
+                    fastingLive.endIso ? formatClockHm(fastingLive.endIso) : "--:--"
+                  }).`
+                : fastingLive?.mode === "fasting"
+                  ? `Prochain repas à ${
+                      fastingLive.endIso ? formatClockHm(fastingLive.endIso) : "--:--"
+                    } pendant ${formatAllowedDurationFr(fastingLive.eatWindowHours)}. ${
+                      fastingLive.currentPhase.physiologicalSummaryFr
+                    }`
+                  : fastingLive?.currentPhase.physiologicalSummaryFr}
             </p>
           </div>
           <button

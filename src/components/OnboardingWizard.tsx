@@ -18,14 +18,23 @@ import {
   FastingProtocolId,
   PrimaryGoal,
   Sex,
+  SpecialMode,
   UserProfile,
   WearableEcosystem,
   WearableSyncState,
 } from "@/types/vitalpulse";
 import { computeAnthropometrics } from "@/lib/metabolic-engine";
-import { FASTING_PROTOCOLS } from "@/lib/fasting-engine";
+import {
+  FASTING_PROTOCOLS,
+  formatAllowedDurationFr,
+  getDefaultEatingStartHm,
+  getProtocolSpec,
+} from "@/lib/fasting-engine";
 import { WEARABLE_ECOSYSTEMS } from "@/lib/wearables-bridge";
-import { triggerLightHaptic } from "@/lib/native-bridge";
+import {
+  requestFastingNotificationPermission,
+  triggerLightHaptic,
+} from "@/lib/native-bridge";
 
 export interface OnboardingWizardProps {
   initialProfile: UserProfile;
@@ -34,6 +43,8 @@ export interface OnboardingWizardProps {
   onCompleteFresh: (payload: {
     profile: UserProfile;
     fastingProtocol: FastingProtocolId;
+    eatingWindowStartHm: string;
+    fastingNotifications: boolean;
     enabledWidgets: DashboardWidgetId[];
     wearableEcosystem: WearableEcosystem;
   }) => void;
@@ -42,10 +53,70 @@ export interface OnboardingWizardProps {
 
 const GOALS: Array<{ id: PrimaryGoal; label: string; desc: string }> = [
   { id: "fat_loss", label: "Perte de gras durable", desc: "Déficit maîtrisé & protection musculaire" },
+  {
+    id: "rebalancing",
+    label: "Rééquilibrage alimentaire",
+    desc: "Manger mieux durablement, satiété & perte douce sans privation",
+  },
   { id: "recomposition", label: "Recomposition", desc: "Affiner la taille tout en tonifiant" },
   { id: "maintenance", label: "Équilibre & énergie", desc: "Stabiliser le poids & la glycémie" },
   { id: "muscle_gain", label: "Prise de masse propre", desc: "Surplus léger & protéines optimisées" },
 ];
+
+const DIET_APPROACHES: Array<{ id: SpecialMode; label: string; desc: string }> = [
+  {
+    id: "rebalancing",
+    label: "Rééquilibrage alimentaire",
+    desc: "Assiette équilibrée NOVA 1-2, fibres & plaisir préservé",
+  },
+  {
+    id: "ketogenic",
+    label: "Cétogène (Keto)",
+    desc: "Très pauvre en glucides (~30 g/j max), lipides sains & cétose",
+  },
+  {
+    id: "glycemic_shield",
+    label: "IG Bas / Bouclier glycémique",
+    desc: "Limiter les pics de sucre et fringales",
+  },
+  {
+    id: "standard",
+    label: "Classique / Flexible",
+    desc: "Répartition souple au quotidien",
+  },
+];
+
+function sanitizeIntInput(raw: string): string {
+  return raw.replace(/[^0-9]/g, "");
+}
+
+function sanitizeDecimalInput(raw: string): string {
+  const cleaned = raw.replace(",", ".").replace(/[^0-9.]/g, "");
+  const parts = cleaned.split(".");
+  return parts.length <= 2 ? cleaned : `${parts[0]}.${parts.slice(1).join("")}`;
+}
+
+function parseBoundedNumber(
+  raw: string,
+  fallback: number,
+  min: number,
+  max: number
+): number {
+  const trimmed = raw.trim();
+  if (!trimmed) return fallback;
+  const parsed = Number(trimmed);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(min, Math.min(max, parsed));
+}
+
+function computeWindowEndHm(startHm: string, durationHours: number): string {
+  const [hStr, mStr] = (startHm || "12:00").split(":");
+  const startMinutes = (Number(hStr) || 0) * 60 + (Number(mStr) || 0);
+  const totalMinutes = (startMinutes + Math.round(durationHours * 60)) % (24 * 60);
+  const hh = Math.floor((totalMinutes + 24 * 60) % (24 * 60) / 60);
+  const mm = ((totalMinutes % 60) + 60) % 60;
+  return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+}
 
 const WIDGET_CATALOG: Array<{ id: DashboardWidgetId; title: string; subtitle: string }> = [
   { id: "fasting", title: "Jeûne / OMAD", subtitle: "Arc chrono & phases cellulaires" },
@@ -72,15 +143,20 @@ export function OnboardingWizard({
     initialProfile.isDemoProfile ? "Mon profil" : initialProfile.name || "Mon profil"
   );
   const [sex, setSex] = useState<Sex>(initialProfile.sex || "male");
-  const [age, setAge] = useState(initialProfile.age || 34);
-  const [heightCm, setHeightCm] = useState(initialProfile.heightCm || 175);
-  const [weightKg, setWeightKg] = useState(initialProfile.weightKg || 78);
-  const [targetWeightKg, setTargetWeightKg] = useState(initialProfile.targetWeightKg || 72);
+  const [ageInput, setAgeInput] = useState<string>(String(initialProfile.age || 34));
+  const [heightInput, setHeightInput] = useState<string>(String(initialProfile.heightCm || 175));
+  const [weightInput, setWeightInput] = useState<string>(String(initialProfile.weightKg || 78));
+  const [targetWeightInput, setTargetWeightInput] = useState<string>(
+    String(initialProfile.targetWeightKg || 72)
+  );
   const [waistCm, setWaistCm] = useState<string>(
     initialProfile.waistCm ? String(initialProfile.waistCm) : ""
   );
   const [primaryGoal, setPrimaryGoal] = useState<PrimaryGoal>(
     initialProfile.primaryGoal || "fat_loss"
+  );
+  const [specialMode, setSpecialMode] = useState<SpecialMode>(
+    initialProfile.specialMode || "standard"
   );
   const [weeklyPaceKg, setWeeklyPaceKg] = useState<number>(initialProfile.weeklyPaceKg ?? -0.4);
   const [activityProfile, setActivityProfile] = useState<ActivityProfile>(
@@ -92,6 +168,10 @@ export function OnboardingWizard({
   const [fastingProtocol, setFastingProtocol] = useState<FastingProtocolId>(
     initialProfile.preferredFasting || "16_8"
   );
+  const [eatingWindowStartHm, setEatingWindowStartHm] = useState<string>(() =>
+    getDefaultEatingStartHm(initialProfile.preferredFasting || "16_8")
+  );
+  const [fastingNotifications, setFastingNotifications] = useState<boolean>(true);
   const [wearableEcosystem, setWearableEcosystem] = useState<WearableEcosystem>(
     initialWearable.ecosystem || "samsung_health"
   );
@@ -106,12 +186,18 @@ export function OnboardingWizard({
       ...initialProfile,
       name: name.trim() || "Mon profil",
       sex,
-      age: Math.max(12, Math.min(100, age)),
-      heightCm: Math.max(120, Math.min(230, heightCm)),
-      weightKg: Math.max(35, Math.min(250, weightKg)),
-      targetWeightKg: Math.max(35, Math.min(250, targetWeightKg)),
+      age: Math.round(parseBoundedNumber(ageInput, initialProfile.age || 34, 12, 100)),
+      heightCm: Math.round(parseBoundedNumber(heightInput, initialProfile.heightCm || 175, 120, 230)),
+      weightKg: parseBoundedNumber(weightInput, initialProfile.weightKg || 78, 35, 250),
+      targetWeightKg: parseBoundedNumber(
+        targetWeightInput,
+        initialProfile.targetWeightKg || 72,
+        35,
+        250
+      ),
       waistCm: Number(waistCm) > 40 ? Number(waistCm) : undefined,
       primaryGoal,
+      specialMode,
       weeklyPaceKg:
         primaryGoal === "maintenance"
           ? 0
@@ -128,12 +214,13 @@ export function OnboardingWizard({
       initialProfile,
       name,
       sex,
-      age,
-      heightCm,
-      weightKg,
-      targetWeightKg,
+      ageInput,
+      heightInput,
+      weightInput,
+      targetWeightInput,
       waistCm,
       primaryGoal,
+      specialMode,
       weeklyPaceKg,
       activityProfile,
       dailyStepGoal,
@@ -157,12 +244,18 @@ export function OnboardingWizard({
 
   function handleFinish() {
     triggerLightHaptic();
+    const effectiveProtocol = fastingBlockedByClinical ? "none" : fastingProtocol;
+    if (effectiveProtocol !== "none" && fastingNotifications) {
+      void requestFastingNotificationPermission();
+    }
     onCompleteFresh({
       profile: {
         ...previewProfile,
-        preferredFasting: fastingBlockedByClinical ? "none" : fastingProtocol,
+        preferredFasting: effectiveProtocol,
       },
-      fastingProtocol: fastingBlockedByClinical ? "none" : fastingProtocol,
+      fastingProtocol: effectiveProtocol,
+      eatingWindowStartHm,
+      fastingNotifications,
       enabledWidgets,
       wearableEcosystem,
     });
@@ -259,6 +352,10 @@ export function OnboardingWizard({
                       onClick={() => {
                         triggerLightHaptic();
                         setPrimaryGoal(g.id);
+                        if (g.id === "rebalancing") {
+                          if (specialMode === "standard") setSpecialMode("rebalancing");
+                          setWeeklyPaceKg(-0.25);
+                        }
                       }}
                       className={`rounded-2xl border p-3.5 text-left transition ${
                         active
@@ -271,6 +368,41 @@ export function OnboardingWizard({
                     </button>
                   );
                 })}
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                  Approche alimentaire souhaitée
+                </label>
+                <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {DIET_APPROACHES.map((d) => {
+                    const active = specialMode === d.id;
+                    return (
+                      <button
+                        key={d.id}
+                        type="button"
+                        onClick={() => {
+                          triggerLightHaptic();
+                          setSpecialMode(d.id);
+                        }}
+                        className={`rounded-2xl border p-3 text-left transition ${
+                          active
+                            ? "border-cyan-400 bg-cyan-500/15"
+                            : "border-slate-500/20 bg-slate-500/5 hover:border-slate-400/40"
+                        }`}
+                      >
+                        <p className="text-xs font-bold text-white">{d.label}</p>
+                        <p className="mt-0.5 text-[11px] text-slate-400">{d.desc}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {specialMode === "ketogenic" && (
+                  <div className="mt-2.5 rounded-2xl border border-amber-400/35 bg-amber-500/10 p-3 text-[11px] leading-relaxed text-amber-100">
+                    <strong>Mode Cétogène activé :</strong> glucides plafonnés autour de 25–35 g/j, hydratation renforcée (~40 mL/kg) et recettes frigo adaptées. Avis médical indispensable en cas de grossesse, diabète traité (insuline / iSGLT2) ou insuffisance rénale/hépatique.
+                  </div>
+                )}
               </div>
 
               {primaryGoal !== "maintenance" && (
@@ -349,61 +481,86 @@ export function OnboardingWizard({
                 <div>
                   <label className="text-xs text-slate-400">Âge (ans)</label>
                   <input
-                    type="number"
-                    min={12}
-                    max={100}
-                    value={age}
-                    onChange={(e) => setAge(Number(e.target.value) || 30)}
-                    className="mt-1 w-full rounded-xl border border-slate-500/25 bg-slate-900/60 px-3 py-2 text-sm text-white"
+                    type="text"
+                    inputMode="numeric"
+                    value={ageInput}
+                    onChange={(e) => setAgeInput(sanitizeIntInput(e.target.value))}
+                    onBlur={() => {
+                      if (ageInput.trim()) {
+                        setAgeInput(
+                          String(Math.round(parseBoundedNumber(ageInput, 34, 12, 100)))
+                        );
+                      }
+                    }}
+                    placeholder="34"
+                    className="mt-1 w-full rounded-xl border border-slate-500/25 bg-slate-900/60 px-3 py-2 text-sm text-white tabular-nums"
                   />
                 </div>
 
                 <div>
                   <label className="text-xs text-slate-400">Taille (cm)</label>
                   <input
-                    type="number"
-                    min={120}
-                    max={230}
-                    value={heightCm}
-                    onChange={(e) => setHeightCm(Number(e.target.value) || 175)}
-                    className="mt-1 w-full rounded-xl border border-slate-500/25 bg-slate-900/60 px-3 py-2 text-sm text-white"
+                    type="text"
+                    inputMode="numeric"
+                    value={heightInput}
+                    onChange={(e) => setHeightInput(sanitizeIntInput(e.target.value))}
+                    onBlur={() => {
+                      if (heightInput.trim()) {
+                        setHeightInput(
+                          String(Math.round(parseBoundedNumber(heightInput, 175, 120, 230)))
+                        );
+                      }
+                    }}
+                    placeholder="175"
+                    className="mt-1 w-full rounded-xl border border-slate-500/25 bg-slate-900/60 px-3 py-2 text-sm text-white tabular-nums"
                   />
                 </div>
 
                 <div>
                   <label className="text-xs text-slate-400">Poids actuel (kg)</label>
                   <input
-                    type="number"
-                    step="0.5"
-                    min={35}
-                    max={250}
-                    value={weightKg}
-                    onChange={(e) => setWeightKg(Number(e.target.value) || 70)}
-                    className="mt-1 w-full rounded-xl border border-slate-500/25 bg-slate-900/60 px-3 py-2 text-sm text-white"
+                    type="text"
+                    inputMode="decimal"
+                    value={weightInput}
+                    onChange={(e) => setWeightInput(sanitizeDecimalInput(e.target.value))}
+                    onBlur={() => {
+                      if (weightInput.trim()) {
+                        setWeightInput(String(parseBoundedNumber(weightInput, 78, 35, 250)));
+                      }
+                    }}
+                    placeholder="78"
+                    className="mt-1 w-full rounded-xl border border-slate-500/25 bg-slate-900/60 px-3 py-2 text-sm text-white tabular-nums"
                   />
                 </div>
 
                 <div>
                   <label className="text-xs text-slate-400">Objectif poids (kg)</label>
                   <input
-                    type="number"
-                    step="0.5"
-                    min={35}
-                    max={250}
-                    value={targetWeightKg}
-                    onChange={(e) => setTargetWeightKg(Number(e.target.value) || 68)}
-                    className="mt-1 w-full rounded-xl border border-slate-500/25 bg-slate-900/60 px-3 py-2 text-sm text-white"
+                    type="text"
+                    inputMode="decimal"
+                    value={targetWeightInput}
+                    onChange={(e) => setTargetWeightInput(sanitizeDecimalInput(e.target.value))}
+                    onBlur={() => {
+                      if (targetWeightInput.trim()) {
+                        setTargetWeightInput(
+                          String(parseBoundedNumber(targetWeightInput, 72, 35, 250))
+                        );
+                      }
+                    }}
+                    placeholder="Ex. 70"
+                    className="mt-1 w-full rounded-xl border border-slate-500/25 bg-slate-900/60 px-3 py-2 text-sm text-white tabular-nums"
                   />
                 </div>
 
                 <div>
                   <label className="text-xs text-slate-400">Tour de taille (cm, option)</label>
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="decimal"
                     placeholder="Ex. 84"
                     value={waistCm}
-                    onChange={(e) => setWaistCm(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-slate-500/25 bg-slate-900/60 px-3 py-2 text-sm text-white"
+                    onChange={(e) => setWaistCm(sanitizeDecimalInput(e.target.value))}
+                    className="mt-1 w-full rounded-xl border border-slate-500/25 bg-slate-900/60 px-3 py-2 text-sm text-white tabular-nums"
                   />
                 </div>
               </div>
@@ -497,7 +654,10 @@ export function OnboardingWizard({
                   <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
                     <button
                       type="button"
-                      onClick={() => setFastingProtocol("none")}
+                      onClick={() => {
+                        triggerLightHaptic();
+                        setFastingProtocol("none");
+                      }}
                       className={`rounded-xl border p-2.5 text-left text-xs ${
                         fastingProtocol === "none"
                           ? "border-emerald-400 bg-emerald-500/20"
@@ -508,7 +668,7 @@ export function OnboardingWizard({
                       <p className="text-[11px] text-slate-400">Repas classiques</p>
                     </button>
                     {FASTING_PROTOCOLS.filter((p) =>
-                      ["12_12", "14_10", "16_8", "20_4", "omad_23_1"].includes(p.id)
+                      ["12_12", "14_10", "16_8", "18_6", "20_4", "omad_23_1"].includes(p.id)
                     ).map((p) => (
                       <button
                         key={p.id}
@@ -516,6 +676,7 @@ export function OnboardingWizard({
                         onClick={() => {
                           triggerLightHaptic();
                           setFastingProtocol(p.id);
+                          setEatingWindowStartHm(getDefaultEatingStartHm(p.id));
                         }}
                         className={`rounded-xl border p-2.5 text-left text-xs ${
                           fastingProtocol === p.id
@@ -529,6 +690,81 @@ export function OnboardingWizard({
                     ))}
                   </div>
                 )}
+
+                {!fastingBlockedByClinical && fastingProtocol !== "none" && (() => {
+                  const selectedSpec = getProtocolSpec(fastingProtocol);
+                  const endHm = computeWindowEndHm(eatingWindowStartHm, selectedSpec.eatHours);
+                  return (
+                    <div className="mt-3 space-y-3 rounded-2xl border border-emerald-400/35 bg-emerald-500/10 p-3.5 text-xs">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <label className="font-bold text-white">
+                          Heure d&apos;ouverture de votre fenêtre repas
+                        </label>
+                        <input
+                          type="time"
+                          value={eatingWindowStartHm}
+                          onChange={(e) => setEatingWindowStartHm(e.target.value)}
+                          className="rounded-xl border border-slate-500/35 bg-slate-900/80 px-3 py-1.5 text-xs font-bold text-white tabular-nums"
+                        />
+                      </div>
+
+                      <div className="flex flex-wrap gap-1.5">
+                        {[
+                          { label: "Midi 12:00", hm: "12:00" },
+                          { label: "16:00", hm: "16:00" },
+                          { label: "Soir 19:00", hm: "19:00" },
+                        ].map((preset) => (
+                          <button
+                            key={preset.hm}
+                            type="button"
+                            onClick={() => setEatingWindowStartHm(preset.hm)}
+                            className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
+                              eatingWindowStartHm === preset.hm
+                                ? "border-emerald-400 bg-emerald-500/25 text-emerald-200"
+                                : "border-slate-500/25 text-slate-300"
+                            }`}
+                          >
+                            {preset.label}
+                          </button>
+                        ))}
+                      </div>
+
+                      <p className="leading-relaxed text-slate-100">
+                        🍽️ Vous êtes autorisé à manger de{" "}
+                        <strong className="text-emerald-300">
+                          {eatingWindowStartHm} à {endHm}
+                        </strong>{" "}
+                        ({formatAllowedDurationFr(selectedSpec.eatHours)}) · ⏳ En période de jeûne le reste du temps ({selectedSpec.fastHours} h).
+                      </p>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          triggerLightHaptic();
+                          setFastingNotifications((v) => !v);
+                        }}
+                        className={`flex w-full items-center justify-between gap-2 rounded-xl border px-3 py-2 text-left transition ${
+                          fastingNotifications
+                            ? "border-emerald-400/50 bg-emerald-500/15 text-emerald-100"
+                            : "border-slate-500/25 bg-slate-900/40 text-slate-300"
+                        }`}
+                      >
+                        <span className="text-[11px] font-semibold leading-snug">
+                          M&apos;envoyer une notification quand ma fenêtre repas s&apos;ouvre (&laquo; Vous êtes autorisé à manger... &raquo;) et quand le jeûne reprend
+                        </span>
+                        <span
+                          className={`shrink-0 rounded-full px-2.5 py-0.5 text-[10px] font-extrabold ${
+                            fastingNotifications
+                              ? "bg-emerald-400 text-slate-950"
+                              : "bg-slate-700 text-slate-300"
+                          }`}
+                        >
+                          {fastingNotifications ? "Activé" : "Désactivé"}
+                        </span>
+                      </button>
+                    </div>
+                  );
+                })()}
               </div>
             </div>
           )}

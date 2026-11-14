@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Award,
   Bell,
@@ -54,6 +54,34 @@ export function ProfileChallengesView({
   onReopenOnboarding,
 }: ProfileChallengesViewProps) {
   const [form, setForm] = useState<UserProfile>(profile);
+  const [ageDraft, setAgeDraft] = useState<string>(String(profile.age));
+  const [heightDraft, setHeightDraft] = useState<string>(String(profile.heightCm));
+  const [weightDraft, setWeightDraft] = useState<string>(String(profile.weightKg));
+  const [targetWeightDraft, setTargetWeightDraft] = useState<string>(
+    String(profile.targetWeightKg)
+  );
+  const [stepGoalDraft, setStepGoalDraft] = useState<string>(String(profile.dailyStepGoal));
+
+  useEffect(() => {
+    setForm(profile);
+    setAgeDraft(String(profile.age));
+    setHeightDraft(String(profile.heightCm));
+    setWeightDraft(String(profile.weightKg));
+    setTargetWeightDraft(String(profile.targetWeightKg));
+    setStepGoalDraft(String(profile.dailyStepGoal));
+  }, [
+    profile.age,
+    profile.heightCm,
+    profile.weightKg,
+    profile.targetWeightKg,
+    profile.dailyStepGoal,
+    profile.name,
+    profile.primaryGoal,
+    profile.specialMode,
+    profile.activityProfile,
+    profile.sex,
+    profile,
+  ]);
   const [showSources, setShowSources] = useState(false);
   const [profileSavedMsg, setProfileSavedMsg] = useState<string | null>(null);
   const [profileSheetOpen, setProfileSheetOpen] = useState(false);
@@ -68,8 +96,47 @@ export function ProfileChallengesView({
   const [chDesc, setChDesc] = useState("");
   const [chMetric, setChMetric] = useState<ChallengeMetric>("steps");
   const [chTarget, setChTarget] = useState(8000);
+  const [chTargetDraft, setChTargetDraft] = useState("8000");
   const [chUnit, setChUnit] = useState("pas");
   const [chDays, setChDays] = useState(14);
+  const [chDaysDraft, setChDaysDraft] = useState("14");
+
+  function bindNumericDraft(
+    setDraft: React.Dispatch<React.SetStateAction<string>>,
+    min: number,
+    max: number,
+    decimal: boolean,
+    onValid: (val: number) => void,
+    fallback: number
+  ) {
+    return {
+      onChange: (e: React.ChangeEvent<HTMLInputElement>) => {
+        const raw = decimal ? e.target.value.replace(",", ".") : e.target.value;
+        const filtered = decimal
+          ? raw.replace(/[^\d.]/g, "").replace(/(\..*)\./g, "$1")
+          : raw.replace(/[^\d]/g, "");
+        setDraft(filtered);
+        if (!filtered || filtered === ".") return;
+        const parsed = Number(filtered);
+        if (Number.isFinite(parsed) && parsed >= min && parsed <= max) {
+          onValid(decimal ? Math.round(parsed * 10) / 10 : Math.round(parsed));
+        }
+      },
+      onBlur: (e: React.FocusEvent<HTMLInputElement>) => {
+        const trimmed = e.target.value.trim();
+        const parsed = Number(trimmed.replace(",", "."));
+        const clamped =
+          trimmed !== "" && Number.isFinite(parsed)
+            ? Math.min(
+                max,
+                Math.max(min, decimal ? Math.round(parsed * 10) / 10 : Math.round(parsed))
+              )
+            : fallback;
+        onValid(clamped);
+        setDraft(String(clamped));
+      },
+    };
+  }
   const [chTime, setChTime] = useState("18:30");
 
   async function handleEnablePush() {
@@ -325,11 +392,17 @@ export function ProfileChallengesView({
           <label className="space-y-1">
             <span className="text-slate-400 block">Âge (ans)</span>
             <input
-              type="number"
-              min={12}
-              max={105}
-              value={form.age}
-              onChange={(e) => setForm({ ...form, age: Number(e.target.value) || 30 })}
+              type="text"
+              inputMode="numeric"
+              value={ageDraft}
+              {...bindNumericDraft(
+                setAgeDraft,
+                12,
+                105,
+                false,
+                (age) => setForm((prev) => ({ ...prev, age })),
+                form.age
+              )}
               className="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-white"
             />
           </label>
@@ -347,11 +420,17 @@ export function ProfileChallengesView({
           <label className="space-y-1">
             <span className="text-slate-400 block">Taille (cm)</span>
             <input
-              type="number"
-              min={120}
-              max={230}
-              value={form.heightCm}
-              onChange={(e) => setForm({ ...form, heightCm: Number(e.target.value) || 175 })}
+              type="text"
+              inputMode="numeric"
+              value={heightDraft}
+              {...bindNumericDraft(
+                setHeightDraft,
+                120,
+                230,
+                false,
+                (heightCm) => setForm((prev) => ({ ...prev, heightCm })),
+                form.heightCm
+              )}
               className="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-white"
             />
           </label>
@@ -359,24 +438,34 @@ export function ProfileChallengesView({
           <label className="space-y-1">
             <span className="text-slate-400 block">Poids actuel (kg)</span>
             <input
-              type="number"
-              step="0.1"
-              min={30}
-              max={280}
-              value={form.weightKg}
-              onChange={(e) => setForm({ ...form, weightKg: Number(e.target.value) || 75 })}
+              type="text"
+              inputMode="decimal"
+              value={weightDraft}
+              {...bindNumericDraft(
+                setWeightDraft,
+                30,
+                280,
+                true,
+                (weightKg) => setForm((prev) => ({ ...prev, weightKg })),
+                form.weightKg
+              )}
               className="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-white"
             />
           </label>
           <label className="space-y-1">
             <span className="text-slate-400 block">Poids souhaité (kg)</span>
             <input
-              type="number"
-              step="0.1"
-              min={35}
-              max={250}
-              value={form.targetWeightKg}
-              onChange={(e) => setForm({ ...form, targetWeightKg: Number(e.target.value) || 70 })}
+              type="text"
+              inputMode="decimal"
+              value={targetWeightDraft}
+              {...bindNumericDraft(
+                setTargetWeightDraft,
+                35,
+                250,
+                true,
+                (targetWeightKg) => setForm((prev) => ({ ...prev, targetWeightKg })),
+                form.targetWeightKg
+              )}
               className="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-white"
             />
           </label>
@@ -401,12 +490,17 @@ export function ProfileChallengesView({
           <label className="space-y-1">
             <span className="text-slate-400 block">Objectif de pas / jour</span>
             <input
-              type="number"
-              step={500}
-              min={1500}
-              max={30000}
-              value={form.dailyStepGoal}
-              onChange={(e) => setForm({ ...form, dailyStepGoal: Number(e.target.value) || 8000 })}
+              type="text"
+              inputMode="numeric"
+              value={stepGoalDraft}
+              {...bindNumericDraft(
+                setStepGoalDraft,
+                1500,
+                30000,
+                false,
+                (dailyStepGoal) => setForm((prev) => ({ ...prev, dailyStepGoal })),
+                form.dailyStepGoal
+              )}
               className="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-white"
             />
           </label>
@@ -434,6 +528,7 @@ export function ProfileChallengesView({
               className="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-white"
             >
               <option value="fat_loss">Perte de masse grasse</option>
+              <option value="rebalancing">Rééquilibrage alimentaire</option>
               <option value="recomposition">Recomposition (muscle + taille)</option>
               <option value="maintenance">Maintien &amp; Vitalité</option>
               <option value="muscle_gain">Prise de masse propre</option>
@@ -459,6 +554,8 @@ export function ProfileChallengesView({
               className="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-white"
             >
               <option value="standard">Standard équilibré</option>
+              <option value="rebalancing">Rééquilibrage alimentaire</option>
+              <option value="ketogenic">Cétogène (Keto · glucides &le; 35 g/j)</option>
               <option value="glp1_muscle_guard">GLP-1 (Protection muscle &amp; fibres)</option>
               <option value="glycemic_shield">Bouclier glycémique (CG basse)</option>
               <option value="cardio_low_sodium">Cardio &amp; Sel maîtrisé (&lt;1500 mg)</option>
@@ -683,9 +780,17 @@ export function ProfileChallengesView({
             <label className="text-slate-400">
               Cible :
               <input
-                type="number"
-                value={chTarget}
-                onChange={(e) => setChTarget(Number(e.target.value) || 1)}
+                type="text"
+                inputMode="numeric"
+                value={chTargetDraft}
+                {...bindNumericDraft(
+                  setChTargetDraft,
+                  1,
+                  500000,
+                  false,
+                  setChTarget,
+                  chTarget
+                )}
                 className="ml-1.5 w-20 rounded-lg bg-slate-950 border border-slate-700 px-2 py-1.5 text-white"
               />
             </label>
@@ -699,11 +804,17 @@ export function ProfileChallengesView({
             <label className="text-slate-400">
               Durée (j) :
               <input
-                type="number"
-                min={1}
-                max={90}
-                value={chDays}
-                onChange={(e) => setChDays(Number(e.target.value) || 7)}
+                type="text"
+                inputMode="numeric"
+                value={chDaysDraft}
+                {...bindNumericDraft(
+                  setChDaysDraft,
+                  1,
+                  90,
+                  false,
+                  setChDays,
+                  chDays
+                )}
                 className="ml-1.5 w-16 rounded-lg bg-slate-950 border border-slate-700 px-2 py-1.5 text-white"
               />
             </label>
