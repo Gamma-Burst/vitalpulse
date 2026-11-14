@@ -25,6 +25,7 @@ import {
 } from "@/types/vitalpulse";
 import { subscribeBrowserToPush } from "@/lib/native-bridge";
 import { DetailSheet } from "@/components/ui/DetailSheet";
+import { InfoTip } from "@/components/ui/InfoTip";
 
 interface ProfileChallengesViewProps {
   profile: UserProfile;
@@ -232,13 +233,17 @@ export function ProfileChallengesView({
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
           <div className="rounded-xl bg-slate-950/70 border border-slate-800 p-3">
-            <span className="text-slate-400">IMC Officiel (OMS)</span>
+            <span className="text-slate-400">
+              IMC Officiel (OMS) <InfoTip term="bmi" />
+            </span>
             <p className="text-2xl font-bold text-white tabular-nums mt-0.5">{anthro.bmi}</p>
             <span className="text-[11px] text-emerald-300">{anthro.bmiCategoryFr}</span>
           </div>
 
           <div className="rounded-xl bg-slate-950/70 border border-slate-800 p-3">
-            <span className="text-slate-400">Ratio Taille / Hauteur (WtHR)</span>
+            <span className="text-slate-400">
+              Ratio Taille / Hauteur (WtHR) <InfoTip term="wthr" />
+            </span>
             <p className="text-2xl font-bold text-sky-300 tabular-nums mt-0.5">
               {anthro.wthr !== null ? anthro.wthr : "—"}
             </p>
@@ -248,7 +253,9 @@ export function ProfileChallengesView({
           </div>
 
           <div className="rounded-xl bg-slate-950/70 border border-slate-800 p-3">
-            <span className="text-slate-400">Body Roundness Index (BRI)</span>
+            <span className="text-slate-400">
+              Body Roundness Index (BRI) <InfoTip term="bri" />
+            </span>
             <p className="text-2xl font-bold text-emerald-300 tabular-nums mt-0.5">
               {anthro.bri !== null ? anthro.bri : "—"}
             </p>
@@ -258,7 +265,9 @@ export function ProfileChallengesView({
           </div>
 
           <div className="rounded-xl bg-slate-950/70 border border-slate-800 p-3">
-            <span className="text-slate-400">Masse Grasse Estimée (RFM)</span>
+            <span className="text-slate-400">
+              Masse Grasse Estimée (RFM) <InfoTip term="rfm" />
+            </span>
             <p className="text-2xl font-bold text-amber-300 tabular-nums mt-0.5">
               {anthro.rfmPct} %
             </p>
@@ -274,11 +283,15 @@ export function ProfileChallengesView({
 
         <div className="rounded-xl bg-slate-950/60 border border-slate-800 p-3.5 grid grid-cols-2 sm:grid-cols-5 gap-3 text-xs">
           <div>
-            <span className="text-slate-400 block">Métabolisme de repos (BMR)</span>
+            <span className="text-slate-400 block">
+              Métabolisme de repos (BMR) <InfoTip term="bmr" />
+            </span>
             <strong className="text-white text-sm">{anthro.bmrKcal} kcal/j</strong>
           </div>
           <div>
-            <span className="text-slate-400 block">Maintien estimé (TDEE)</span>
+            <span className="text-slate-400 block">
+              Maintien estimé (TDEE) <InfoTip term="tdee" />
+            </span>
             <strong className="text-sky-300 text-sm">{anthro.estimatedMaintenanceKcal} kcal/j</strong>
           </div>
           <div>
@@ -292,7 +305,9 @@ export function ProfileChallengesView({
             </strong>
           </div>
           <div>
-            <span className="text-slate-400 block">Eau / Sodium max</span>
+            <span className="text-slate-400 block">
+              Eau / Sodium max <InfoTip term="sodium_oms" />
+            </span>
             <strong className="text-cyan-300 text-sm">
               {(anthro.targets.waterMl / 1000).toFixed(1)} L / {anthro.targets.sodiumMaxMg} mg
             </strong>
@@ -547,7 +562,20 @@ export function ProfileChallengesView({
             />
           </label>
           <label className="space-y-1">
-            <span className="text-slate-400 block">Accompagnement clinique dédié</span>
+            <span className="text-slate-400 block">
+              Accompagnement clinique dédié{" "}
+              <InfoTip
+                term={
+                  form.specialMode === "ketogenic"
+                    ? "diet_ketogenic"
+                    : form.specialMode === "glycemic_shield"
+                      ? "diet_glycemic_shield"
+                      : form.specialMode === "glp1_muscle_guard"
+                        ? "diet_glp1"
+                        : "diet_rebalancing"
+                }
+              />
+            </span>
             <select
               value={form.specialMode}
               onChange={(e) => setForm({ ...form, specialMode: e.target.value as SpecialMode })}

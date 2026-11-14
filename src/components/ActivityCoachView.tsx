@@ -16,6 +16,7 @@ import { EXERCISES_COMPENDIUM } from "@/data/exercises-compendium";
 import { computeWorkoutNetCalories } from "@/lib/metabolic-engine";
 import { detectPlatformCapabilities } from "@/lib/native-bridge";
 import { DetailSheet } from "@/components/ui/DetailSheet";
+import { InfoTip } from "@/components/ui/InfoTip";
 import {
   DailyEnergyBalance,
   ExerciseCategory,
@@ -215,7 +216,7 @@ export function ActivityCoachView({
               />
             </div>
             <p className="text-[11px] text-slate-400">
-              Déduplication anti-gonflement :{" "}
+              Déduplication anti-gonflement <InfoTip term="neat_dedup" /> :{" "}
               <strong className="text-slate-200">
                 {todayBalance.effectiveNeatSteps.toLocaleString("fr-FR")} pas hors-séance
               </strong>{" "}
@@ -404,7 +405,7 @@ export function ActivityCoachView({
               </div>
               <div>
                 <label className="text-slate-300 block mb-1">
-                  Effort ressenti (RPE) : <strong className="text-white">{rpe} / 10</strong>
+                  Effort ressenti (RPE) <InfoTip term="rpe" /> : <strong className="text-white">{rpe} / 10</strong>
                 </label>
                 <input
                   type="range"
@@ -470,7 +471,7 @@ export function ActivityCoachView({
             Bibliothèque de 24 exercices faciles au quotidien
           </h3>
           <p className="text-xs text-slate-400 mt-0.5">
-            Calories calculées exactement pour votre poids ({profile.weightKg} kg) avec soustraction du métabolisme de repos (MET − 1).
+            Calories calculées exactement pour votre poids ({profile.weightKg} kg) avec soustraction du métabolisme de repos (MET − 1 <InfoTip term="met" />).
           </p>
         </div>
 
@@ -487,6 +488,7 @@ export function ActivityCoachView({
               }`}
             >
               {c.label}
+              {c.id === "vilpa" && <InfoTip term="vilpa" />}
             </button>
           ))}
         </div>

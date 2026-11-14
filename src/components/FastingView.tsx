@@ -31,6 +31,8 @@ import {
 } from "@/lib/fasting-engine";
 import { FastingHorseshoeArc } from "@/components/ui/LiveMetricVisuals";
 import { DetailSheet } from "@/components/ui/DetailSheet";
+import { InfoTip } from "@/components/ui/InfoTip";
+import { resolveFastingPhaseGlossaryId } from "@/data/glossary-terms";
 import {
   requestFastingNotificationPermission,
   sendFastingTransitionAlert,
@@ -341,7 +343,7 @@ export function FastingView({
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <p className="text-xs font-extrabold text-white">
-                  Cycle quotidien &amp; Alertes Repas / Jeûne
+                  Cycle quotidien &amp; Alertes Repas / Jeûne <InfoTip term="fasting_omad" />
                 </p>
                 <p className="text-[11px] text-slate-400">
                   Vous êtes autorisé à manger pendant{" "}
@@ -481,6 +483,7 @@ export function FastingView({
                 }`}
               >
                 {p.badge}
+                {p.id === "omad_23_1" && <InfoTip term="fasting_omad" />}
               </button>
             );
           })}
@@ -552,6 +555,7 @@ export function FastingView({
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="text-sm font-bold text-white">
                           {phase.titleFr}
+                          <InfoTip term={resolveFastingPhaseGlossaryId(phase.id)} />
                         </p>
                         <span className="rounded-full border border-slate-500/25 px-2 py-0.5 text-[10px] font-semibold text-slate-300 tabular-nums">
                           {phase.shortBadge}

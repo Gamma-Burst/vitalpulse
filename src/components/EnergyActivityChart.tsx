@@ -15,6 +15,7 @@ import {
   ScaleDecoderInsight,
   WeightTrendPoint,
 } from "@/types/vitalpulse";
+import { InfoTip } from "@/components/ui/InfoTip";
 
 interface EnergyActivityChartProps {
   balances: DailyEnergyBalance[];
@@ -114,7 +115,7 @@ export function EnergyActivityChart({
               Activité physique &amp; Balance calorique / jour
             </h3>
             <p className="text-xs text-slate-400">
-              Comparatif réel : Calories mangées vs Dépense totale (BMR + Pas dédupliqués + Exercices + TEF) &amp; courbe d&apos;activité
+              Comparatif réel : Calories mangées vs Dépense totale (BMR <InfoTip term="bmr" /> + Pas dédupliqués <InfoTip term="neat_dedup" /> + Exercices + TEF <InfoTip term="tef" />)
             </p>
           </div>
           <div className="flex items-center gap-1 bg-slate-900/90 p-1 rounded-xl border border-slate-800">
@@ -293,7 +294,9 @@ export function EnergyActivityChart({
               </span>
             </div>
             <div>
-              <span className="text-slate-400 block">Bilan Net du Jour</span>
+              <span className="text-slate-400 block">
+                Bilan Net du Jour <InfoTip term="net_balance" />
+              </span>
               <strong
                 className={`text-sm tabular-nums inline-flex items-center gap-1 ${
                   activeDay.netBalanceKcal <= 0 ? "text-emerald-400" : "text-rose-400"
@@ -332,6 +335,7 @@ export function EnergyActivityChart({
             <h3 className="text-base sm:text-lg font-semibold text-white flex items-center gap-2">
               <Scale className="w-5 h-5 text-sky-400" />
               Poids brut vs Tendance réelle lissée (EMA 7j)
+              <InfoTip term="weight_ema" size="sm" />
             </h3>
             <p className="text-xs text-slate-400">
               Sépare les variations d&apos;eau quotidiennes de la vraie perte de masse grasse
@@ -442,7 +446,9 @@ export function EnergyActivityChart({
               <TrendingDown className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
             )}
             <div className="text-xs leading-relaxed">
-              <p className="font-semibold text-white">{scaleDecoder.headlineFr}</p>
+              <p className="font-semibold text-white">
+                {scaleDecoder.headlineFr} <InfoTip term="scale_decoder" />
+              </p>
               <p className="text-slate-300 mt-1">{scaleDecoder.explanationFr}</p>
             </div>
           </div>

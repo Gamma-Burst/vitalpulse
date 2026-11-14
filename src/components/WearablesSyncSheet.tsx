@@ -10,6 +10,7 @@ import {
   Watch,
 } from "lucide-react";
 import { DetailSheet } from "@/components/ui/DetailSheet";
+import { InfoTip } from "@/components/ui/InfoTip";
 import { WearableEcosystem, WearableSyncState } from "@/types/vitalpulse";
 import {
   connectBluetoothHeartRate,
@@ -212,7 +213,7 @@ export function WearablesSyncSheet({
             <div className="flex items-center justify-between">
               <p className="flex items-center gap-2 text-xs font-bold text-white">
                 <Bluetooth className="h-4 w-4 text-cyan-300" />
-                Bluetooth Cardio Direct
+                Bluetooth Cardio Direct <InfoTip term="ble_hr_0x180d" />
               </p>
               {liveBpm ? (
                 <span className="inline-flex items-center gap-1 rounded-full bg-rose-500/20 px-2 py-0.5 text-[11px] font-bold text-rose-300 tabular-nums">

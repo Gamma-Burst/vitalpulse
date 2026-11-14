@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Camera, Check, Loader2, ScanBarcode, Search } from "lucide-react";
 import { DetailSheet } from "@/components/ui/DetailSheet";
+import { InfoTip } from "@/components/ui/InfoTip";
 import { MealEntry, MealType } from "@/types/vitalpulse";
 import type { BarcodeProductPayload } from "@/app/api/barcode/route";
 import { triggerLightHaptic } from "@/lib/native-bridge";
@@ -311,11 +312,13 @@ export function BarcodeScannerModal({
                 </p>
               </div>
               <div className="flex gap-1.5 text-[11px] font-bold">
-                <span className="rounded-lg bg-emerald-500/20 px-2 py-1 text-emerald-300">
+                <span className="inline-flex items-center rounded-lg bg-emerald-500/20 px-2 py-1 text-emerald-300">
                   Nutri {product.nutriScore}
+                  <InfoTip term="nutriscore" />
                 </span>
-                <span className="rounded-lg bg-slate-500/20 px-2 py-1 text-slate-200">
+                <span className="inline-flex items-center rounded-lg bg-slate-500/20 px-2 py-1 text-slate-200">
                   NOVA {product.novaGroup}
+                  <InfoTip term="nova" />
                 </span>
               </div>
             </div>

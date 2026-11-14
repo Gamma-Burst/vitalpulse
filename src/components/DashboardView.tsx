@@ -33,6 +33,7 @@ import {
 import type { BodyLabSubTab } from "@/components/BodyLabView";
 import { EnergyActivityChart } from "@/components/EnergyActivityChart";
 import { DetailSheet } from "@/components/ui/DetailSheet";
+import { InfoTip } from "@/components/ui/InfoTip";
 import { HeroEnergyOrb, LiveTileIcon } from "@/components/ui/LiveMetricVisuals";
 import {
   computeFastingLiveStatus,
@@ -303,6 +304,7 @@ export function DashboardView({
           <div className="flex flex-wrap items-center gap-2">
             <p className="text-xs font-medium text-slate-400">
               Bonjour <strong className="text-white">{profile.name}</strong> · IMC {anthro.bmi}
+              <InfoTip term="bmi" />
             </p>
             {dietBadge && (
               <span
@@ -375,6 +377,7 @@ export function DashboardView({
                       ? `Jeûne planifié · ${fastingLive.protocol.badge}`
                       : `${fastingLive.protocol.badge} prêt`}
               </span>
+              <InfoTip term="fasting_omad" />
               {fasting.dailyScheduleEnabled && fasting.eatingWindowStartHm && (
                 <span className="text-[11px] font-medium text-slate-300">
                   Cycle quotidien · repas à {fasting.eatingWindowStartHm}
@@ -453,7 +456,9 @@ export function DashboardView({
                   </p>
                 </div>
                 <div>
-                  <p className="text-[11px] text-slate-400">Bilan net</p>
+                  <p className="text-[11px] text-slate-400">
+                    Bilan net <InfoTip term="net_balance" />
+                  </p>
                   <p
                     className={`font-display text-lg font-extrabold tabular-nums ${
                       todayBalance.netBalanceKcal <= 0 ? "text-cyan-300" : "text-amber-300"
@@ -595,6 +600,7 @@ export function DashboardView({
                   : fastingLive?.mode === "fasting"
                     ? "Jeûne en cours"
                     : "Jeûne & OMAD"}
+                <InfoTip term="fasting_omad" />
               </p>
               <p className="font-display text-lg font-extrabold text-white tabular-nums">
                 {fastingLive?.mode === "fasting" || fastingLive?.mode === "eating_window"
@@ -703,7 +709,9 @@ export function DashboardView({
               </span>
             </div>
             <div>
-              <p className="text-[11px] font-semibold text-slate-400">Poids lissé EMA</p>
+              <p className="text-[11px] font-semibold text-slate-400">
+                Poids lissé EMA <InfoTip term="weight_ema" />
+              </p>
               <p className="font-display text-lg font-extrabold text-white tabular-nums">
                 {profile.weightKg} kg
               </p>
@@ -795,7 +803,9 @@ export function DashboardView({
               </span>
             </div>
             <div>
-              <p className="text-[11px] font-semibold text-slate-400">Micronutriments</p>
+              <p className="text-[11px] font-semibold text-slate-400">
+                Micronutriments <InfoTip term="sodium_oms" />
+              </p>
               <p className="font-display text-lg font-extrabold text-white tabular-nums">
                 {Math.round(todayBalance.macros.fiberG)} / {anthro.targets.fiberG} g
               </p>
@@ -817,7 +827,9 @@ export function DashboardView({
               <span className="text-[10px] font-bold text-slate-400">7 jours</span>
             </div>
             <div>
-              <p className="text-[11px] font-semibold text-slate-400">Banque hebdo</p>
+              <p className="text-[11px] font-semibold text-slate-400">
+                Banque hebdo <InfoTip term="weekly_bank" />
+              </p>
               <p className="font-display text-lg font-extrabold text-white tabular-nums">
                 {weeklyBank.pleasureMarginKcal >= 0 ? "+" : ""}
                 {weeklyBank.pleasureMarginKcal} kcal
@@ -1230,7 +1242,10 @@ export function DashboardView({
             return (
               <div key={m.label} className="rounded-xl bg-slate-500/10 p-3">
                 <div className="flex justify-between font-bold tabular-nums">
-                  <span className="text-white">{m.label}</span>
+                  <span className="text-white">
+                    {m.label}
+                    {m.label.startsWith("Sodium") && <InfoTip term="sodium_oms" />}
+                  </span>
                   <span className="text-slate-300">
                     {Number(m.val.toFixed(1))} / {m.target} {m.unit}
                   </span>
@@ -1257,7 +1272,9 @@ export function DashboardView({
       >
         <div className="space-y-4">
           <div className="rounded-2xl border border-emerald-400/30 bg-emerald-500/10 p-4 text-center">
-            <p className="text-xs text-slate-300">Marge hebdomadaire actuelle</p>
+            <p className="text-xs text-slate-300">
+              Marge hebdomadaire actuelle <InfoTip term="weekly_bank" />
+            </p>
             <p className="mt-1 font-display text-3xl font-extrabold text-emerald-300 tabular-nums">
               {weeklyBank.pleasureMarginKcal >= 0 ? "+" : ""}
               {weeklyBank.pleasureMarginKcal} kcal

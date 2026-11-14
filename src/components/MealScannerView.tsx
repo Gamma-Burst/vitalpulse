@@ -21,6 +21,7 @@ import {
 } from "@/types/vitalpulse";
 import { compressImageFile } from "@/lib/native-bridge";
 import { applyOilClarifierDelta } from "@/data/ciqual-reference";
+import { InfoTip } from "@/components/ui/InfoTip";
 
 interface MealScannerViewProps {
   meals: MealEntry[];
@@ -637,11 +638,15 @@ export function MealScannerView({
               <strong className="text-sm text-lime-300">{draftResult.macros.fiberG} g</strong>
             </div>
             <div className="rounded-xl bg-slate-900 p-2.5">
-              <span className="text-slate-400 block">Sodium</span>
+              <span className="text-slate-400 block">
+                Sodium <InfoTip term="sodium_oms" />
+              </span>
               <strong className="text-sm text-rose-300">{draftResult.macros.sodiumMg} mg</strong>
             </div>
             <div className="rounded-xl bg-slate-900 p-2.5">
-              <span className="text-slate-400 block">NOVA · CG</span>
+              <span className="text-slate-400 block">
+                NOVA <InfoTip term="nova" /> · CG <InfoTip term="glycemic_load" />
+              </span>
               <strong className="text-sm text-white">
                 {draftResult.novaGroup} · {draftResult.glycemicLoad}
               </strong>
@@ -714,7 +719,7 @@ export function MealScannerView({
 
           <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
             <span className="text-[11px] text-slate-400">
-              Satiété : {draftResult.satietyScore}/100 · Score Santé : {draftResult.healthScore}/100
+              Satiété <InfoTip term="satiety_score" /> : {draftResult.satietyScore}/100 · Score Santé : {draftResult.healthScore}/100
             </span>
             <button
               type="button"

@@ -38,6 +38,8 @@ import {
   saveBodyPhotoDataUrl,
 } from "@/lib/storage-db";
 import { DetailSheet } from "@/components/ui/DetailSheet";
+import { InfoTip } from "@/components/ui/InfoTip";
+import { resolveBloodGlossaryId } from "@/data/glossary-terms";
 import {
   BloodBiomarkerKey,
   BloodMarkerInput,
@@ -470,7 +472,9 @@ export function BodyLabView({
           {/* KPI Composition Corporelle */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="vp-card p-4">
-              <span className="text-xs text-slate-400">% Masse grasse croisée</span>
+              <span className="text-xs text-slate-400">
+                % Masse grasse croisée <InfoTip term="us_navy_bf" />
+              </span>
               <div className="text-2xl font-bold text-white mt-1 tabular-nums">
                 {bodyComp.bodyFatRangeMinPct}–{bodyComp.bodyFatRangeMaxPct}%
               </div>
@@ -486,11 +490,15 @@ export function BodyLabView({
               <div className="text-2xl font-bold text-sky-300 mt-1 tabular-nums">
                 {bodyComp.leanMassKg} kg <span className="text-sm text-slate-400">/ {bodyComp.fatMassKg} kg</span>
               </div>
-              <span className="text-[11px] text-slate-400">Indice FFMI : {bodyComp.ffmi} kg/m²</span>
+              <span className="text-[11px] text-slate-400">
+                Indice FFMI : {bodyComp.ffmi} kg/m² <InfoTip term="ffmi" />
+              </span>
             </div>
 
             <div className="vp-card p-4">
-              <span className="text-xs text-slate-400">Ratio Taille / Hanches (WHR OMS)</span>
+              <span className="text-xs text-slate-400">
+                Ratio Taille / Hanches (WHR OMS) <InfoTip term="whr" />
+              </span>
               <div className="text-2xl font-bold text-white mt-1 tabular-nums">
                 {bodyComp.whr ?? "—"}
               </div>
@@ -681,7 +689,7 @@ export function BodyLabView({
                 <div>
                   <h3 className="text-base font-semibold text-white">Graphique d&apos;évolution corporelle</h3>
                   <p className="text-[11px] text-slate-400">
-                    Basculez entre les centimètres réels et la vue normalisée Base 100 (Poids vs Taille vs % Gras).
+                    Basculez entre les centimètres réels et la vue normalisée Base 100 (Poids vs Taille vs % Gras) <InfoTip term="base100_chart" />
                   </p>
                 </div>
                 <div className="flex gap-1 bg-slate-900 p-1 rounded-lg border border-slate-800 text-xs">
@@ -1135,10 +1143,12 @@ export function BodyLabView({
               <div className="space-y-2 max-h-[340px] overflow-y-auto pr-1">
                 {QUICK_BLOOD_KEYS.map((key) => {
                   const def = BIOMARKER_CATALOG[key];
+                  const tipId = resolveBloodGlossaryId(key);
                   return (
                     <div key={key} className="grid grid-cols-12 gap-2 items-center text-xs">
-                      <span className="col-span-6 text-slate-300 truncate" title={def.labelFr}>
-                        {def.labelFr}
+                      <span className="col-span-6 flex items-center gap-1 text-slate-300" title={def.labelFr}>
+                        <span className="truncate">{def.labelFr}</span>
+                        {tipId && <InfoTip term={tipId} />}
                       </span>
                       <input
                         type="text"
@@ -1267,20 +1277,26 @@ export function BodyLabView({
                   {/* Ratios calculés */}
                   {activePanel.analysis.derivedMetrics.length > 0 && (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {activePanel.analysis.derivedMetrics.map((dm) => (
-                        <div key={dm.id} className="vp-card p-3.5 space-y-1">
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-xs font-semibold text-white">{dm.labelFr}</span>
-                            <span
-                              className={`text-[10px] px-2 py-0.5 rounded-full border ${statusBadgeClass(dm.status)}`}
-                            >
-                              {dm.value} {dm.unit}
-                            </span>
+                      {activePanel.analysis.derivedMetrics.map((dm) => {
+                        const dmTip = resolveBloodGlossaryId(dm.id);
+                        return (
+                          <div key={dm.id} className="vp-card p-3.5 space-y-1">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-xs font-semibold text-white">
+                                {dm.labelFr}
+                                {dmTip && <InfoTip term={dmTip} />}
+                              </span>
+                              <span
+                                className={`text-[10px] px-2 py-0.5 rounded-full border ${statusBadgeClass(dm.status)}`}
+                              >
+                                {dm.value} {dm.unit}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-slate-300">{dm.interpretationFr}</p>
+                            <span className="text-[10px] text-slate-500 block">{dm.sourceRef}</span>
                           </div>
-                          <p className="text-[11px] text-slate-300">{dm.interpretationFr}</p>
-                          <span className="text-[10px] text-slate-500 block">{dm.sourceRef}</span>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
 
@@ -1299,11 +1315,16 @@ export function BodyLabView({
                             ? +(((ev.canonicalValue - prevMatch.canonicalValue) / prevMatch.canonicalValue) * 100).toFixed(1)
                             : null;
 
+                        const markerTip = resolveBloodGlossaryId(ev.key);
+
                         return (
                           <div key={ev.key} className="rounded-xl bg-slate-900/80 border border-slate-800 p-3 space-y-1.5">
                             <div className="flex flex-wrap items-center justify-between gap-2">
                               <div className="flex items-center gap-2">
-                                <strong className="text-xs sm:text-sm text-white">{ev.labelFr}</strong>
+                                <strong className="text-xs sm:text-sm text-white">
+                                  {ev.labelFr}
+                                  {markerTip && <InfoTip term={markerTip} />}
+                                </strong>
                                 <span className="text-xs font-bold text-emerald-300 tabular-nums">
                                   {ev.canonicalValue} {ev.canonicalUnit}
                                 </span>

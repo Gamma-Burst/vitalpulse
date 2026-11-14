@@ -10,6 +10,7 @@ import {
   Clock,
   Download,
   Footprints,
+  HelpCircle,
   LayoutDashboard,
   Moon,
   Plus,
@@ -59,6 +60,7 @@ import { OnboardingWizard } from "@/components/OnboardingWizard";
 import { BarcodeScannerModal } from "@/components/BarcodeScannerModal";
 import { WearablesSyncSheet } from "@/components/WearablesSyncSheet";
 import { QuickActionSheet } from "@/components/ui/QuickActionSheet";
+import { GlossaryPortalHost, openGlossaryCatalog } from "@/components/ui/InfoTip";
 import {
   BloodPanelEntry,
   BodyMeasurementEntry,
@@ -461,6 +463,17 @@ export default function VitalPulseApp() {
                 <Watch className="h-4 w-4 text-cyan-300" />
                 Montre &amp; Capteurs
               </button>
+              <button
+                type="button"
+                onClick={() => {
+                  triggerLightHaptic();
+                  openGlossaryCatalog();
+                }}
+                className="w-full flex items-center justify-center gap-2 rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-3 py-2 text-xs font-semibold text-cyan-200 hover:border-cyan-300/50 hover:bg-cyan-500/20"
+              >
+                <HelpCircle className="h-4 w-4 text-cyan-300" />
+                Lexique Santé (?)
+              </button>
             </div>
           </div>
 
@@ -560,6 +573,18 @@ export default function VitalPulseApp() {
                 }`}
               >
                 <BookOpen className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  triggerLightHaptic();
+                  openGlossaryCatalog();
+                }}
+                aria-label="Lexique Santé sans jargon"
+                title="Lexique Santé : comprendre tous les termes"
+                className="flex h-8 w-8 items-center justify-center rounded-xl border border-cyan-400/35 bg-cyan-500/15 text-cyan-200 transition hover:bg-cyan-500/25"
+              >
+                <HelpCircle className="h-4 w-4" />
               </button>
               <button
                 type="button"
@@ -1094,6 +1119,8 @@ export default function VitalPulseApp() {
             })
           }
         />
+
+        <GlossaryPortalHost />
       </div>
     </MotionConfig>
   );

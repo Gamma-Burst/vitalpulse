@@ -35,6 +35,8 @@ import {
   requestFastingNotificationPermission,
   triggerLightHaptic,
 } from "@/lib/native-bridge";
+import { InfoTip } from "@/components/ui/InfoTip";
+import type { GlossaryTermId } from "@/data/glossary-terms";
 
 export interface OnboardingWizardProps {
   initialProfile: UserProfile;
@@ -377,6 +379,16 @@ export function OnboardingWizard({
                 <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
                   {DIET_APPROACHES.map((d) => {
                     const active = specialMode === d.id;
+                    const dietTip: GlossaryTermId | null =
+                      d.id === "rebalancing"
+                        ? "diet_rebalancing"
+                        : d.id === "ketogenic"
+                          ? "diet_ketogenic"
+                          : d.id === "glycemic_shield"
+                            ? "diet_glycemic_shield"
+                            : d.id === "glp1_muscle_guard"
+                              ? "diet_glp1"
+                              : null;
                     return (
                       <button
                         key={d.id}
@@ -391,7 +403,10 @@ export function OnboardingWizard({
                             : "border-slate-500/20 bg-slate-500/5 hover:border-slate-400/40"
                         }`}
                       >
-                        <p className="text-xs font-bold text-white">{d.label}</p>
+                        <p className="text-xs font-bold text-white">
+                          {d.label}
+                          {dietTip && <InfoTip term={dietTip} />}
+                        </p>
                         <p className="mt-0.5 text-[11px] text-slate-400">{d.desc}</p>
                       </button>
                     );
@@ -573,12 +588,12 @@ export function OnboardingWizard({
                       Bilan calculé en direct
                     </p>
                     <p className="mt-0.5 text-sm font-bold text-white">
-                      IMC réel : {metrics.bmi} · {metrics.bmiCategoryFr}
+                      IMC réel : {metrics.bmi} · {metrics.bmiCategoryFr} <InfoTip term="bmi" />
                     </p>
                   </div>
                   <div className="text-right">
                     <p className="font-display text-xl font-extrabold text-emerald-300 tabular-nums">
-                      {metrics.targetIntakeKcal} kcal/j
+                      {metrics.targetIntakeKcal} kcal/j <InfoTip term="tdee" />
                     </p>
                     <p className="text-[11px] text-slate-400">
                       Prot. {metrics.targets.proteinG} g · Eau {metrics.targets.waterMl} mL
@@ -644,7 +659,7 @@ export function OnboardingWizard({
 
               <div>
                 <label className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                  Protocole repas / Jeûne intermittent
+                  Protocole repas / Jeûne intermittent <InfoTip term="fasting_omad" />
                 </label>
                 {fastingBlockedByClinical ? (
                   <div className="mt-2 rounded-2xl border border-amber-400/40 bg-amber-500/10 p-3 text-xs text-amber-200">
@@ -684,7 +699,10 @@ export function OnboardingWizard({
                             : "border-slate-500/20"
                         }`}
                       >
-                        <p className="font-bold text-white">{p.title}</p>
+                        <p className="font-bold text-white">
+                          {p.title}
+                          {p.id === "omad_23_1" && <InfoTip term="fasting_omad" />}
+                        </p>
                         <p className="text-[11px] text-slate-400">{p.levelFr}</p>
                       </button>
                     ))}
