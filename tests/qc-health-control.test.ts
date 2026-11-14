@@ -44,6 +44,7 @@ function makeMinimalDayBalance(overrides: Partial<DailyEnergyBalance>): DailyEne
     netStepsKcal: 0,
     workoutMinutes: 0,
     netWorkoutsKcal: 0,
+    sportRefuelKcal: 0,
     tefKcal: 0,
     totalExpenditureKcal: 1960,
     netBalanceKcal: -1960,

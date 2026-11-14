@@ -57,7 +57,8 @@ export type DashboardTabTarget =
   | "fasting"
   | "bodylab"
   | "profile"
-  | "medical";
+  | "medical"
+  | "fw_ai";
 
 export interface DashboardViewProps {
   profile: UserProfile;
@@ -217,6 +218,12 @@ export function DashboardView({
   const dietBadge = useMemo(() => {
     if (profile.specialMode === "ketogenic") {
       return { label: "Cétogène (Keto)", cls: "border-emerald-400/35 bg-emerald-500/15 text-emerald-300" };
+    }
+    if (profile.specialMode === "high_protein_athlete" || profile.primaryGoal === "athletic_performance") {
+      return { label: "Sport & Performance", cls: "border-orange-400/35 bg-orange-500/15 text-orange-200" };
+    }
+    if (profile.primaryGoal === "muscle_gain") {
+      return { label: "Prise de masse propre", cls: "border-emerald-400/35 bg-emerald-500/15 text-emerald-200" };
     }
     if (profile.specialMode === "rebalancing" || profile.primaryGoal === "rebalancing") {
       return { label: "Rééquilibrage", cls: "border-sky-400/35 bg-sky-500/15 text-sky-300" };
@@ -383,14 +390,24 @@ export function DashboardView({
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => openSheet("widgets_config")}
-          className="inline-flex items-center gap-1.5 rounded-full border border-slate-500/25 bg-slate-500/10 px-3.5 py-1.5 text-xs font-bold text-slate-200 hover:border-emerald-400/40"
-        >
-          <SlidersHorizontal className="h-3.5 w-3.5 text-emerald-400" />
-          Widgets ({visibleWidgets.length})
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => onNavigateTab("fw_ai")}
+            className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/35 bg-emerald-500/15 px-3 py-1.5 text-xs font-bold text-emerald-200 hover:bg-emerald-500/25"
+          >
+            <Sparkles className="h-3.5 w-3.5 text-emerald-300" />
+            FW AI
+          </button>
+          <button
+            type="button"
+            onClick={() => openSheet("widgets_config")}
+            className="inline-flex items-center gap-1.5 rounded-full border border-slate-500/25 bg-slate-500/10 px-3.5 py-1.5 text-xs font-bold text-slate-200 hover:border-emerald-400/40"
+          >
+            <SlidersHorizontal className="h-3.5 w-3.5 text-emerald-400" />
+            Widgets ({visibleWidgets.length})
+          </button>
+        </div>
       </div>
 
       {/* Bandeau temps réel Jeûne / Fenêtre repas autorisée */}
@@ -480,7 +497,7 @@ export function DashboardView({
           <div className="flex flex-col items-center gap-5 sm:flex-row sm:items-center sm:justify-between">
             <HeroEnergyOrb
               consumedKcal={todayBalance.intakeKcal}
-              targetKcal={anthro.targetIntakeKcal}
+              targetKcal={todayBalance.targetIntakeKcal}
               burnedKcal={activeBurnedKcal}
               size={156}
             />
@@ -557,9 +574,17 @@ export function DashboardView({
                 })}
               </div>
 
-              <div className="flex items-center justify-between text-xs text-slate-400">
-                <span>
-                  {todayBalance.mealsCount} repas · Cible {anthro.targetIntakeKcal} kcal/j
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
+                <span className="inline-flex flex-wrap items-center gap-1.5">
+                  <span>
+                    {todayBalance.mealsCount} repas · Cible {todayBalance.targetIntakeKcal} kcal/j
+                  </span>
+                  {todayBalance.sportRefuelKcal > 0 && (
+                    <span className="inline-flex items-center gap-1 rounded-full border border-orange-400/35 bg-orange-500/15 px-2 py-0.5 text-[10px] font-bold text-orange-200">
+                      +{todayBalance.sportRefuelKcal} kcal ravitaillement sport{" "}
+                      <InfoTip term="athletic_refuel" />
+                    </span>
+                  )}
                 </span>
                 <span className="inline-flex items-center gap-1 font-semibold text-emerald-300 group-hover:translate-x-0.5 transition">
                   Courbes &amp; détails

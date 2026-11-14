@@ -150,7 +150,7 @@ export function MedicalHubView() {
       {/* Référentiels Institutionnels Permanents */}
       <div className="vp-card p-4 sm:p-5 space-y-3">
         <h3 className="text-base font-semibold text-white">
-          Référentiels institutionnels permanents intégrés à VitalPulse
+          Référentiels institutionnels permanents intégrés à FolloWeight
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {(data?.institutionalBaseline ?? []).map((card) => (

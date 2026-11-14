@@ -1,0 +1,217 @@
+{
+  "verified_at_utc": "2026-11-14T23:45:24.416063+00:00",
+  "status": "PASS",
+  "required_png_count": 18,
+  "total_png_count": 22,
+  "files": [
+    {
+      "path": "public/brand/followeight-logo-showcase.png",
+      "width": 1024,
+      "height": 1024,
+      "mode": "RGBA",
+      "sha256": "311d4710e5a4ff08c3298f051a7059ddd2d0edaa53ee5250ed33d74c0a93deee"
+    },
+    {
+      "path": "public/icons/icon-512.png",
+      "width": 512,
+      "height": 512,
+      "mode": "RGBA",
+      "sha256": "d0ebd3d087ca0d514349fefab29301fd426582c39e109bba10abceae579bda0b"
+    },
+    {
+      "path": "public/icons/icon-192.png",
+      "width": 192,
+      "height": 192,
+      "mode": "RGBA",
+      "sha256": "d09a9e7dc082474ccbfc5a9e8ae82c4346a878b3fd5ccf6dff485f7e6448f078"
+    },
+    {
+      "path": "android/app/src/main/res/mipmap-mdpi/ic_launcher.png",
+      "width": 48,
+      "height": 48,
+      "mode": "RGBA",
+      "sha256": "b30e307a9c11ddb934767e88bc164db0c2466fcf7e84e7319e48c8e70ee59bfa"
+    },
+    {
+      "path": "android/app/src/main/res/mipmap-mdpi/ic_launcher_round.png",
+      "width": 48,
+      "height": 48,
+      "mode": "RGBA",
+      "sha256": "81cc4c3e4e54ce98c329b6aafb493c37013352f75d757d460ecee243d12507b7"
+    },
+    {
+      "path": "android/app/src/main/res/mipmap-mdpi/ic_launcher_foreground.png",
+      "width": 108,
+      "height": 108,
+      "mode": "RGBA",
+      "sha256": "27a1cf552e778db5aabb37b4f36bb16505b7092d461ec2c76ba97b5c61fa890d",
+      "alpha_bbox": [
+        27,
+        33,
+        81,
+        75
+      ],
+      "radius_px": 31.757,
+      "safe_radius_px": 33.0
+    },
+    {
+      "path": "android/app/src/main/res/mipmap-hdpi/ic_launcher.png",
+      "width": 72,
+      "height": 72,
+      "mode": "RGBA",
+      "sha256": "f628e101e6518c9320ebb44f0e66e9fffe200cc4831c0cc2bc58b8b5e8d2386a"
+    },
+    {
+      "path": "android/app/src/main/res/mipmap-hdpi/ic_launcher_round.png",
+      "width": 72,
+      "height": 72,
+      "mode": "RGBA",
+      "sha256": "41432d5c7373fdcd5045c169157e146a794525a8eb4e4c8eebc1855dd4e4782f"
+    },
+    {
+      "path": "android/app/src/main/res/mipmap-hdpi/ic_launcher_foreground.png",
+      "width": 162,
+      "height": 162,
+      "mode": "RGBA",
+      "sha256": "05e983ed1ba4fa7bd3f77c85aefbe176b62b4bb768b0be582c690a828376ee63",
+      "alpha_bbox": [
+        41,
+        50,
+        120,
+        112
+      ],
+      "radius_px": 46.179,
+      "safe_radius_px": 49.5
+    },
+    {
+      "path": "android/app/src/main/res/mipmap-xhdpi/ic_launcher.png",
+      "width": 96,
+      "height": 96,
+      "mode": "RGBA",
+      "sha256": "5b8a917614cb7a8728f202f55e91c84c306a413938643e3b1d9d1c8dc47a584e"
+    },
+    {
+      "path": "android/app/src/main/res/mipmap-xhdpi/ic_launcher_round.png",
+      "width": 96,
+      "height": 96,
+      "mode": "RGBA",
+      "sha256": "87fc3db1c88c313aa60c4448cf9a5498f6548926a089d41fdeaf8c14add07be8"
+    },
+    {
+      "path": "android/app/src/main/res/mipmap-xhdpi/ic_launcher_foreground.png",
+      "width": 216,
+      "height": 216,
+      "mode": "RGBA",
+      "sha256": "22b331e21ab519380c86d4b8167efb8434aca05dc72d8e16a409033dde81c305",
+      "alpha_bbox": [
+        56,
+        68,
+        160,
+        148
+      ],
+      "radius_px": 61.16,
+      "safe_radius_px": 66.0
+    },
+    {
+      "path": "android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png",
+      "width": 144,
+      "height": 144,
+      "mode": "RGBA",
+      "sha256": "42eb8443221332cbf5c87b10e8692872a329ab3a0df29f441cdd238ccfab534a"
+    },
+    {
+      "path": "android/app/src/main/res/mipmap-xxhdpi/ic_launcher_round.png",
+      "width": 144,
+      "height": 144,
+      "mode": "RGBA",
+      "sha256": "b24621b1069f9c304fa01d92d3057cecac1dcd7a611fb1966257c12b2402860a"
+    },
+    {
+      "path": "android/app/src/main/res/mipmap-xxhdpi/ic_launcher_foreground.png",
+      "width": 324,
+      "height": 324,
+      "mode": "RGBA",
+      "sha256": "c71c66a8a6e2117f9c322fa900b205eee4fdce74b4f812fab5961fd5b9e57644",
+      "alpha_bbox": [
+        86,
+        103,
+        238,
+        221
+      ],
+      "radius_px": 90.568,
+      "safe_radius_px": 99.0
+    },
+    {
+      "path": "android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png",
+      "width": 192,
+      "height": 192,
+      "mode": "RGBA",
+      "sha256": "ac195afa87b0db179bd935893d7fe181a35287d4f41f461391f6b91fb450462e"
+    },
+    {
+      "path": "android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png",
+      "width": 192,
+      "height": 192,
+      "mode": "RGBA",
+      "sha256": "d3989d252462eeef08a31cf6326d9df2782e8dfebd61b9790a745af86487d823"
+    },
+    {
+      "path": "android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_foreground.png",
+      "width": 432,
+      "height": 432,
+      "mode": "RGBA",
+      "sha256": "048f12b20c4a723cc9d73b50e4018292a819bc22258a304a9e9aa1f223eedaaf",
+      "alpha_bbox": [
+        115,
+        138,
+        317,
+        294
+      ],
+      "radius_px": 120.318,
+      "safe_radius_px": 132.0
+    }
+  ],
+  "qa_files": [
+    {
+      "path": "public/brand/qa/icon-24.png",
+      "width": 24,
+      "height": 24,
+      "mode": "RGBA",
+      "sha256": "1228c10a7a4e6d11788d8702bc21ca73d4fb065ec9b35a57d7748101cd25d85d"
+    },
+    {
+      "path": "public/brand/qa/icon-48.png",
+      "width": 48,
+      "height": 48,
+      "mode": "RGBA",
+      "sha256": "a5f03147ad2744c2cb96d967d5dcd79c15171208289d18168fcd37ec0060e18a"
+    },
+    {
+      "path": "public/brand/qa/status-24.png",
+      "width": 24,
+      "height": 24,
+      "mode": "RGBA",
+      "sha256": "cea587203578f2c3720d5589d8a1a31828e6e4b97261b999e86074379ed953c6"
+    },
+    {
+      "path": "public/brand/qa/contact-sheet.png",
+      "width": 1120,
+      "height": 680,
+      "mode": "RGBA",
+      "sha256": "d9cb148d179b8bb639d17d829a20ab47797d40f934a25697029633026dc397ad"
+    }
+  ],
+  "checks": [
+    "PNG dimensions and RGBA",
+    "SVG 512 viewBox, no text or raster",
+    "master/icon.svg byte equality",
+    "transparent adaptive foreground within 66dp circle",
+    "PWA full background",
+    "round alpha corners",
+    "Android color and resource references"
+  ],
+  "limits": [
+    "No Android device, emulator or APK compilation; XML structure and references validated.",
+    "Notification drawable provided; notification-code wiring is outside this branding task."
+  ]
+}

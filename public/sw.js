@@ -1,4 +1,4 @@
-const CACHE_NAME = "vitalpulse-pwa-v1";
+const CACHE_NAME = "followeight-pwa-v1";
 const STATIC_ASSETS = ["/", "/manifest.webmanifest", "/icons/icon.svg", "/icons/icon-192.png"];
 
 self.addEventListener("install", (event) => {
@@ -37,7 +37,7 @@ self.addEventListener("fetch", (event) => {
 
 self.addEventListener("push", (event) => {
   let data = {
-    title: "VitalPulse · Rappel Objectif",
+    title: "FolloWeight · Rappel Objectif",
     body: "Prenez 2 minutes pour votre santé aujourd'hui.",
     url: "/",
   };
@@ -84,12 +84,12 @@ self.addEventListener("message", (event) => {
   }
   self.__vpFastTimer = setTimeout(() => {
     self.registration.showNotification(
-      data.title || "VitalPulse · Cycle Jeûne & Repas",
+      data.title || "FolloWeight · Cycle Jeûne & Repas",
       {
         body: data.body || "Votre fenêtre alimentaire vient de changer.",
         icon: "/icons/icon-192.png",
         badge: "/icons/icon-192.png",
-        tag: data.key || "vitalpulse-fast-transition",
+        tag: data.key || "followeight-fast-transition",
         data: { url: "/" },
       }
     );

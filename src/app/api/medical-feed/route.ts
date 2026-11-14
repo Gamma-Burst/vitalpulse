@@ -87,7 +87,7 @@ const CORE_INSTITUTIONAL_CARDS: MedicalEvidenceCard[] = [
     evidenceLevel: "Standard épidémiologique mondial",
     url: "https://pacompendium.com/",
     summaryFr:
-      "Référentiel de > 1 100 activités physiques par MET. VitalPulse soustrait le métabolisme de repos (MET − 1) et les pas de séance pour éviter tout double comptage.",
+      "Référentiel de > 1 100 activités physiques par MET. FolloWeight soustrait le métabolisme de repos (MET − 1) et les pas de séance pour éviter tout double comptage.",
     actionableTip: "Cumulez pas quotidiens hors-séance + courtes séances chronométrées.",
   },
   {

@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const title = String(body.title || "VitalPulse · Rappel Objectif");
+    const title = String(body.title || "FolloWeight · Rappel Objectif");
     const message = String(
       body.body || "Encore quelques pas ou un grand verre d'eau pour valider votre journée !"
     );

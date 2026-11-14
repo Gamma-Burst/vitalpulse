@@ -14,6 +14,7 @@ function buildFallbackFridgeResult(params: {
   remainingProteinG: number;
   maxMinutes: number;
   specialMode?: string;
+  primaryGoal?: string;
 }) {
   const txt = (params.userNotes || "").toLowerCase();
   const detectedIngredients: FridgeIngredient[] = [];
@@ -43,8 +44,12 @@ function buildFallbackFridgeResult(params: {
     );
   }
 
-  const targetKcal = Math.max(320, Math.min(720, Math.round(params.remainingKcal || 540)));
-  const targetProt = Math.max(25, Math.min(52, Math.round(params.remainingProteinG || 36)));
+  const isSportGoal =
+    params.specialMode === "high_protein_athlete" ||
+    params.primaryGoal === "muscle_gain" ||
+    params.primaryGoal === "athletic_performance";
+  const targetKcal = Math.max(320, Math.min(isSportGoal ? 880 : 720, Math.round(params.remainingKcal || (isSportGoal ? 680 : 540))));
+  const targetProt = Math.max(isSportGoal ? 32 : 25, Math.min(isSportGoal ? 60 : 52, Math.round(params.remainingProteinG || (isSportGoal ? 44 : 36))));
 
   const isKeto = params.specialMode === "ketogenic";
 
@@ -53,7 +58,9 @@ function buildFallbackFridgeResult(params: {
       id: "rec-shakshuka-protein",
       title: isKeto
         ? "Poêlée cétogène œufs-avocat-courgettes façon Shakshuka (< 9 g glucides)"
-        : "Poêlée express œufs-légumes façon Shakshuka légère",
+        : isSportGoal
+          ? "Poêlée anabolique 4 œufs, lentilles & légumes (+40 g protéines)"
+          : "Poêlée express œufs-légumes façon Shakshuka légère",
       prepMinutes: 4,
       cookMinutes: Math.min(12, params.maxMinutes || 12),
       servings: 1,
@@ -68,20 +75,32 @@ function buildFallbackFridgeResult(params: {
             satFatG: 8.5,
             sodiumMg: 520,
           }
-        : {
-            proteinG: Math.round(targetProt * 0.85),
-            carbsG: 24,
-            fatG: 18,
-            fiberG: 7.5,
-            sugarG: 6.2,
-            satFatG: 4.5,
-            sodiumMg: 480,
-          },
+        : isSportGoal
+          ? {
+              proteinG: Math.max(38, Math.round(targetProt * 0.92)),
+              carbsG: 48,
+              fatG: 18,
+              fiberG: 9.0,
+              sugarG: 5.5,
+              satFatG: 4.6,
+              sodiumMg: 510,
+            }
+          : {
+              proteinG: Math.round(targetProt * 0.85),
+              carbsG: 24,
+              fatG: 18,
+              fiberG: 7.5,
+              sugarG: 6.2,
+              satFatG: 4.5,
+              sodiumMg: 480,
+            },
       novaGroup: 1,
-      glycemicLoad: isKeto ? 3 : 9,
+      glycemicLoad: isKeto ? 3 : isSportGoal ? 14 : 9,
       whyItFitsToday: isKeto
         ? `Recette cétogène stricte (< 9 g de glucides) avec ~${Math.round(targetProt * 0.85)} g de protéines et bonnes graisses (huile d'olive / avocat).`
-        : `Calibrée pour « fermer votre journée » : apporte ~${Math.round(targetProt * 0.85)} g de protéines rassasiantes et 7,5 g de fibres sans pic glycémique avant le coucher.`,
+        : isSportGoal
+          ? `Conçue pour la récupération musculaire : franchit le seuil de leucine (~${Math.max(38, Math.round(targetProt * 0.92))} g de protéines complètes) + glucides complexes pour recharger le glycogène.`
+          : `Calibrée pour « fermer votre journée » : apporte ~${Math.round(targetProt * 0.85)} g de protéines rassasiantes et 7,5 g de fibres sans pic glycémique avant le coucher.`,
       ingredients: isKeto
         ? [
             "3 œufs entiers + 1/2 avocat ou 30 g de feta",
@@ -231,6 +250,7 @@ export async function POST(req: NextRequest) {
     const remainingFiberG = Number(body.remainingFiberG) || 10;
     const maxMinutes = Number(body.maxMinutes) || 20;
     const specialMode = String(body.specialMode || "standard");
+    const primaryGoal = String(body.primaryGoal || "fat_loss");
 
     const apiKey = process.env.OPENAI_API_KEY;
     const model = process.env.OPENAI_VISION_MODEL || "gpt-4o-mini";
@@ -242,9 +262,11 @@ export async function POST(req: NextRequest) {
           `Budget nutritionnel « Ferme ta journée » restant pour l'utilisateur : ~${remainingKcal} kcal, ~${remainingProteinG} g protéines, ~${remainingFiberG} g fibres.`,
           specialMode === "ketogenic"
             ? `Temps de préparation+cuisson maximum souhaité : ${maxMinutes} minutes. Mode clinique : ketogenic — IMPÉRATIF CÉTOGÈNE (Keto) : propose 3 recettes à < 10 g de glucides par portion (zéro pain, zéro riz, zéro pâtes, zéro sucre ; privilégie œufs, poissons/viandes, avocat, légumes verts, huile d'olive, fromage).`
-            : specialMode === "rebalancing"
-              ? `Temps de préparation+cuisson maximum souhaité : ${maxMinutes} minutes. Mode clinique : rebalancing — Rééquilibrage alimentaire équilibré ANSES NOVA 1-2 (légumes + protéines + féculents complets sans frustration).`
-              : `Temps de préparation+cuisson maximum souhaité : ${maxMinutes} minutes. Mode clinique : ${specialMode}.`,
+            : specialMode === "high_protein_athlete" || primaryGoal === "muscle_gain" || primaryGoal === "athletic_performance"
+              ? `Temps de préparation+cuisson maximum souhaité : ${maxMinutes} minutes. Objectif sportif / hypertrophie (${primaryGoal}, ${specialMode}) — Privilégie 35–48 g de protéines complètes par assiette (seuil leucine ISSN) + glucides digestes (riz basmati, patate douce, flocons d'avoine) pour la récupération musculaire et le glycogène.`
+              : specialMode === "rebalancing"
+                ? `Temps de préparation+cuisson maximum souhaité : ${maxMinutes} minutes. Mode clinique : rebalancing — Rééquilibrage alimentaire équilibré ANSES NOVA 1-2 (légumes + protéines + féculents complets sans frustration).`
+                : `Temps de préparation+cuisson maximum souhaité : ${maxMinutes} minutes. Mode clinique : ${specialMode} (objectif : ${primaryGoal}).`,
           userNotes
             ? `PRÉCISIONS UTILISATEUR SUR CE QU'IL Y A DANS LE FRIGO / ENVIES : "${userNotes}"`
             : "",
@@ -336,6 +358,7 @@ export async function POST(req: NextRequest) {
         remainingProteinG,
         maxMinutes,
         specialMode,
+        primaryGoal,
       })
     );
   } catch (err) {

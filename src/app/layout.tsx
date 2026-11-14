@@ -28,14 +28,14 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "VitalPulse · Coach Nutrition, Métabolisme & Forme",
+  title: "FolloWeight · Coach Nutrition, Sport & Métabolisme IA",
   description:
-    "Photo de plat & frigo avec notes texte, vrai bilan IMC/BRI/TDEE, suivi des pas sans double comptage, exercices anti-démotivation, notifications Push et veille médicale PubMed/ANSES.",
+    "FolloWeight (followeight.com) : photo de plat & frigo IA, coach FW AI, vrai bilan IMC/BRI/TDEE, jeûne OMAD, suivi multi-sports & prise de masse propre, bilans sanguins et montres connectées.",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "VitalPulse",
+    title: "FolloWeight",
   },
   icons: {
     icon: "/icons/icon-192.png",

@@ -16,6 +16,7 @@ import {
   FridgeIngredient,
   FridgeScanSession,
   MealEntry,
+  PrimaryGoal,
   SpecialMode,
   StepByStepRecipe,
 } from "@/types/vitalpulse";
@@ -27,6 +28,7 @@ interface FridgeChefViewProps {
   remainingProteinG: number;
   remainingFiberG: number;
   specialMode: SpecialMode;
+  primaryGoal?: PrimaryGoal;
   todayDateKey: string;
   historyScans: FridgeScanSession[];
   onSaveFridgeScan: (session: FridgeScanSession) => void;
@@ -59,6 +61,7 @@ export function FridgeChefView({
   remainingProteinG,
   remainingFiberG,
   specialMode,
+  primaryGoal,
   todayDateKey,
   historyScans,
   onSaveFridgeScan,
@@ -140,6 +143,7 @@ export function FridgeChefView({
           remainingFiberG,
           maxMinutes,
           specialMode,
+          primaryGoal,
         }),
       });
       if (!res.ok) return;

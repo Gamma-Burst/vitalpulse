@@ -15,14 +15,17 @@ import {
 import {
   ActivityProfile,
   AnthropometricReport,
+  AthleticLevel,
   ChallengeMetric,
   CustomChallenge,
   DailyEnergyBalance,
   PrimaryGoal,
   Sex,
   SpecialMode,
+  SportDisciplineId,
   UserProfile,
 } from "@/types/vitalpulse";
+import { SPORT_DISCIPLINES_CATALOG } from "@/data/exercises-compendium";
 import { subscribeBrowserToPush } from "@/lib/native-bridge";
 import { DetailSheet } from "@/components/ui/DetailSheet";
 import { InfoTip } from "@/components/ui/InfoTip";
@@ -182,7 +185,7 @@ export function ProfileChallengesView({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           subscription: pushSubscription?.toJSON?.(),
-          title: "VitalPulse · Rappel Challenge",
+          title: "FolloWeight · Rappel Challenge",
           body: `Encore ${Math.max(0, form.dailyStepGoal - todayBalance.rawSteps)} pas ou 2 min d'exercice pour valider votre objectif du jour !`,
           url: "/",
         }),
@@ -191,7 +194,7 @@ export function ProfileChallengesView({
       if (json.sent > 0) {
         setPushStatus("Notification Push réelle envoyée avec succès via VAPID !");
       } else if (typeof Notification !== "undefined" && Notification.permission === "granted") {
-        new Notification("VitalPulse · Rappel Challenge", {
+        new Notification("FolloWeight · Rappel Challenge", {
           body: `Objectif du jour : ${todayBalance.rawSteps} / ${form.dailyStepGoal} pas.`,
           icon: "/icons/icon-192.png",
         });
@@ -237,7 +240,7 @@ export function ProfileChallengesView({
               Vrai Bilan Corporel &amp; Métabolique
             </h2>
             <p className="text-xs text-slate-300 mt-0.5">
-              Ne vous fiez plus uniquement à l&apos;IMC brut : VitalPulse croise IMC OMS, Ratio Tour de taille / Taille, Body Roundness Index (JAMA 2024) et Masse Grasse Relative (RFM).
+              Ne vous fiez plus uniquement à l&apos;IMC brut : FolloWeight croise IMC OMS, Ratio Tour de taille / Taille, Body Roundness Index (JAMA 2024) et Masse Grasse Relative (RFM).
             </p>
           </div>
           <button
@@ -318,10 +321,15 @@ export function ProfileChallengesView({
             <strong className="text-emerald-300 text-sm">{anthro.targetIntakeKcal} kcal/j</strong>
           </div>
           <div>
-            <span className="text-slate-400 block">Protéines / Fibres cibles</span>
+            <span className="text-slate-400 block">
+              Protéines / Fibres cibles <InfoTip term="leucine_threshold" />
+            </span>
             <strong className="text-white text-sm">
               {anthro.targets.proteinG} g / {anthro.targets.fiberG} g
             </strong>
+            <span className="block text-[10px] text-emerald-300/90 mt-0.5">
+              Bolus ~{anthro.perMealProteinBolusG} g × 4 repas
+            </span>
           </div>
           <div>
             <span className="text-slate-400 block">
@@ -619,7 +627,7 @@ export function ProfileChallengesView({
               {...bindNumericDraft(
                 setCalorieOverrideDraft,
                 Math.max(1200, anthro.clinicalFloorKcal),
-                4500,
+                5500,
                 false,
                 (dailyCalorieGoalOverride) =>
                   setForm((prev) => ({ ...prev, dailyCalorieGoalOverride })),
@@ -655,10 +663,10 @@ export function ProfileChallengesView({
                 const nextGoal = e.target.value as PrimaryGoal;
                 setForm((prev) => {
                   let nextPace = prev.weeklyPaceKg;
-                  if (nextGoal === "maintenance") {
+                  if (nextGoal === "maintenance" || nextGoal === "athletic_performance") {
                     nextPace = 0;
                   } else if (nextGoal === "muscle_gain") {
-                    nextPace = Math.max(0.1, Math.min(0.4, Math.abs(prev.weeklyPaceKg) || 0.2));
+                    nextPace = Math.max(0.1, Math.min(0.4, Math.abs(prev.weeklyPaceKg) || 0.25));
                   } else {
                     nextPace = -Math.max(0.2, Math.min(0.75, Math.abs(prev.weeklyPaceKg) || 0.4));
                   }
@@ -671,16 +679,20 @@ export function ProfileChallengesView({
               <option value="rebalancing">Rééquilibrage alimentaire</option>
               <option value="recomposition">Recomposition (muscle + taille)</option>
               <option value="maintenance">Maintien &amp; Vitalité</option>
-              <option value="muscle_gain">Prise de masse propre</option>
+              <option value="muscle_gain">Prise de masse propre (Lean Bulk)</option>
+              <option value="athletic_performance">Performance sportive &amp; Endurance</option>
             </select>
           </label>
           <label className="space-y-1">
-            <span className="text-slate-400 block">Rythme hebdo visé ({form.weeklyPaceKg} kg/sem)</span>
+            <span className="text-slate-400 block">
+              Rythme hebdo visé ({form.weeklyPaceKg > 0 ? `+${form.weeklyPaceKg}` : form.weeklyPaceKg} kg/sem){" "}
+              {form.primaryGoal === "muscle_gain" && <InfoTip term="lean_bulk" />}
+            </span>
             <input
               type="range"
-              disabled={form.primaryGoal === "maintenance"}
+              disabled={form.primaryGoal === "maintenance" || form.primaryGoal === "athletic_performance"}
               min={form.primaryGoal === "muscle_gain" ? 0.05 : -0.75}
-              max={form.primaryGoal === "muscle_gain" ? 0.45 : form.primaryGoal === "maintenance" ? 0 : -0.1}
+              max={form.primaryGoal === "muscle_gain" ? 0.45 : form.primaryGoal === "maintenance" || form.primaryGoal === "athletic_performance" ? 0 : -0.1}
               step={0.05}
               value={form.weeklyPaceKg}
               onChange={(e) => setForm({ ...form, weeklyPaceKg: Number(e.target.value) })}
@@ -698,7 +710,9 @@ export function ProfileChallengesView({
                       ? "diet_glycemic_shield"
                       : form.specialMode === "glp1_muscle_guard"
                         ? "diet_glp1"
-                        : "diet_rebalancing"
+                        : form.specialMode === "high_protein_athlete"
+                          ? "leucine_threshold"
+                          : "diet_rebalancing"
                 }
               />
             </span>
@@ -710,11 +724,59 @@ export function ProfileChallengesView({
               <option value="standard">Standard équilibré</option>
               <option value="rebalancing">Rééquilibrage alimentaire</option>
               <option value="ketogenic">Cétogène (Keto · glucides &le; 35 g/j)</option>
+              <option value="high_protein_athlete">Sportif / Prise de masse (2,0 g/kg prot.)</option>
               <option value="glp1_muscle_guard">GLP-1 (Protection muscle &amp; fibres)</option>
               <option value="glycemic_shield">Bouclier glycémique (CG basse)</option>
               <option value="cardio_low_sodium">Cardio &amp; Sel maîtrisé (&lt;1500 mg)</option>
             </select>
           </label>
+          <label className="space-y-1">
+            <span className="text-slate-400 block">Niveau sportif</span>
+            <select
+              value={form.athleticLevel || "recreational"}
+              onChange={(e) =>
+                setForm({ ...form, athleticLevel: e.target.value as AthleticLevel })
+              }
+              className="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-white"
+            >
+              <option value="beginner">Débutant / Reprise</option>
+              <option value="recreational">Loisir régulier (1–3 séances/sem)</option>
+              <option value="intermediate">Sportif confirmé (4–6 séances/sem)</option>
+              <option value="athlete">Athlète / Haute intensité</option>
+            </select>
+          </label>
+        </div>
+
+        {/* Disciplines sportives préférées */}
+        <div className="space-y-2 rounded-2xl border border-slate-800 bg-slate-950/60 p-3 text-xs">
+          <span className="block font-semibold text-slate-300">
+            Sports pratiqués ({(form.favoriteSports || []).length} sélectionné{(form.favoriteSports || []).length > 1 ? "s" : ""})
+          </span>
+          <div className="flex flex-wrap gap-1.5">
+            {SPORT_DISCIPLINES_CATALOG.map((disc) => {
+              const current = form.favoriteSports || [];
+              const active = current.includes(disc.id);
+              return (
+                <button
+                  key={disc.id}
+                  type="button"
+                  onClick={() => {
+                    const next: SportDisciplineId[] = active
+                      ? current.filter((x) => x !== disc.id)
+                      : [...current, disc.id];
+                    setForm({ ...form, favoriteSports: next });
+                  }}
+                  className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${
+                    active
+                      ? "border-emerald-400 bg-emerald-500/20 text-emerald-200"
+                      : "border-slate-700 bg-slate-900 text-slate-400 hover:border-slate-500"
+                  }`}
+                >
+                  {disc.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-3 pt-2">

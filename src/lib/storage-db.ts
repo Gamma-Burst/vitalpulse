@@ -1,4 +1,6 @@
 import {
+  ActivityProfile,
+  AthleticLevel,
   BloodPanelEntry,
   BodyMeasurementEntry,
   BodyPhotoMeta,
@@ -7,7 +9,12 @@ import {
   DashboardWidgetId,
   FastingConfig,
   FridgeScanSession,
+  FwAiMessage,
   MealEntry,
+  PrimaryGoal,
+  SpecialMode,
+  SportDisciplineId,
+  SubscriptionState,
   UserProfile,
   WaterLog,
   WearableSyncState,
@@ -15,10 +22,45 @@ import {
   WorkoutSession,
 } from "@/types/vitalpulse";
 import { buildDemoSeedState, DEMO_BODY_PHOTOS } from "@/data/demo-seed";
+import { SPORT_DISCIPLINES_CATALOG } from "@/data/exercises-compendium";
+import { createDefaultSubscriptionState, normalizeSubscriptionForToday } from "@/lib/billing-bridge";
 import { getProtocolSpec } from "@/lib/fasting-engine";
 import { computeAnthropometrics } from "@/lib/metabolic-engine";
 
-export const CURRENT_STATE_VERSION = 4;
+export const CURRENT_STATE_VERSION = 5;
+
+const VALID_ACTIVITY_PROFILES = new Set<ActivityProfile>([
+  "sedentary",
+  "lightly_active",
+  "active",
+  "very_active",
+]);
+const VALID_ATHLETIC_LEVELS = new Set<AthleticLevel>([
+  "beginner",
+  "recreational",
+  "intermediate",
+  "athlete",
+]);
+const VALID_PRIMARY_GOALS = new Set<PrimaryGoal>([
+  "fat_loss",
+  "rebalancing",
+  "recomposition",
+  "maintenance",
+  "muscle_gain",
+  "athletic_performance",
+]);
+const VALID_SPECIAL_MODES = new Set<SpecialMode>([
+  "standard",
+  "rebalancing",
+  "ketogenic",
+  "high_protein_athlete",
+  "glp1_muscle_guard",
+  "glycemic_shield",
+  "cardio_low_sodium",
+]);
+const VALID_SPORT_IDS = new Set<SportDisciplineId>(
+  SPORT_DISCIPLINES_CATALOG.map((s) => s.id)
+);
 
 function clampNum(val: unknown, min: number, max: number, fallback: number, decimals = 0): number {
   const num = typeof val === "number" ? val : Number(val);
@@ -28,9 +70,33 @@ function clampNum(val: unknown, min: number, max: number, fallback: number, deci
 }
 
 /**
- * Normalise et sécurise les paramètres biométriques et objectifs utilisateur (QC v4).
+ * Normalise et sécurise les paramètres biométriques et objectifs utilisateur (QC v5).
  */
 export function sanitizeUserProfile(raw?: Partial<UserProfile>): UserProfile {
+  const activityProfile: ActivityProfile =
+    raw?.activityProfile && VALID_ACTIVITY_PROFILES.has(raw.activityProfile)
+      ? raw.activityProfile
+      : "lightly_active";
+  const primaryGoal: PrimaryGoal =
+    raw?.primaryGoal && VALID_PRIMARY_GOALS.has(raw.primaryGoal)
+      ? raw.primaryGoal
+      : "fat_loss";
+  const specialMode: SpecialMode =
+    raw?.specialMode && VALID_SPECIAL_MODES.has(raw.specialMode)
+      ? raw.specialMode
+      : "standard";
+  const athleticLevel: AthleticLevel | undefined =
+    raw?.athleticLevel && VALID_ATHLETIC_LEVELS.has(raw.athleticLevel)
+      ? raw.athleticLevel
+      : undefined;
+  const favoriteSports: SportDisciplineId[] | undefined = Array.isArray(raw?.favoriteSports)
+    ? Array.from(
+        new Set(
+          raw.favoriteSports.filter((s): s is SportDisciplineId => VALID_SPORT_IDS.has(s))
+        )
+      ).slice(0, 10)
+    : undefined;
+
   const base: UserProfile = {
     name: typeof raw?.name === "string" && raw.name.trim() ? raw.name.trim() : "Mon profil",
     age: clampNum(raw?.age, 12, 105, 34),
@@ -38,11 +104,13 @@ export function sanitizeUserProfile(raw?: Partial<UserProfile>): UserProfile {
     heightCm: clampNum(raw?.heightCm, 120, 230, 175),
     weightKg: clampNum(raw?.weightKg, 30, 250, 78, 1),
     targetWeightKg: clampNum(raw?.targetWeightKg, 35, 250, 72, 1),
-    activityProfile: raw?.activityProfile ?? "lightly_active",
-    primaryGoal: raw?.primaryGoal ?? "fat_loss",
+    activityProfile,
+    ...(athleticLevel ? { athleticLevel } : {}),
+    ...(favoriteSports && favoriteSports.length > 0 ? { favoriteSports } : {}),
+    primaryGoal,
     weeklyPaceKg: clampNum(raw?.weeklyPaceKg, -1.0, 0.5, -0.4, 2),
     dailyStepGoal: clampNum(raw?.dailyStepGoal, 1500, 30000, 8000),
-    specialMode: raw?.specialMode ?? "standard",
+    specialMode,
     quietHours:
       raw?.quietHours && typeof raw.quietHours.start === "string" && typeof raw.quietHours.end === "string"
         ? raw.quietHours
@@ -74,7 +142,7 @@ export function sanitizeUserProfile(raw?: Partial<UserProfile>): UserProfile {
     Number.isFinite(Number(raw.dailyCalorieGoalOverride))
   ) {
     const calGoal = Math.round(Number(raw.dailyCalorieGoalOverride));
-    if (calGoal >= 1200 && calGoal <= 4500) {
+    if (calGoal >= 1200 && calGoal <= 5500) {
       base.dailyCalorieGoalOverride = calGoal;
     }
   }
@@ -109,6 +177,8 @@ export interface VitalPulseState {
   enabledWidgets: DashboardWidgetId[];
   wearable: WearableSyncState;
   completedMindsetDates: string[];
+  fwAiMessages: FwAiMessage[];
+  subscription: SubscriptionState;
   pushEndpoint?: string;
 }
 
@@ -197,6 +267,20 @@ export function migrateVitalPulseState(raw: Partial<VitalPulseState>): VitalPuls
     return c;
   });
 
+  const todayKey = formatDateKey();
+  const defaultFwAiWelcome: FwAiMessage = {
+    id: "fw-ai-welcome",
+    role: "assistant",
+    content: `Bonjour ${profile.name} ! Je suis FW AI, votre coach FolloWeight. Je lis vos vrais chiffres du jour (calories, protéines, pas, jeûne et sport) pour vous proposer le prochain bon choix sans calcul compliqué. Vous disposez de 5 questions gratuites chaque jour !`,
+    createdAt: new Date().toISOString(),
+    provider: "clinical-deterministic",
+    quickActions: [
+      "Analyse ma journée (calories, protéines, sport)",
+      "Quel dîner me conseilles-tu ce soir ?",
+      "Comment progresser sans perdre de muscle ?",
+    ],
+  };
+
   return {
     version: CURRENT_STATE_VERSION,
     profile,
@@ -230,6 +314,13 @@ export function migrateVitalPulseState(raw: Partial<VitalPulseState>): VitalPuls
     completedMindsetDates: Array.isArray(raw.completedMindsetDates)
       ? raw.completedMindsetDates
       : [],
+    fwAiMessages:
+      Array.isArray(raw.fwAiMessages) && raw.fwAiMessages.length > 0
+        ? raw.fwAiMessages
+        : [defaultFwAiWelcome],
+    subscription: raw.subscription
+      ? normalizeSubscriptionForToday(raw.subscription, todayKey)
+      : createDefaultSubscriptionState(todayKey),
     pushEndpoint: raw.pushEndpoint,
   };
 }
@@ -403,6 +494,21 @@ export function buildFreshUserState(
         : [...DEFAULT_ENABLED_WIDGETS],
     wearable: options?.wearable ?? { ecosystem: "none" },
     completedMindsetDates: [],
+    fwAiMessages: [
+      {
+        id: `fw-ai-init-${todayKey}`,
+        role: "assistant",
+        content: `Bienvenue ${cleanProfile.name} sur FolloWeight ! Je suis FW AI. Je connais votre cible (${anthro.targetIntakeKcal} kcal/j, ${anthro.targets.proteinG} g de protéines) et je m'adapte à vos séances sportives et à votre jeûne. Posez-moi votre première question !`,
+        createdAt: new Date().toISOString(),
+        provider: "clinical-deterministic",
+        quickActions: [
+          "Analyse mes objectifs de départ",
+          "Que manger au prochain repas ?",
+          "Comment optimiser ma semaine sport ?",
+        ],
+      },
+    ],
+    subscription: createDefaultSubscriptionState(todayKey),
     challenges: [
       {
         id: "chal-steps-8000",

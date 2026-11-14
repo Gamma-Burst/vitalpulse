@@ -670,7 +670,7 @@ export function buildDemoSeedState(): VitalPulseState {
   ];
 
   return {
-    version: 4,
+    version: 5,
     profile,
     meals,
     fridgeScans: [],
@@ -718,5 +718,29 @@ export function buildDemoSeedState(): VitalPulseState {
     ],
     wearable: { ecosystem: "none" },
     completedMindsetDates: [],
+    fwAiMessages: [
+      {
+        id: "fw-ai-demo-welcome",
+        role: "assistant",
+        content:
+          "Bonjour Alex ! Je suis FW AI, votre coach FolloWeight. Je suis branché en temps réel sur vos repas, votre courbe de poids lissée EMA, votre jeûne et vos séances de sport. Demandez-moi par exemple pourquoi la balance bouge après un repas salé ou comment boucler vos protéines !",
+        createdAt: new Date().toISOString(),
+        provider: "clinical-deterministic",
+        quickActions: [
+          "Analyse ma journée (calories, protéines, sport)",
+          "Pourquoi mon poids varie d'un jour à l'autre ?",
+          "Idée de repas du soir rapide",
+        ],
+      },
+    ],
+    subscription: {
+      tier: "free",
+      source: "local_demo",
+      trialEndsAtIso: null,
+      renewsAtIso: null,
+      dailyAiDateKey: d0,
+      fwAiMessagesUsedToday: 0,
+      visionScansUsedToday: 0,
+    },
   };
 }

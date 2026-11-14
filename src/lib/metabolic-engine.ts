@@ -124,13 +124,22 @@ export function computeAnthropometrics(profile: UserProfile): AnthropometricRepo
   );
   const autoTargetIntakeKcal = minorSafetyLock
     ? estimatedMaintenanceKcal
-    : Math.max(clinicalFloor, Math.min(estimatedMaintenanceKcal + 600, uncappedTarget));
+    : Math.max(
+        clinicalFloor,
+        Math.min(
+          estimatedMaintenanceKcal +
+            (profile.primaryGoal === "muscle_gain" || profile.primaryGoal === "athletic_performance"
+              ? 750
+              : 600),
+          uncappedTarget
+        )
+      );
   const hasCalorieOverride =
     !minorSafetyLock &&
     typeof profile.dailyCalorieGoalOverride === "number" &&
     Number.isFinite(profile.dailyCalorieGoalOverride);
   const targetIntakeKcal = hasCalorieOverride
-    ? Math.max(clinicalFloor, Math.min(4500, Math.round(profile.dailyCalorieGoalOverride!)))
+    ? Math.max(clinicalFloor, Math.min(5500, Math.round(profile.dailyCalorieGoalOverride!)))
     : autoTargetIntakeKcal;
   const safetyFloorApplied =
     !minorSafetyLock &&
@@ -160,13 +169,31 @@ export function computeAnthropometrics(profile: UserProfile): AnthropometricRepo
       ? weightKg
       : idealBmi25Kg + 0.25 * (weightKg - idealBmi25Kg);
   const mlPerKg = profile.specialMode === "ketogenic" && !minorSafetyLock ? 33 : 30;
-  const rawAutoWaterMl = Math.round((hydrationRefKg * mlPerKg) / 50) * 50;
+  const athleticWaterBonusMl =
+    profile.athleticLevel === "athlete" || profile.primaryGoal === "athletic_performance"
+      ? 400
+      : profile.athleticLevel === "intermediate"
+        ? 250
+        : profile.athleticLevel === "recreational"
+          ? 150
+          : 0;
+  const rawAutoWaterMl =
+    Math.round((hydrationRefKg * mlPerKg + athleticWaterBonusMl) / 50) * 50;
   const autoWaterMl = Math.max(1500, Math.min(3500, rawAutoWaterMl));
   const waterMl =
     typeof profile.dailyWaterGoalMl === "number" && Number.isFinite(profile.dailyWaterGoalMl)
       ? Math.max(1000, Math.min(4500, Math.round(profile.dailyWaterGoalMl)))
       : autoWaterMl;
-  let sodiumMaxMg = profile.specialMode === "cardio_low_sodium" ? 1500 : 2000; // OMS < 5g sel/j
+  const isAthleticSodiumProfile =
+    profile.primaryGoal === "athletic_performance" ||
+    profile.specialMode === "high_protein_athlete" ||
+    profile.athleticLevel === "athlete";
+  let sodiumMaxMg =
+    profile.specialMode === "cardio_low_sodium"
+      ? 1500
+      : isAthleticSodiumProfile
+        ? 2400
+        : 2000; // OMS < 5g sel/j (hors compensation sudorale sportive)
 
   if (profile.specialMode === "ketogenic" && !minorSafetyLock) {
     proteinG = Math.max(50, Math.min(220, Math.round(referenceMass * 1.65)));
@@ -182,6 +209,28 @@ export function computeAnthropometrics(profile: UserProfile): AnthropometricRepo
     fatG = Math.max(45, Math.round((targetIntakeKcal * 0.3) / 9));
     carbsG = Math.round(Math.max(200, targetIntakeKcal - proteinG * 4 - fatG * 9) / 4);
     fiberG = profile.sex === "male" ? 34 : 30;
+  } else if (
+    profile.primaryGoal === "muscle_gain" ||
+    profile.specialMode === "high_protein_athlete"
+  ) {
+    const proteinPerKg =
+      profile.athleticLevel === "athlete" || profile.athleticLevel === "intermediate"
+        ? 2.0
+        : profile.athleticLevel === "recreational"
+          ? 1.9
+          : 1.85;
+    proteinG = Math.max(60, Math.min(240, Math.round(referenceMass * proteinPerKg)));
+    const fatFloorG = Math.max(45, Math.round(referenceMass * 0.85));
+    fatG = Math.max(fatFloorG, Math.round((targetIntakeKcal * 0.27) / 9));
+    carbsG = Math.round(Math.max(240, targetIntakeKcal - proteinG * 4 - fatG * 9) / 4);
+    fiberG = profile.sex === "male" ? 34 : 30;
+  } else if (profile.primaryGoal === "athletic_performance") {
+    const proteinPerKg = profile.athleticLevel === "athlete" ? 1.85 : 1.7;
+    proteinG = Math.max(60, Math.min(230, Math.round(referenceMass * proteinPerKg)));
+    const fatFloorG = Math.max(45, Math.round(referenceMass * 0.8));
+    fatG = Math.max(fatFloorG, Math.round((targetIntakeKcal * 0.25) / 9));
+    carbsG = Math.round(Math.max(280, targetIntakeKcal - proteinG * 4 - fatG * 9) / 4);
+    fiberG = profile.sex === "male" ? 32 : 28;
   } else {
     const proteinPerKg =
       profile.specialMode === "glp1_muscle_guard" || profile.primaryGoal === "recomposition"
@@ -195,6 +244,29 @@ export function computeAnthropometrics(profile: UserProfile): AnthropometricRepo
     const remainingCarbsKcal = Math.max(200, targetIntakeKcal - proteinG * 4 - fatG * 9);
     carbsG = Math.round(remainingCarbsKcal / 4);
     fiberG = profile.sex === "male" ? 32 : 28; // ANSES repère ~30g/j
+  }
+
+  const perMealProteinBolusG = Math.max(20, Math.min(55, Math.round(proteinG / 4)));
+  const workoutRefuelEligible =
+    !minorSafetyLock &&
+    !hasCalorieOverride &&
+    (profile.primaryGoal === "muscle_gain" || profile.primaryGoal === "athletic_performance");
+
+  const sources = [
+    "OMS — Classification IMC & Sodium (< 2 000 mg/j)",
+    "NICE CG189 (2022) & HAS — Ratio Tour de Taille / Taille (< 0,50)",
+    "JAMA Network Open (2024) — Body Roundness Index (BRI)",
+    "ANSES & ESPEN — Apports Protéiques & Fibres (30 g/j)",
+    "EFSA — Hydratation ajustée & Mifflin-St Jeor",
+  ];
+  if (
+    profile.primaryGoal === "muscle_gain" ||
+    profile.primaryGoal === "athletic_performance" ||
+    profile.specialMode === "high_protein_athlete" ||
+    profile.athleticLevel === "intermediate" ||
+    profile.athleticLevel === "athlete"
+  ) {
+    sources.push("ISSN (Jäger et al., 2017) & Morton et al. (2018) — Hypertrophie (1,8–2,0 g/kg) & Performance");
   }
 
   return {
@@ -215,6 +287,8 @@ export function computeAnthropometrics(profile: UserProfile): AnthropometricRepo
     safetyFloorApplied,
     minorSafetyLock,
     autoWaterMl,
+    perMealProteinBolusG,
+    workoutRefuelEligible,
     targets: {
       proteinG,
       carbsG,
@@ -223,13 +297,7 @@ export function computeAnthropometrics(profile: UserProfile): AnthropometricRepo
       waterMl,
       sodiumMaxMg,
     },
-    sources: [
-      "OMS — Classification IMC & Sodium (< 2 000 mg/j)",
-      "NICE CG189 (2022) & HAS — Ratio Tour de Taille / Taille (< 0,50)",
-      "JAMA Network Open (2024) — Body Roundness Index (BRI)",
-      "ANSES & ESPEN — Apports Protéiques & Fibres (30 g/j)",
-      "EFSA — Hydratation ajustée & Mifflin-St Jeor",
-    ],
+    sources,
   };
 }
 
@@ -365,14 +433,40 @@ export function computeDailyEnergyBalance(params: {
     tefKcal;
 
   const netBalanceKcal = intakeKcal - totalExpenditureKcal;
-  const remainingToTargetKcal = anthro.targetIntakeKcal - intakeKcal;
+  const sportRefuelKcal = anthro.workoutRefuelEligible ? netWorkoutsKcal : 0;
+  const effectiveTargetIntakeKcal = Math.min(5500, anthro.targetIntakeKcal + sportRefuelKcal);
+  const remainingToTargetKcal = effectiveTargetIntakeKcal - intakeKcal;
 
   let statusFr = "Équilibre neutre";
-  if (intakeKcal === 0) statusFr = "Aucun repas enregistré ce jour";
-  else if (netBalanceKcal <= -750) statusFr = "Déficit fort — veillez aux protéines & récupération";
-  else if (netBalanceKcal <= -180) statusFr = "Déficit modéré optimal (perte de gras durable)";
-  else if (netBalanceKcal < 180) statusFr = "Zone de maintien / recomposition";
-  else statusFr = "Surplus énergétique";
+  if (intakeKcal === 0) {
+    statusFr = "Aucun repas enregistré ce jour";
+  } else if (profile.primaryGoal === "muscle_gain") {
+    if (netBalanceKcal < -100) {
+      statusFr = "En déficit malgré l'objectif Prise de masse — ajoutez une collation protéinée";
+    } else if (netBalanceKcal <= 120) {
+      statusFr = "Maintien musculaire — léger appoint conseillé pour construire du muscle";
+    } else if (netBalanceKcal <= 500) {
+      statusFr = "Surplus propre optimal (anabolisme musculaire ISSN)";
+    } else {
+      statusFr = "Surplus élevé — surveillez l'excédent pour limiter le stockage adipeux";
+    }
+  } else if (profile.primaryGoal === "athletic_performance") {
+    if (netBalanceKcal < -250) {
+      statusFr = "Sous-ravitaillement sportif — rechargez en glucides & protéines";
+    } else if (netBalanceKcal <= 250) {
+      statusFr = "Disponibilité énergétique optimale (performance & récupération)";
+    } else {
+      statusFr = "Recharge glycogénique haute";
+    }
+  } else if (netBalanceKcal <= -750) {
+    statusFr = "Déficit fort — veillez aux protéines & récupération";
+  } else if (netBalanceKcal <= -180) {
+    statusFr = "Déficit modéré optimal (perte de gras durable)";
+  } else if (netBalanceKcal < 180) {
+    statusFr = "Zone de maintien / recomposition";
+  } else {
+    statusFr = "Surplus énergétique";
+  }
 
   return {
     dateKey,
@@ -392,10 +486,11 @@ export function computeDailyEnergyBalance(params: {
     netStepsKcal,
     workoutMinutes,
     netWorkoutsKcal,
+    sportRefuelKcal,
     tefKcal,
     totalExpenditureKcal,
     netBalanceKcal,
-    targetIntakeKcal: anthro.targetIntakeKcal,
+    targetIntakeKcal: effectiveTargetIntakeKcal,
     remainingToTargetKcal,
     statusFr,
     waterMl: Math.max(0, Math.min(10000, Math.round(waterLog?.milliliters ?? 0))),

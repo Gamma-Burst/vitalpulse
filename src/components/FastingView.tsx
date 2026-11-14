@@ -453,7 +453,7 @@ export function FastingView({
                     fasting.eatingWindowStartHm || getDefaultEatingStartHm(fasting.protocolId);
                   await sendFastingTransitionAlert({
                     key: `test-${Date.now()}`,
-                    title: `VitalPulse · Fenêtre repas (${live.protocol.badge})`,
+                    title: `FolloWeight · Fenêtre repas (${live.protocol.badge})`,
                     body: `Vous êtes autorisé à manger pendant ${formatAllowedDurationFr(
                       live.eatWindowHours
                     )} (démarrage réglé à ${startHm}).`,

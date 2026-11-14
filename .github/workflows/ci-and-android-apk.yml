@@ -1,4 +1,4 @@
-name: VitalPulse CI & Android APK Build
+name: FolloWeight CI & Android APK Build
 
 on:
   push:
@@ -44,8 +44,8 @@ jobs:
         run: |
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon
-      - name: Upload VitalPulse Android APK Artifact
+      - name: Upload FolloWeight Android APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: VitalPulse-Android-Debug-APK
+          name: FolloWeight-Android-Debug-APK
           path: android/app/build/outputs/apk/debug/*.apk

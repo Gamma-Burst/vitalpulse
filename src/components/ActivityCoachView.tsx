@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   CheckCircle2,
   Dumbbell,
@@ -9,11 +9,17 @@ import {
   HeartHandshake,
   Play,
   Plus,
+  Search,
+  Sparkles,
   Square,
   Timer,
+  Trophy,
 } from "lucide-react";
-import { EXERCISES_COMPENDIUM } from "@/data/exercises-compendium";
-import { computeWorkoutNetCalories } from "@/lib/metabolic-engine";
+import {
+  EXERCISES_COMPENDIUM,
+  SPORT_DISCIPLINES_CATALOG,
+} from "@/data/exercises-compendium";
+import { computeAnthropometrics, computeWorkoutNetCalories } from "@/lib/metabolic-engine";
 import { detectPlatformCapabilities } from "@/lib/native-bridge";
 import { DetailSheet } from "@/components/ui/DetailSheet";
 import { InfoTip } from "@/components/ui/InfoTip";
@@ -40,13 +46,26 @@ interface ActivityCoachViewProps {
 }
 
 const CATEGORIES: { id: "all" | ExerciseCategory; label: string }[] = [
-  { id: "all", label: "Tous (24)" },
+  { id: "all", label: `Tous (${EXERCISES_COMPENDIUM.length})` },
+  { id: "gym_hypertrophy", label: "🏋️ Musculation & Masse" },
+  { id: "endurance_cardio", label: "🏃 Course, Vélo & Natation" },
+  { id: "team_racket_combat", label: "⚽ Sports Co, Raquettes & Combat" },
   { id: "sos_2min", label: "SOS 2 min" },
   { id: "vilpa", label: "VILPA Express" },
   { id: "home_cardio_no_jump", label: "Cardio Sans Sauts" },
   { id: "strength_tone", label: "Renfo & Muscle" },
   { id: "digestive_walk", label: "Marche" },
   { id: "desk_mobility", label: "Mobilité & Bureau" },
+];
+
+const INTENSITY_PRESETS: Array<{
+  label: "Modérée" | "Soutenue" | "Compétition";
+  mult: number;
+  defaultRpe: number;
+}> = [
+  { label: "Modérée", mult: 0.88, defaultRpe: 5 },
+  { label: "Soutenue", mult: 1.0, defaultRpe: 7 },
+  { label: "Compétition", mult: 1.15, defaultRpe: 9 },
 ];
 
 export function ActivityCoachView({
@@ -79,8 +98,17 @@ export function ActivityCoachView({
   // Lecteur d'exercice actif
   const [activeExercise, setActiveExercise] = useState<ExerciseDefinition | null>(null);
   const [customMinutes, setCustomMinutes] = useState(10);
+  const [minutesDraft, setMinutesDraft] = useState("10");
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
   const [rpe, setRpe] = useState(6);
+  const [intensityLabel, setIntensityLabel] = useState<"Modérée" | "Soutenue" | "Compétition">(
+    "Soutenue"
+  );
+  const [setsDraft, setSetsDraft] = useState("14");
+  const [repsDraft, setRepsDraft] = useState("10");
+  const [loadDraft, setLoadDraft] = useState("40");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [onlyFavorites, setOnlyFavorites] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [playerSheetOpen, setPlayerSheetOpen] = useState(false);
   const [showManualSteps, setShowManualSteps] = useState(false);
@@ -139,47 +167,175 @@ export function ActivityCoachView({
     Math.round((todayBalance.rawSteps / Math.max(1000, profile.dailyStepGoal)) * 100)
   );
 
-  const filteredExercises =
-    category === "all"
-      ? EXERCISES_COMPENDIUM
-      : EXERCISES_COMPENDIUM.filter((e) => e.category === category);
+  const anthro = useMemo(() => computeAnthropometrics(profile), [profile]);
+  const weeklyWorkoutMinutes = useMemo(
+    () => recentBalances.slice(-7).reduce((acc, b) => acc + b.workoutMinutes, 0),
+    [recentBalances]
+  );
+  const showAthleticBanner =
+    profile.primaryGoal === "muscle_gain" ||
+    profile.primaryGoal === "athletic_performance" ||
+    profile.specialMode === "high_protein_athlete" ||
+    profile.athleticLevel === "intermediate" ||
+    profile.athleticLevel === "athlete" ||
+    (profile.favoriteSports?.length ?? 0) > 0;
+
+  const favoriteSportIds = profile.favoriteSports ?? [];
+
+  const filteredExercises = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return EXERCISES_COMPENDIUM.filter((e) => {
+      if (category !== "all" && e.category !== category) return false;
+      if (onlyFavorites && favoriteSportIds.length > 0) {
+        if (!e.sportTag || !favoriteSportIds.includes(e.sportTag)) return false;
+      }
+      if (q) {
+        const hay = `${e.title} ${e.targetMuscles} ${e.equipment} ${e.difficulty}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [category, onlyFavorites, favoriteSportIds, searchQuery]);
+
+  const currentIntensityMult =
+    INTENSITY_PRESETS.find((p) => p.label === intensityLabel)?.mult ?? 1.0;
 
   function startExercisePlayer(ex: ExerciseDefinition) {
     setActiveExercise(ex);
     setCustomMinutes(ex.defaultMinutes);
+    setMinutesDraft(String(ex.defaultMinutes));
     setSecondsLeft(ex.defaultMinutes * 60);
-    setRpe(ex.difficulty === "Très facile" ? 4 : ex.difficulty === "Modéré" ? 6 : 8);
+    setIntensityLabel(ex.difficulty === "Intense" ? "Compétition" : "Soutenue");
+    setRpe(
+      ex.difficulty === "Très facile"
+        ? 4
+        : ex.difficulty === "Modéré"
+          ? 6
+          : ex.difficulty === "Tonique"
+            ? 7
+            : 8
+    );
+    setSetsDraft("14");
+    setRepsDraft("10");
+    setLoadDraft("40");
     setPlayerSheetOpen(true);
   }
 
-  function finishAndLogExercise(ex: ExerciseDefinition, mins: number) {
-    const netKcal = computeWorkoutNetCalories(profile.weightKg, bmrKcal, ex.met, mins);
-    const overlapSteps = Math.round(ex.stepsPerMinuteOverlap * mins);
+  function finishAndLogExercise(
+    ex: ExerciseDefinition,
+    mins: number,
+    options?: { useIntensity?: boolean; includeTonnage?: boolean }
+  ) {
+    const safeMins = Math.max(2, Math.min(240, Math.round(mins || ex.defaultMinutes)));
+    const mult = options?.useIntensity ? currentIntensityMult : 1.0;
+    const effectiveMet = +(ex.met * mult).toFixed(2);
+    const netKcal = computeWorkoutNetCalories(profile.weightKg, bmrKcal, effectiveMet, safeMins);
+    const overlapSteps = Math.round(ex.stepsPerMinuteOverlap * safeMins);
+    const parsedSets = options?.includeTonnage ? Math.round(Number(setsDraft)) : NaN;
+    const parsedReps = options?.includeTonnage ? Math.round(Number(repsDraft)) : NaN;
+    const parsedLoad = options?.includeTonnage ? Number(loadDraft) : NaN;
     const session: WorkoutSession = {
       id: `wo-${Date.now()}`,
       dateKey: todayBalance.dateKey,
       exerciseId: ex.id,
       title: ex.title,
       category: ex.category,
-      durationMinutes: mins,
-      met: ex.met,
+      durationMinutes: safeMins,
+      met: effectiveMet,
       netCaloriesBurned: netKcal,
       estimatedStepsOverlap: overlapSteps,
       rpe,
       startedAt: new Date().toISOString(),
+      ...(options?.useIntensity ? { intensityLabel } : {}),
+      ...(options?.includeTonnage && Number.isFinite(parsedSets) && parsedSets > 0
+        ? { setsCount: Math.min(60, parsedSets) }
+        : {}),
+      ...(options?.includeTonnage && Number.isFinite(parsedReps) && parsedReps > 0
+        ? { repsPerSet: Math.min(100, parsedReps) }
+        : {}),
+      ...(options?.includeTonnage && Number.isFinite(parsedLoad) && parsedLoad >= 0
+        ? { loadKg: Math.min(400, +parsedLoad.toFixed(1)) }
+        : {}),
     };
     onLogWorkout(session);
     setActiveExercise(null);
     setSecondsLeft(null);
     setPlayerSheetOpen(false);
     setToast(
-      `Bravo ! "${ex.title}" (${mins} min) enregistré : +${netKcal} kcal nets dépensés.`
+      `Bravo ! "${ex.title}" (${safeMins} min) enregistré : +${netKcal} kcal nets dépensés.`
     );
     setTimeout(() => setToast(null), 4500);
   }
 
   return (
     <div className="space-y-5">
+      {showAthleticBanner && (
+        <div className="vp-card-accent p-4 sm:p-5 border-amber-400/35 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Trophy className="w-5 h-5 text-amber-300" />
+              <h2 className="text-sm sm:text-base font-bold text-white">
+                Coaching Sportif &amp; Hypertrophie
+                {profile.primaryGoal === "muscle_gain" && (
+                  <span className="ml-2 text-[11px] font-semibold text-emerald-300">
+                    Lean Bulk <InfoTip term="lean_bulk" />
+                  </span>
+                )}
+              </h2>
+            </div>
+            <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-amber-500/15 border border-amber-400/35 text-amber-200 font-semibold">
+              Volume 7j : {weeklyWorkoutMinutes} min
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
+            <div className="rounded-xl bg-slate-900/75 border border-slate-700/60 p-3">
+              <p className="text-[11px] text-slate-400">
+                Bolus protéines / prise <InfoTip term="leucine_threshold" />
+              </p>
+              <p className="font-bold text-emerald-300 mt-0.5 tabular-nums">
+                4 × {anthro.perMealProteinBolusG} g / repas
+              </p>
+              <p className="text-[10px] text-slate-400 mt-0.5">
+                Cible jour : {anthro.targets.proteinG} g (ISSN)
+              </p>
+            </div>
+            <div className="rounded-xl bg-slate-900/75 border border-slate-700/60 p-3">
+              <p className="text-[11px] text-slate-400">
+                Ravitaillement sport <InfoTip term="athletic_refuel" />
+              </p>
+              <p className="font-bold text-sky-300 mt-0.5 tabular-nums">
+                {anthro.workoutRefuelEligible
+                  ? `+${todayBalance.sportRefuelKcal} kcal recréditées`
+                  : `${todayBalance.targetIntakeKcal} kcal cibles`}
+              </p>
+              <p className="text-[10px] text-slate-400 mt-0.5">
+                {anthro.workoutRefuelEligible
+                  ? `Budget total jour : ${todayBalance.targetIntakeKcal} kcal`
+                  : "Passez en Prise de masse ou Performance pour auto-recréditer"}
+              </p>
+            </div>
+            <div className="rounded-xl bg-slate-900/75 border border-slate-700/60 p-3">
+              <p className="text-[11px] text-slate-400">Sports favoris configurés</p>
+              <p className="font-bold text-white mt-0.5 truncate">
+                {favoriteSportIds.length > 0
+                  ? favoriteSportIds
+                      .slice(0, 3)
+                      .map((id) => {
+                        const s = SPORT_DISCIPLINES_CATALOG.find((x) => x.id === id);
+                        return s ? `${s.emoji} ${s.label.split("&")[0].trim()}` : id;
+                      })
+                      .join(" · ")
+                  : "Tous sports disponibles"}
+              </p>
+              <p className="text-[10px] text-slate-400 mt-0.5">
+                Modifiable dans Profil &amp; Paramètres
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Podomètre & Suivi des pas */}
       <div className="vp-card-accent p-4 sm:p-6 space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-4">
@@ -454,7 +610,14 @@ export function ActivityCoachView({
                   : `${customMinutes}:00`}
               </div>
               <span className="text-xs text-slate-400">
-                ≈ +{computeWorkoutNetCalories(profile.weightKg, bmrKcal, activeExercise.met, customMinutes)} kcal nets pour {profile.weightKg} kg
+                ≈ +
+                {computeWorkoutNetCalories(
+                  profile.weightKg,
+                  bmrKcal,
+                  +(activeExercise.met * currentIntensityMult).toFixed(2),
+                  customMinutes
+                )}{" "}
+                kcal nets pour {profile.weightKg} kg
               </span>
             </div>
           </div>
@@ -474,22 +637,71 @@ export function ActivityCoachView({
 
             <div className="rounded-xl bg-slate-900/90 p-3.5 text-xs space-y-3">
               <div>
-                <label className="text-slate-300 block mb-1">
-                  Durée réalisée : <strong className="text-white">{customMinutes} min</strong>
-                </label>
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <label className="text-slate-300">
+                    Durée réalisée : <strong className="text-white">{customMinutes} min</strong>
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    aria-label="Durée en minutes"
+                    value={minutesDraft}
+                    onChange={(e) => {
+                      const clean = e.target.value.replace(/[^\d]/g, "");
+                      setMinutesDraft(clean);
+                      const n = Number(clean);
+                      if (Number.isFinite(n) && n >= 2 && n <= 240) {
+                        setCustomMinutes(Math.round(n));
+                        setSecondsLeft(Math.round(n) * 60);
+                      }
+                    }}
+                    onBlur={() => {
+                      const n = Math.max(2, Math.min(240, Math.round(Number(minutesDraft) || customMinutes)));
+                      setCustomMinutes(n);
+                      setMinutesDraft(String(n));
+                      setSecondsLeft(n * 60);
+                    }}
+                    className="w-16 rounded-lg border border-slate-700 bg-slate-950 px-2 py-1 text-right text-xs font-bold text-white tabular-nums"
+                  />
+                </div>
                 <input
                   type="range"
                   min={2}
-                  max={60}
-                  value={customMinutes}
+                  max={180}
+                  value={Math.min(180, customMinutes)}
                   onChange={(e) => {
                     const m = Number(e.target.value);
                     setCustomMinutes(m);
+                    setMinutesDraft(String(m));
                     setSecondsLeft(m * 60);
                   }}
                   className="w-full accent-emerald-400"
                 />
               </div>
+
+              <div>
+                <span className="text-slate-300 block mb-1.5">Intensité ressentie de la séance</span>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {INTENSITY_PRESETS.map((preset) => (
+                    <button
+                      key={preset.label}
+                      type="button"
+                      onClick={() => {
+                        setIntensityLabel(preset.label);
+                        setRpe(preset.defaultRpe);
+                      }}
+                      className={`rounded-xl border px-2 py-1.5 text-[11px] font-bold transition ${
+                        intensityLabel === preset.label
+                          ? "border-emerald-400 bg-emerald-500/20 text-emerald-200"
+                          : "border-slate-700 bg-slate-950/60 text-slate-300 hover:border-slate-500"
+                      }`}
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <div>
                 <label className="text-slate-300 block mb-1">
                   Effort ressenti (RPE) <InfoTip term="rpe" /> : <strong className="text-white">{rpe} / 10</strong>
@@ -503,10 +715,71 @@ export function ActivityCoachView({
                   className="w-full accent-sky-400"
                 />
               </div>
+
+              {activeExercise.category === "gym_hypertrophy" && (
+                <div className="rounded-xl border border-amber-400/25 bg-amber-500/5 p-2.5 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-bold text-amber-200">
+                      Suivi Hypertrophie / Tonnage (optionnel)
+                    </span>
+                    <span className="text-[11px] font-semibold text-amber-300 tabular-nums">
+                      {Math.max(
+                        0,
+                        Math.round(
+                          (Number(setsDraft) || 0) *
+                            (Number(repsDraft) || 0) *
+                            (Number(loadDraft) || 0)
+                        )
+                      ).toLocaleString("fr-FR")}{" "}
+                      kg soulevés
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <label className="text-[10px] text-slate-400 block">Séries</label>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={setsDraft}
+                        onChange={(e) => setSetsDraft(e.target.value.replace(/[^\d]/g, ""))}
+                        className="mt-0.5 w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-white tabular-nums"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-slate-400 block">Reps / série</label>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={repsDraft}
+                        onChange={(e) => setRepsDraft(e.target.value.replace(/[^\d]/g, ""))}
+                        className="mt-0.5 w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-white tabular-nums"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-slate-400 block">Charge moy. (kg)</label>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={loadDraft}
+                        onChange={(e) =>
+                          setLoadDraft(e.target.value.replace(",", ".").replace(/[^0-9.]/g, ""))
+                        }
+                        className="mt-0.5 w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-white tabular-nums"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="flex flex-wrap gap-2 pt-1">
                 <button
                   type="button"
-                  onClick={() => finishAndLogExercise(activeExercise, customMinutes)}
+                  onClick={() =>
+                    finishAndLogExercise(activeExercise, customMinutes, {
+                      useIntensity: true,
+                      includeTonnage: activeExercise.category === "gym_hypertrophy",
+                    })
+                  }
                   className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold"
                 >
                   <CheckCircle2 className="w-4 h-4" />
@@ -538,28 +811,68 @@ export function ActivityCoachView({
             Séances comptabilisées aujourd&apos;hui ({todayBalance.workoutMinutes} min · +{todayBalance.netWorkoutsKcal} kcal nets)
           </h3>
           <div className="flex flex-wrap gap-2">
-            {todayWorkouts.map((w) => (
-              <span
-                key={w.id}
-                className="px-3 py-1.5 rounded-xl bg-emerald-500/15 border border-emerald-400/30 text-xs text-emerald-200"
-              >
-                {w.title} · {w.durationMinutes} min · +{w.netCaloriesBurned} kcal
-              </span>
-            ))}
+            {todayWorkouts.map((w) => {
+              const hasVolume =
+                typeof w.setsCount === "number" &&
+                typeof w.repsPerSet === "number" &&
+                typeof w.loadKg === "number";
+              const tonnage = hasVolume
+                ? Math.round((w.setsCount ?? 0) * (w.repsPerSet ?? 0) * (w.loadKg ?? 0))
+                : 0;
+              return (
+                <span
+                  key={w.id}
+                  className="px-3 py-1.5 rounded-xl bg-emerald-500/15 border border-emerald-400/30 text-xs text-emerald-200"
+                >
+                  {w.title} · {w.durationMinutes} min · +{w.netCaloriesBurned} kcal
+                  {hasVolume ? ` · ${w.setsCount}×${w.repsPerSet} @ ${w.loadKg}kg (${tonnage.toLocaleString("fr-FR")} kg)` : ""}
+                </span>
+              );
+            })}
           </div>
         </div>
       )}
 
-      {/* Bibliothèque complète de 24 exercices faciles chaque jour */}
+      {/* Bibliothèque complète Sports, Musculation & Activités quotidiennes */}
       <div className="vp-card p-4 sm:p-5 space-y-4">
-        <div>
-          <h3 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
-            <Dumbbell className="w-5 h-5 text-emerald-400" />
-            Bibliothèque de 24 exercices faciles au quotidien
-          </h3>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Calories calculées exactement pour votre poids ({profile.weightKg} kg) avec soustraction du métabolisme de repos (MET − 1 <InfoTip term="met" />).
-          </p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+              <Dumbbell className="w-5 h-5 text-emerald-400" />
+              Sports, Musculation &amp; Activités quotidiennes ({EXERCISES_COMPENDIUM.length})
+            </h3>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Calories calculées exactement pour votre poids ({profile.weightKg} kg) avec soustraction du métabolisme de repos (MET − 1 <InfoTip term="met" />).
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Chercher sport (foot, push, vélo...)"
+                aria-label="Rechercher un sport ou exercice"
+                className="pl-8 pr-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none w-56"
+              />
+            </div>
+            {favoriteSportIds.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setOnlyFavorites((v) => !v)}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition ${
+                  onlyFavorites
+                    ? "border-amber-400 bg-amber-500/20 text-amber-200"
+                    : "border-slate-700 bg-slate-900 text-slate-300 hover:border-amber-400/50"
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                Mes sports ({favoriteSportIds.length})
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="flex flex-wrap gap-2">
@@ -588,6 +901,12 @@ export function ActivityCoachView({
               ex.met,
               ex.defaultMinutes
             );
+            const diffBadgeClass =
+              ex.difficulty === "Intense"
+                ? "bg-rose-500/20 text-rose-200 border border-rose-400/35"
+                : ex.difficulty === "Tonique"
+                  ? "bg-amber-500/15 text-amber-200"
+                  : "bg-slate-800 text-emerald-300";
             return (
               <div
                 key={ex.id}
@@ -595,7 +914,7 @@ export function ActivityCoachView({
               >
                 <div>
                   <div className="flex items-center justify-between gap-2 text-[11px] mb-1">
-                    <span className="px-2 py-0.5 rounded-full bg-slate-800 text-emerald-300 font-medium">
+                    <span className={`px-2 py-0.5 rounded-full font-medium ${diffBadgeClass}`}>
                       {ex.difficulty} · {ex.defaultMinutes} min
                     </span>
                     <span className="text-amber-300 font-bold tabular-nums">
@@ -629,6 +948,11 @@ export function ActivityCoachView({
               </div>
             );
           })}
+          {filteredExercises.length === 0 && (
+            <div className="col-span-full rounded-xl border border-slate-800 bg-slate-900/60 p-6 text-center text-xs text-slate-400">
+              Aucun sport trouvé avec ces filtres — essayez d&apos;effacer la recherche ou de sélectionner &laquo;&nbsp;Tous&nbsp;&raquo;.
+            </div>
+          )}
         </div>
       </div>
     </div>

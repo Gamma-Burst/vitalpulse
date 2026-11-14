@@ -8,6 +8,7 @@ import {
   Camera,
   ChefHat,
   Clock,
+  Crown,
   Download,
   Footprints,
   HelpCircle,
@@ -61,6 +62,15 @@ import { OnboardingWizard } from "@/components/OnboardingWizard";
 import { BarcodeScannerModal } from "@/components/BarcodeScannerModal";
 import { WearablesSyncSheet } from "@/components/WearablesSyncSheet";
 import { QuickActionSheet } from "@/components/ui/QuickActionSheet";
+import { FolloWeightLogo } from "@/components/ui/FolloWeightLogo";
+import { FwAiCoachView } from "@/components/FwAiCoachView";
+import { SubscriptionModal } from "@/components/SubscriptionModal";
+import {
+  activatePlanTier,
+  isFwPlusActive,
+  recordFwAiMessageUsage,
+  startSevenDayFreeTrial,
+} from "@/lib/billing-bridge";
 import { GlossaryPortalHost, openGlossaryCatalog } from "@/components/ui/InfoTip";
 import {
   BloodPanelEntry,
@@ -73,6 +83,7 @@ import {
   FridgeScanSession,
   MealEntry,
   StepSource,
+  SubscriptionTier,
   UserProfile,
   WearableEcosystem,
   WorkoutSession,
@@ -92,6 +103,7 @@ const TABS: {
   icon: React.ComponentType<{ className?: string }>;
 }[] = [
   { id: "dashboard", label: "Dashboard", shortLabel: "Accueil", icon: LayoutDashboard },
+  { id: "fw_ai", label: "Coach FW AI", shortLabel: "FW AI", icon: Sparkles },
   { id: "scanner", label: "Scanner Plat", shortLabel: "Plat", icon: Camera },
   { id: "fridge", label: "Frigo & Recettes", shortLabel: "Frigo", icon: ChefHat },
   { id: "fasting", label: "Jeûne & OMAD", shortLabel: "Jeûne", icon: Clock },
@@ -113,6 +125,8 @@ export default function VitalPulseApp() {
   const [quickActionsOpen, setQuickActionsOpen] = useState(false);
   const [barcodeOpen, setBarcodeOpen] = useState(false);
   const [wearablesOpen, setWearablesOpen] = useState(false);
+  const [subscriptionOpen, setSubscriptionOpen] = useState(false);
+  const [subscriptionReasonFr, setSubscriptionReasonFr] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -289,7 +303,7 @@ export default function VitalPulseApp() {
       <div className="min-h-screen bg-[var(--vp-bg)] flex items-center justify-center p-6">
         <div className="flex flex-col items-center gap-3 text-slate-300">
           <Activity className="w-8 h-8 text-emerald-400 animate-pulse" />
-          <p className="text-sm font-medium">Chargement de VitalPulse...</p>
+          <p className="text-sm font-medium">Chargement de FolloWeight...</p>
         </div>
       </div>
     );
@@ -451,17 +465,7 @@ export default function VitalPulseApp() {
         <aside className="hidden lg:flex lg:flex-col lg:w-64 lg:shrink-0 border-r border-slate-500/15 bg-[var(--vp-surface)] p-4 justify-between sticky top-0 h-screen">
           <div className="space-y-5">
             <div className="flex items-center justify-between gap-2 px-1">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center">
-                  <Activity className="w-5 h-5 text-emerald-400" />
-                </div>
-                <div>
-                  <h1 className="font-display text-base font-extrabold text-white leading-tight">
-                    VitalPulse
-                  </h1>
-                  <span className="text-[11px] text-emerald-400">Web &amp; Android v3</span>
-                </div>
-              </div>
+              <FolloWeightLogo size={38} subtitle="Web & Android v4" />
               <button
                 type="button"
                 onClick={() => {
@@ -534,6 +538,22 @@ export default function VitalPulseApp() {
                 <HelpCircle className="h-4 w-4 text-cyan-300" />
                 Lexique Santé (?)
               </button>
+              <button
+                type="button"
+                onClick={() => {
+                  triggerLightHaptic();
+                  setSubscriptionReasonFr(null);
+                  setSubscriptionOpen(true);
+                }}
+                className={`w-full flex items-center justify-center gap-2 rounded-xl border px-3 py-2 text-xs font-bold transition ${
+                  isFwPlusActive(state.subscription)
+                    ? "border-amber-400/45 bg-amber-500/15 text-amber-200"
+                    : "border-emerald-400/35 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20"
+                }`}
+              >
+                <Crown className="h-4 w-4 text-amber-300" />
+                {isFwPlusActive(state.subscription) ? "FW+ Actif" : "FolloWeight Plus (FW+)"}
+              </button>
             </div>
           </div>
 
@@ -562,10 +582,7 @@ export default function VitalPulseApp() {
         <div className="flex-1 min-w-0">
           {/* Topbar Mobile Épurée */}
           <header className="lg:hidden sticky top-0 z-30 bg-[var(--vp-surface-glass)] backdrop-blur-md border-b border-slate-500/15 px-3.5 py-2.5 flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <Activity className="w-5 h-5 text-emerald-400" />
-              <span className="font-display font-extrabold text-white text-base">VitalPulse</span>
-            </div>
+            <FolloWeightLogo size={30} showWordmark={true} subtitle="" />
 
             <div className="flex items-center gap-1.5">
               {installPrompt && (
@@ -578,6 +595,21 @@ export default function VitalPulseApp() {
                   PWA
                 </button>
               )}
+              <button
+                type="button"
+                onClick={() => {
+                  triggerLightHaptic();
+                  setActiveTab("fw_ai");
+                }}
+                aria-label="Coach FW AI"
+                className={`flex h-8 w-8 items-center justify-center rounded-xl border ${
+                  activeTab === "fw_ai"
+                    ? "border-emerald-400 bg-emerald-500/20 text-emerald-300"
+                    : "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
+                }`}
+              >
+                <Sparkles className="h-4 w-4" />
+              </button>
               <button
                 type="button"
                 onClick={() => {
@@ -813,6 +845,7 @@ export default function VitalPulseApp() {
                 meals={state.meals}
                 todayDateKey={todayKey}
                 specialMode={state.profile.specialMode}
+                primaryGoal={state.profile.primaryGoal}
                 highlightedMealId={highlightedMealId}
                 onOpenBarcode={() => setBarcodeOpen(true)}
                 onSaveMeal={(meal: MealEntry) =>
@@ -840,6 +873,7 @@ export default function VitalPulseApp() {
                 remainingProteinG={Math.max(20, anthro.targets.proteinG - todayBalance.macros.proteinG)}
                 remainingFiberG={Math.max(5, anthro.targets.fiberG - todayBalance.macros.fiberG)}
                 specialMode={state.profile.specialMode}
+                primaryGoal={state.profile.primaryGoal}
                 todayDateKey={todayKey}
                 historyScans={state.fridgeScans}
                 onSaveFridgeScan={(scan: FridgeScanSession) =>
@@ -1026,6 +1060,39 @@ export default function VitalPulseApp() {
             )}
 
             {activeTab === "medical" && <MedicalHubView />}
+
+            {activeTab === "fw_ai" && (
+              <FwAiCoachView
+                profile={state.profile}
+                anthro={anthro}
+                todayBalance={todayBalance}
+                fasting={state.fasting}
+                weightTrend={weightTrend}
+                latestBloodPanel={latestBloodPanel}
+                messages={state.fwAiMessages}
+                subscription={state.subscription}
+                todayKey={todayKey}
+                onAppendMessages={(userMsg, assistantMsg, incrementQuota) =>
+                  commitState((prev) => ({
+                    ...prev,
+                    fwAiMessages: [...prev.fwAiMessages, userMsg, assistantMsg].slice(-60),
+                    subscription: incrementQuota
+                      ? recordFwAiMessageUsage(prev.subscription, todayKey)
+                      : prev.subscription,
+                  }))
+                }
+                onClearConversation={() =>
+                  commitState((prev) => ({
+                    ...prev,
+                    fwAiMessages: prev.fwAiMessages.slice(0, 1),
+                  }))
+                }
+                onOpenSubscriptionModal={(reason) => {
+                  setSubscriptionReasonFr(reason ?? null);
+                  setSubscriptionOpen(true);
+                }}
+              />
+            )}
           </main>
         </div>
 
@@ -1177,6 +1244,26 @@ export default function VitalPulseApp() {
                     : prev.profile,
               };
             })
+          }
+        />
+
+        <SubscriptionModal
+          open={subscriptionOpen}
+          onClose={() => setSubscriptionOpen(false)}
+          subscription={state.subscription}
+          todayKey={todayKey}
+          triggerReasonFr={subscriptionReasonFr}
+          onActivateTrial={() =>
+            commitState((prev) => ({
+              ...prev,
+              subscription: startSevenDayFreeTrial(prev.subscription, todayKey),
+            }))
+          }
+          onSelectPlanPreview={(tier: SubscriptionTier) =>
+            commitState((prev) => ({
+              ...prev,
+              subscription: activatePlanTier(prev.subscription, tier, todayKey),
+            }))
           }
         />
 

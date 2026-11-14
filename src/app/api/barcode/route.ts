@@ -127,7 +127,7 @@ export async function GET(req: NextRequest) {
     const offRes = await fetch(
       `https://world.openfoodfacts.org/api/v2/product/${rawCode}.json?fields=product_name,product_name_fr,brands,nutriscore_grade,nova_group,serving_size,image_front_small_url,nutriments`,
       {
-        headers: { "User-Agent": "VitalPulse/3.0 (health-app)" },
+        headers: { "User-Agent": "FolloWeight/4.0 (health-app)" },
         signal: AbortSignal.timeout(7000),
       }
     );

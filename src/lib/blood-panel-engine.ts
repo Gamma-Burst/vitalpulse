@@ -604,7 +604,7 @@ export function evaluateBloodPanelDeterministically(params: {
       criticalFlags: [],
       renalProteinGuardTriggered: false,
       summaryFr:
-        "Mode grossesse activé : les normes biologiques usuelles sont modifiées pendant la grossesse (hémodilution, lipides physiologiques, ferritine). VitalPulse verrouille l'interprétation automatisée et vous invite à confier ces résultats à votre sage-femme ou médecin.",
+        "Mode grossesse activé : les normes biologiques usuelles sont modifiées pendant la grossesse (hémodilution, lipides physiologiques, ferritine). FolloWeight verrouille l'interprétation automatisée et vous invite à confier ces résultats à votre sage-femme ou médecin.",
       evaluatedMarkers: markers.map((m) => ({
         key: m.key,
         labelFr: BIOMARKER_CATALOG[m.key].labelFr,
@@ -741,7 +741,7 @@ export function evaluateBloodPanelDeterministically(params: {
           ? "Filtration rénale estimée normale/optimale (≥ 90)."
           : egfr >= 60
             ? "Filtration légèrement modérée (60–89) — hydratation régulière conseillée."
-            : "Filtration < 60 (KDIGO) : VitalPulse conseille de valider votre cible protéique (~0,8 g/kg/j) avec votre médecin.",
+            : "Filtration < 60 (KDIGO) : FolloWeight conseille de valider votre cible protéique (~0,8 g/kg/j) avec votre médecin.",
       sourceRef: "CKD-EPI 2021 / KDIGO 2024",
     });
   }

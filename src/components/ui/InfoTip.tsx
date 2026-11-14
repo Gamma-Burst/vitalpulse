@@ -305,7 +305,7 @@ export function GlossaryPortalHost() {
                   <div className="rounded-2xl border border-amber-500/25 bg-amber-500/10 p-3.5">
                     <div className="mb-1 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-amber-200">
                       <Target className="h-3.5 w-3.5" />
-                      <span>Repère pratique dans VitalPulse</span>
+                      <span>Repère pratique dans FolloWeight</span>
                     </div>
                     <p className="text-sm leading-relaxed text-slate-200">
                       {activeEntry.benchmarkFr}

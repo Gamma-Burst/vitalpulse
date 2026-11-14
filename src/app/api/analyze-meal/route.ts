@@ -4,7 +4,7 @@ import {
   applyOilClarifierDelta,
   matchCiqualFood,
 } from "@/data/ciqual-reference";
-import { MealType, OilLevel, SpecialMode } from "@/types/vitalpulse";
+import { MealType, OilLevel, PrimaryGoal, SpecialMode } from "@/types/vitalpulse";
 
 export const runtime = "nodejs";
 
@@ -25,6 +25,7 @@ export async function POST(req: NextRequest) {
     const plateDiameterCm = Number(body.plateDiameterCm) || 26;
     const portionEatenPct = Math.max(25, Math.min(150, Number(body.portionEatenPct) || 100));
     const specialMode: SpecialMode = body.specialMode || "standard";
+    const primaryGoal: PrimaryGoal = body.primaryGoal || "fat_loss";
     const requestedOilLevel: OilLevel | undefined =
       ["none", "light_1tbsp", "rich_restaurant"].includes(body.oilLevel)
         ? body.oilLevel
@@ -42,9 +43,11 @@ export async function POST(req: NextRequest) {
           `Pourcentage effectivement consommé : ${portionEatenPct}% (applique ce ratio sur TOUS les résultats !).`,
           specialMode === "ketogenic"
             ? `Mode clinique utilisateur : ketogenic — Mode CÉTOGÈNE (Keto) : vérifie que les glucides nets restent très bas (< 12 g sur le repas), valorise les bonnes graisses et signale les sucres/féculents cachés.`
-            : specialMode === "rebalancing"
-              ? `Mode clinique utilisateur : rebalancing — Mode RÉÉQUILIBRAGE ALIMENTAIRE : assiette équilibrée ANSES NOVA 1-2 sans culpabilisation, légumes + protéines + féculents complets.`
-              : `Mode clinique utilisateur : ${specialMode}.`,
+            : specialMode === "high_protein_athlete" || primaryGoal === "muscle_gain" || primaryGoal === "athletic_performance"
+              ? `Mode sportif / hypertrophie (${primaryGoal}, ${specialMode}) : évalue la densité protéique (seuil leucine >= 30 g par repas, ISSN 2017) et la qualité des glucides péri-entraînement pour la synthèse musculaire et le glycogène.`
+              : specialMode === "rebalancing"
+                ? `Mode clinique utilisateur : rebalancing — Mode RÉÉQUILIBRAGE ALIMENTAIRE : assiette équilibrée ANSES NOVA 1-2 sans culpabilisation, légumes + protéines + féculents complets.`
+                : `Mode clinique utilisateur : ${specialMode} (objectif : ${primaryGoal}).`,
           requestedOilLevel
             ? `Niveau d'huile/sauce choisi par l'utilisateur : ${requestedOilLevel}.`
             : "",

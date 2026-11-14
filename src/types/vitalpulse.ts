@@ -2,17 +2,33 @@ export type Sex = "male" | "female";
 
 export type ActivityProfile = "sedentary" | "lightly_active" | "active" | "very_active";
 
+export type AthleticLevel = "beginner" | "recreational" | "intermediate" | "athlete";
+
+export type SportDisciplineId =
+  | "gym_hypertrophy"
+  | "running_trail"
+  | "cycling"
+  | "swimming"
+  | "football_team"
+  | "racket_padel"
+  | "combat_boxing"
+  | "crossfit_hiit"
+  | "yoga_pilates"
+  | "walking_hiking";
+
 export type PrimaryGoal =
   | "fat_loss"
   | "rebalancing"
   | "recomposition"
   | "maintenance"
-  | "muscle_gain";
+  | "muscle_gain"
+  | "athletic_performance";
 
 export type SpecialMode =
   | "standard"
   | "rebalancing"
   | "ketogenic"
+  | "high_protein_athlete"
   | "glp1_muscle_guard"
   | "glycemic_shield"
   | "cardio_low_sodium";
@@ -103,6 +119,8 @@ export interface UserProfile {
   targetWeightKg: number;
   waistCm?: number;
   activityProfile: ActivityProfile;
+  athleticLevel?: AthleticLevel;
+  favoriteSports?: SportDisciplineId[];
   primaryGoal: PrimaryGoal;
   weeklyPaceKg: number; // e.g. -0.4 kg/week
   dailyStepGoal: number;
@@ -252,17 +270,21 @@ export type ExerciseCategory =
   | "home_cardio_no_jump"
   | "strength_tone"
   | "desk_mobility"
-  | "digestive_walk";
+  | "digestive_walk"
+  | "gym_hypertrophy"
+  | "endurance_cardio"
+  | "team_racket_combat";
 
 export interface ExerciseDefinition {
   id: string;
   title: string;
   category: ExerciseCategory;
+  sportTag?: SportDisciplineId;
   met: number;
   defaultMinutes: number;
   stepsPerMinuteOverlap: number;
   equipment: string;
-  difficulty: "Très facile" | "Modéré" | "Tonique";
+  difficulty: "Très facile" | "Modéré" | "Tonique" | "Intense";
   targetMuscles: string;
   instructions: string[];
   antiDemotivationTip: string;
@@ -281,6 +303,10 @@ export interface WorkoutSession {
   estimatedStepsOverlap: number;
   rpe: number; // 1..10
   startedAt: string;
+  setsCount?: number;
+  repsPerSet?: number;
+  loadKg?: number;
+  intensityLabel?: "Modérée" | "Soutenue" | "Compétition";
 }
 
 export interface WeightEntry {
@@ -338,6 +364,8 @@ export interface AnthropometricReport {
   safetyFloorApplied: boolean;
   minorSafetyLock: boolean;
   autoWaterMl: number;
+  perMealProteinBolusG: number;
+  workoutRefuelEligible: boolean;
   targets: {
     proteinG: number;
     carbsG: number;
@@ -367,6 +395,7 @@ export interface DailyEnergyBalance {
   netStepsKcal: number;
   workoutMinutes: number;
   netWorkoutsKcal: number;
+  sportRefuelKcal: number;
   tefKcal: number;
   totalExpenditureKcal: number;
   netBalanceKcal: number; // intake - expenditure (< 0 = deficit)
@@ -542,4 +571,30 @@ export interface BodyPhotoMeta {
   bodyFatPct?: number;
   faceBlurred: boolean;
   note?: string;
+}
+
+export type SubscriptionTier =
+  | "free"
+  | "pro_trial"
+  | "pro_monthly"
+  | "pro_annual"
+  | "founder_lifetime";
+
+export interface SubscriptionState {
+  tier: SubscriptionTier;
+  source: "local_demo" | "google_play" | "web_followeight";
+  trialEndsAtIso?: string | null;
+  renewsAtIso?: string | null;
+  dailyAiDateKey: string;
+  fwAiMessagesUsedToday: number;
+  visionScansUsedToday: number;
+}
+
+export interface FwAiMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  createdAt: string;
+  provider?: "openai-fw-ai" | "clinical-deterministic";
+  quickActions?: string[];
 }

@@ -56,11 +56,12 @@ function makeTinyPngDataUrl() {
 async function main() {
   const results = {};
 
-  // 1. Home page + manifest
+  // 1. Home page + manifest + rebrand FolloWeight
   const homeRes = await fetch(BASE);
   const homeHtml = await homeRes.text();
   results.home_status = homeRes.status;
   results.has_manifest_link = homeHtml.includes("manifest.webmanifest");
+  results.has_followeight_brand = homeHtml.includes("FolloWeight");
 
   // 2. Analyze meal (Raster PNG + User Notes)
   const mealRes = await fetch(`${BASE}/api/analyze-meal`, {
@@ -142,11 +143,62 @@ async function main() {
   results.barcode_nutriscore = barcodeJson.nutriScore ?? null;
   results.barcode_nova = barcodeJson.novaGroup ?? null;
 
+  // 8. FW AI coach endpoint (/api/fw-ai)
+  const fwAiRes = await fetch(`${BASE}/api/fw-ai`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      question: "Analyse ma journée en 3 lignes pour ma prise de masse propre",
+      context: {
+        profile: {
+          name: "Test",
+          age: 29,
+          sex: "male",
+          weightKg: 76,
+          targetWeightKg: 80,
+          primaryGoal: "muscle_gain",
+          specialMode: "high_protein_athlete",
+        },
+        anthro: {
+          bmi: 23.4,
+          targetIntakeKcal: 2650,
+          clinicalFloorKcal: 1700,
+          estimatedMaintenanceKcal: 2450,
+          perMealProteinBolusG: 38,
+          targets: {
+            proteinG: 152,
+            carbsG: 310,
+            fatG: 80,
+            fiberG: 34,
+            waterMl: 2500,
+            sodiumMaxMg: 2400,
+          },
+        },
+        todayBalance: {
+          intakeKcal: 1800,
+          targetIntakeKcal: 2950,
+          sportRefuelKcal: 300,
+          remainingToTargetKcal: 1150,
+          activeCaloriesKcal: 380,
+          workoutMinutes: 55,
+          rawSteps: 7400,
+          waterMl: 1900,
+          macros: { proteinG: 110, carbsG: 190, fatG: 52, fiberG: 22, sodiumMg: 1200 },
+        },
+      },
+    }),
+  });
+  const fwAiJson = await fwAiRes.json();
+  results.fw_ai_status = fwAiRes.status;
+  results.fw_ai_provider = fwAiJson.provider ?? null;
+  results.fw_ai_has_reply = typeof fwAiJson.replyFr === "string" && fwAiJson.replyFr.length > 20;
+
   console.log(JSON.stringify(results, null, 2));
 
   const allOk =
     results.home_status === 200 &&
     results.has_manifest_link &&
+    results.has_followeight_brand &&
     results.analyze_meal_status === 200 &&
     results.analyze_meal_kcal > 0 &&
     results.analyze_meal_range_valid &&
@@ -161,7 +213,9 @@ async function main() {
     results.blood_derived_count >= 2 &&
     results.barcode_status === 200 &&
     results.barcode_found &&
-    results.barcode_kcal >= 500;
+    results.barcode_kcal >= 500 &&
+    results.fw_ai_status === 200 &&
+    results.fw_ai_has_reply;
 
   if (!allOk) process.exit(1);
 }

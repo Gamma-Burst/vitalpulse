@@ -4,7 +4,7 @@ android {
     namespace "com.maisonmercier.vitalpulse"
     compileSdk rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "com.maisonmercier.vitalpulse"
+        applicationId "com.followeight.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

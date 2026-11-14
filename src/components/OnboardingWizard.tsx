@@ -14,15 +14,18 @@ import {
 } from "lucide-react";
 import {
   ActivityProfile,
+  AthleticLevel,
   DashboardWidgetId,
   FastingProtocolId,
   PrimaryGoal,
   Sex,
   SpecialMode,
+  SportDisciplineId,
   UserProfile,
   WearableEcosystem,
   WearableSyncState,
 } from "@/types/vitalpulse";
+import { SPORT_DISCIPLINES_CATALOG } from "@/data/exercises-compendium";
 import { computeAnthropometrics } from "@/lib/metabolic-engine";
 import {
   FASTING_PROTOCOLS,
@@ -61,8 +64,17 @@ const GOALS: Array<{ id: PrimaryGoal; label: string; desc: string }> = [
     desc: "Manger mieux durablement, satiété & perte douce sans privation",
   },
   { id: "recomposition", label: "Recomposition", desc: "Affiner la taille tout en tonifiant" },
+  {
+    id: "muscle_gain",
+    label: "Prise de masse musculaire (Lean Bulk)",
+    desc: "Surplus propre + 1,85–2,0 g/kg de protéines pour bâtir du muscle sec",
+  },
+  {
+    id: "athletic_performance",
+    label: "Performance sportive & Cardio",
+    desc: "Énergie optimale, recharge glycogène & suivi multi-sports",
+  },
   { id: "maintenance", label: "Équilibre & énergie", desc: "Stabiliser le poids & la glycémie" },
-  { id: "muscle_gain", label: "Prise de masse propre", desc: "Surplus léger & protéines optimisées" },
 ];
 
 const DIET_APPROACHES: Array<{ id: SpecialMode; label: string; desc: string }> = [
@@ -70,6 +82,11 @@ const DIET_APPROACHES: Array<{ id: SpecialMode; label: string; desc: string }> =
     id: "rebalancing",
     label: "Rééquilibrage alimentaire",
     desc: "Assiette équilibrée NOVA 1-2, fibres & plaisir préservé",
+  },
+  {
+    id: "high_protein_athlete",
+    label: "Nutrition Sportive & Hypertrophie",
+    desc: "Protéines ISSN en 4 prises + glucides pour l'entraînement",
   },
   {
     id: "ketogenic",
@@ -86,6 +103,18 @@ const DIET_APPROACHES: Array<{ id: SpecialMode; label: string; desc: string }> =
     label: "Classique / Flexible",
     desc: "Répartition souple au quotidien",
   },
+];
+
+const ATHLETIC_LEVEL_OPTIONS: Array<{
+  id: AthleticLevel;
+  label: string;
+  desc: string;
+  suggestedActivity: ActivityProfile;
+}> = [
+  { id: "beginner", label: "Débutant / Reprise", desc: "0–1 séance/sem", suggestedActivity: "sedentary" },
+  { id: "recreational", label: "Régulier (Loisir)", desc: "1–2 séances/sem", suggestedActivity: "lightly_active" },
+  { id: "intermediate", label: "Confirmé / Muscu", desc: "3–4 séances/sem", suggestedActivity: "active" },
+  { id: "athlete", label: "Athlète / Intensif", desc: "5+ séances/sem", suggestedActivity: "very_active" },
 ];
 
 function sanitizeIntInput(raw: string): string {
@@ -164,6 +193,12 @@ export function OnboardingWizard({
   const [activityProfile, setActivityProfile] = useState<ActivityProfile>(
     initialProfile.activityProfile || "lightly_active"
   );
+  const [athleticLevel, setAthleticLevel] = useState<AthleticLevel>(
+    initialProfile.athleticLevel || "recreational"
+  );
+  const [favoriteSports, setFavoriteSports] = useState<SportDisciplineId[]>(
+    initialProfile.favoriteSports || []
+  );
   const [dailyStepGoal, setDailyStepGoal] = useState<number>(
     initialProfile.dailyStepGoal || 8000
   );
@@ -212,12 +247,14 @@ export function OnboardingWizard({
         primaryGoal,
         specialMode,
         weeklyPaceKg:
-          primaryGoal === "maintenance"
+          primaryGoal === "maintenance" || primaryGoal === "athletic_performance"
             ? 0
             : primaryGoal === "muscle_gain"
-              ? Math.abs(weeklyPaceKg) || 0.2
+              ? Math.abs(weeklyPaceKg) || 0.25
               : -Math.abs(weeklyPaceKg || 0.4),
         activityProfile,
+        athleticLevel,
+        favoriteSports: favoriteSports.length > 0 ? favoriteSports : undefined,
         dailyStepGoal: Math.max(1500, Math.min(30000, Math.round(dailyStepGoal || 8000))),
         dailyWaterGoalMl:
           typeof dailyWaterGoalMl === "number" && Number.isFinite(dailyWaterGoalMl)
@@ -241,6 +278,8 @@ export function OnboardingWizard({
       specialMode,
       weeklyPaceKg,
       activityProfile,
+      athleticLevel,
+      favoriteSports,
       dailyStepGoal,
       dailyWaterGoalMl,
       fastingProtocol,
@@ -300,7 +339,7 @@ export function OnboardingWizard({
               </span>
               <div>
                 <p className="font-display text-sm font-extrabold tracking-tight text-white">
-                  VitalPulse · Configuration rapide
+                  FolloWeight · Configuration rapide
                 </p>
                 <p className="text-[11px] text-slate-400">
                   Étape {step + 1} sur 5 · {stepsMeta[step].label}
@@ -344,7 +383,7 @@ export function OnboardingWizard({
                   Quel est votre cap principal ?
                 </h1>
                 <p className="mt-1 text-sm text-slate-400">
-                  VitalPulse calibre vos calories, protéines, pas et jeûne sur des repères médicaux réels (Mifflin-St Jeor, OMS, ANSES).
+                  FolloWeight calibre vos calories, protéines, pas, sports et jeûne sur des repères médicaux réels (Mifflin-St Jeor, OMS, ANSES, ISSN).
                 </p>
               </div>
 
@@ -374,6 +413,17 @@ export function OnboardingWizard({
                         if (g.id === "rebalancing") {
                           if (specialMode === "standard") setSpecialMode("rebalancing");
                           setWeeklyPaceKg(-0.25);
+                        } else if (g.id === "muscle_gain") {
+                          setSpecialMode("high_protein_athlete");
+                          setWeeklyPaceKg(0.25);
+                          const currentW = parseBoundedNumber(weightInput, 75, 35, 250);
+                          const targetW = parseBoundedNumber(targetWeightInput, 75, 35, 250);
+                          if (targetW <= currentW) {
+                            setTargetWeightInput(String(Math.min(250, +(currentW + 4).toFixed(1))));
+                          }
+                        } else if (g.id === "athletic_performance") {
+                          setSpecialMode("high_protein_athlete");
+                          setWeeklyPaceKg(0);
                         }
                       }}
                       className={`rounded-2xl border p-3.5 text-left transition ${
@@ -399,13 +449,15 @@ export function OnboardingWizard({
                     const dietTip: GlossaryTermId | null =
                       d.id === "rebalancing"
                         ? "diet_rebalancing"
-                        : d.id === "ketogenic"
-                          ? "diet_ketogenic"
-                          : d.id === "glycemic_shield"
-                            ? "diet_glycemic_shield"
-                            : d.id === "glp1_muscle_guard"
-                              ? "diet_glp1"
-                              : null;
+                        : d.id === "high_protein_athlete"
+                          ? "leucine_threshold"
+                          : d.id === "ketogenic"
+                            ? "diet_ketogenic"
+                            : d.id === "glycemic_shield"
+                              ? "diet_glycemic_shield"
+                              : d.id === "glp1_muscle_guard"
+                                ? "diet_glp1"
+                                : null;
                     return (
                       <button
                         key={d.id}
@@ -437,17 +489,30 @@ export function OnboardingWizard({
                 )}
               </div>
 
-              {primaryGoal !== "maintenance" && (
+              {primaryGoal !== "maintenance" && primaryGoal !== "athletic_performance" && (
                 <div>
                   <label className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                    Rythme hebdomadaire souhaité
+                    {primaryGoal === "muscle_gain" ? (
+                      <>
+                        Cadence Lean Bulk (Prise de masse propre) <InfoTip term="lean_bulk" />
+                      </>
+                    ) : (
+                      "Rythme hebdomadaire souhaité"
+                    )}
                   </label>
                   <div className="mt-2 grid grid-cols-3 gap-2">
-                    {[
-                      { val: 0.25, label: "Doux (~0,25 kg/sem)" },
-                      { val: 0.4, label: "Équilibré (~0,4 kg)" },
-                      { val: 0.6, label: "Soutenu (~0,6 kg)" },
-                    ].map((pace) => {
+                    {(primaryGoal === "muscle_gain"
+                      ? [
+                          { val: 0.15, label: "Sec (+0,15 kg/sem)" },
+                          { val: 0.25, label: "Idéal (+0,25 kg/sem)" },
+                          { val: 0.35, label: "Soutenu (+0,35 kg)" },
+                        ]
+                      : [
+                          { val: 0.25, label: "Doux (~0,25 kg/sem)" },
+                          { val: 0.4, label: "Équilibré (~0,4 kg)" },
+                          { val: 0.6, label: "Soutenu (~0,6 kg)" },
+                        ]
+                    ).map((pace) => {
                       const active = Math.abs(Math.abs(weeklyPaceKg) - pace.val) < 0.05;
                       return (
                         <button
@@ -665,6 +730,68 @@ export function OnboardingWizard({
                 ))}
               </div>
 
+              <div className="space-y-2 rounded-2xl border border-amber-400/20 bg-amber-500/5 p-3.5">
+                <p className="text-xs font-semibold uppercase tracking-wider text-amber-200">
+                  Niveau sportif &amp; Sports pratiqués
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  {ATHLETIC_LEVEL_OPTIONS.map((lvl) => {
+                    const active = athleticLevel === lvl.id;
+                    return (
+                      <button
+                        key={lvl.id}
+                        type="button"
+                        onClick={() => {
+                          triggerLightHaptic();
+                          setAthleticLevel(lvl.id);
+                          setActivityProfile(lvl.suggestedActivity);
+                        }}
+                        className={`rounded-xl border px-3 py-2 text-left text-xs transition ${
+                          active
+                            ? "border-amber-400 bg-amber-500/20 text-white"
+                            : "border-slate-500/25 bg-slate-900/40 text-slate-300 hover:border-amber-400/40"
+                        }`}
+                      >
+                        <p className="font-bold">{lvl.label}</p>
+                        <p className="text-[10px] text-slate-400">{lvl.desc}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div>
+                  <p className="text-[11px] font-semibold text-slate-300 mb-1.5">
+                    Vos sports (sélection multiple — filtre votre bibliothèque)
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {SPORT_DISCIPLINES_CATALOG.map((sp) => {
+                      const picked = favoriteSports.includes(sp.id);
+                      return (
+                        <button
+                          key={sp.id}
+                          type="button"
+                          onClick={() => {
+                            triggerLightHaptic();
+                            setFavoriteSports((prev) =>
+                              prev.includes(sp.id)
+                                ? prev.filter((x) => x !== sp.id)
+                                : [...prev, sp.id]
+                            );
+                          }}
+                          className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${
+                            picked
+                              ? "border-emerald-400 bg-emerald-500/20 text-emerald-200"
+                              : "border-slate-600/60 bg-slate-900/50 text-slate-300 hover:border-slate-400"
+                          }`}
+                        >
+                          {sp.emoji} {sp.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
               <div className="space-y-2 rounded-2xl border border-slate-500/20 bg-slate-900/40 p-3.5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <label className="text-xs font-semibold text-slate-300">
@@ -796,7 +923,7 @@ export function OnboardingWizard({
                 </label>
                 {fastingBlockedByClinical ? (
                   <div className="mt-2 rounded-2xl border border-amber-400/40 bg-amber-500/10 p-3 text-xs text-amber-200">
-                    Par sécurité médicale (âge &lt; 18 ans ou IMC &lt; 18,5), VitalPulse désactive le jeûne prolongé et garde des repas réguliers équilibrés.
+                    Par sécurité médicale (âge &lt; 18 ans ou IMC &lt; 18,5), FolloWeight désactive le jeûne prolongé et garde des repas réguliers équilibrés.
                   </div>
                 ) : (
                   <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -1049,7 +1176,7 @@ export function OnboardingWizard({
               className="inline-flex items-center gap-2 rounded-2xl bg-emerald-500 px-6 py-3 text-sm font-extrabold text-slate-950 shadow-lg shadow-emerald-500/30 hover:bg-emerald-400"
             >
               <Check className="h-4 w-4" />
-              Lancer mon espace VitalPulse
+              Lancer mon espace FolloWeight
             </button>
           )}
         </div>

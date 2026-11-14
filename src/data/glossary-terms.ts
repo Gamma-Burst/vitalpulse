@@ -55,6 +55,9 @@ export type GlossaryTermId =
   | "rpe"
   | "vilpa"
   | "weekly_bank"
+  | "lean_bulk"
+  | "leucine_threshold"
+  | "athletic_refuel"
   // Nutrition & Modes
   | "nova"
   | "nutriscore"
@@ -150,7 +153,7 @@ export const GLOSSARY_TERMS: Record<GlossaryTermId, GlossaryEntry> = {
     exampleFr:
       "Un joueur de rugby très musclé de 1,80 m et 95 kg a un IMC de « surpoids/obésité », alors que son ventre est plat : c'est pour cela qu'on le complète avec le tour de taille.",
     benchmarkFr:
-      "Zone standard OMS : 18,5 à 24,9. Chez VitalPulse, regardez-le toujours en duo avec le WtHR (tour de taille / hauteur) et le % de masse grasse.",
+      "Zone standard OMS : 18,5 à 24,9. Chez FolloWeight, regardez-le toujours en duo avec le WtHR (tour de taille / hauteur) et le % de masse grasse.",
     keywords: ["imc", "bmi", "poids taille", "oms", "corpulence"],
   },
   wthr: {
@@ -267,7 +270,7 @@ export const GLOSSARY_TERMS: Record<GlossaryTermId, GlossaryEntry> = {
     exampleFr:
       "Si votre TDEE est de 2 300 kcal et que vous mangez 2 300 kcal, votre poids reste stable. À 1 850 kcal, vous créez un déficit doux de 450 kcal pour perdre du gras.",
     benchmarkFr:
-      "VitalPulse ajuste votre TDEE dynamiquement chaque jour en fonction de vos vrais pas et séances enregistrés.",
+      "FolloWeight ajuste votre TDEE dynamiquement chaque jour en fonction de vos vrais pas et séances enregistrés.",
     keywords: ["tdee", "depense totale", "maintien", "besoins journaliers", "calories"],
   },
   net_balance: {
@@ -302,7 +305,7 @@ export const GLOSSARY_TERMS: Record<GlossaryTermId, GlossaryEntry> = {
     shortTagFr: "Zéro calories comptées 2 fois",
     category: "energie_sport",
     simpleFr:
-      "Le NEAT regroupe toute l'activité hors salle de sport (marcher, faire les courses, monter les escaliers). VitalPulse retire automatiquement les pas faits PENDANT une séance de marche/course enregistrée pour ne jamais gonfler vos calories brûlées.",
+      "Le NEAT regroupe toute l'activité hors salle de sport (marcher, faire les courses, monter les escaliers). FolloWeight retire automatiquement les pas faits PENDANT une séance de marche/course enregistrée pour ne jamais gonfler vos calories brûlées.",
     exampleFr:
       "Si votre compteur indique 8 000 pas dont 3 000 pas faits pendant votre footing déjà saisi en séance, l'app ne compte les 3 000 pas qu'une seule fois !",
     benchmarkFr:
@@ -361,6 +364,45 @@ export const GLOSSARY_TERMS: Record<GlossaryTermId, GlossaryEntry> = {
       "Un écart isolé ne gâche jamais une semaine ; évitez juste d'enchaîner 3 gros surplus sans compenser en douceur.",
     keywords: ["banque hebdo", "7 jours", "semaine", "restaurant", "budget hebdomadaire"],
   },
+  lean_bulk: {
+    id: "lean_bulk",
+    titleFr: "Prise de masse propre (Lean Bulk ISSN)",
+    shortTagFr: "Muscle sec, minimal gras",
+    category: "energie_sport",
+    simpleFr:
+      "Au lieu de manger énormément pour grossir vite (ce qui stocke surtout du gras abdominal), le Lean Bulk ajoute un léger surplus contrôlé de +200 à +380 kcal/j (+0,15 à +0,35 kg/sem) associé à 1,85–2,0 g/kg de protéines et un entraînement progressif.",
+    exampleFr:
+      "Pour 2 500 kcal de maintien, viser ~2 775 kcal/j (+0,25 kg/sem) permet de bâtir des fibres musculaires solides sans devoir faire une longue sèche derrière.",
+    benchmarkFr:
+      "Surplus idéal prouvé par Garthe et al. & l'ISSN : +0,15 à +0,35 kg/semaine (+200 à +380 kcal/j).",
+    keywords: ["lean bulk", "prise de masse", "hypertrophie", "muscle sec", "surplus propre"],
+  },
+  leucine_threshold: {
+    id: "leucine_threshold",
+    titleFr: "Bolus protéique & Seuil de leucine (~30–45 g/repas)",
+    shortTagFr: "Déclencheur de synthèse musculaire",
+    category: "energie_sport",
+    simpleFr:
+      "Le muscle réagit par impulsions : pour allumer au maximum la fabrication de nouvelles fibres (MPS), chaque repas ou collation gagne à apporter ~0,4–0,5 g/kg de protéines riches en leucine (soit ~30 à 45 g, 4 fois par jour).",
+    exampleFr:
+      "Pour un objectif de 160 g de protéines par jour : visez 4 prises d'environ 40 g (œufs + yaourt grec au matin, poulet/poisson midi, collation skyr ou whey après sport, dîner complet).",
+    benchmarkFr:
+      "Recommandation ISSN (Jäger et al., 2017) & Morton et al. (2018) : 3 à 4 bolus répartis toutes les 3–4 h.",
+    keywords: ["leucine", "bolus proteique", "synthese musculaire", "mps", "whey", "repartition proteines"],
+  },
+  athletic_refuel: {
+    id: "athletic_refuel",
+    titleFr: "Ravitaillement dynamique des séances sportives",
+    shortTagFr: "Énergie compensée jour J",
+    category: "energie_sport",
+    simpleFr:
+      "Lorsque vous visez la prise de masse ou la performance sportive, dépenser 550 kcal au football ou à la salle sans manger un peu plus ce jour-là ferait basculer votre bilan en déficit ! FolloWeight récrédite automatiquement les calories nettes de votre séance sur la cible du jour.",
+    exampleFr:
+      "Cible de base 2 750 kcal + séance Legs de 450 kcal nettes -> budget ajusté automatiquement à 3 200 kcal ce jour-là pour préserver récupération et glycogène.",
+    benchmarkFr:
+      "Évite le syndrome de sous-ravitaillement sportif (RED-S / fatigue nerveuse) sans avoir à tout recalculer à la main.",
+    keywords: ["ravitaillement", "refuel", "seance sport", "glycogene", "recuperation", "budget jour j"],
+  },
   nova: {
     id: "nova",
     titleFr: "Classification NOVA (1 à 4)",
@@ -406,7 +448,7 @@ export const GLOSSARY_TERMS: Record<GlossaryTermId, GlossaryEntry> = {
     shortTagFr: "Pouvoir calant du repas",
     category: "nutrition_nova",
     simpleFr:
-      "Une note calculée par VitalPulse qui prédit combien d'heures ce repas va calmer votre faim, selon son volume d'eau, ses fibres, ses protéines et son absence de sucres rapides.",
+      "Une note calculée par FolloWeight qui prédit combien d'heures ce repas va calmer votre faim, selon son volume d'eau, ses fibres, ses protéines et son absence de sucres rapides.",
     exampleFr:
       "300 kcal de yaourt grec + framboises + flocons d'avoine (Satiété ~82) calent deux fois plus longtemps que 300 kcal de brioche (Satiété ~32).",
     benchmarkFr:
@@ -484,7 +526,7 @@ export const GLOSSARY_TERMS: Record<GlossaryTermId, GlossaryEntry> = {
     shortTagFr: "Priorité protéines + renforcement",
     category: "nutrition_nova",
     simpleFr:
-      "Réglage pensé pour les personnes sous traitement GLP-1 (ou très petit appétit) : quand on mange beaucoup moins, le risque est de perdre trop de muscle. VitalPulse place donc les protéines et l'hydratation au premier plan.",
+      "Réglage pensé pour les personnes sous traitement GLP-1 (ou très petit appétit) : quand on mange beaucoup moins, le risque est de perdre trop de muscle. FolloWeight place donc les protéines et l'hydratation au premier plan.",
     exampleFr:
       "Commencer chaque petite assiette par 25–30 g de protéines faciles à digérer (yaourt grec, œuf, poisson) avant d'être rassasié.",
     benchmarkFr:
@@ -499,7 +541,7 @@ export const GLOSSARY_TERMS: Record<GlossaryTermId, GlossaryEntry> = {
     simpleFr:
       "Organiser sa journée en deux temps : une période de repos digestif (eau, thé, café noir sans sucre) suivie d'une fenêtre précise où l'on prend ses repas. OMAD signifie « One Meal A Day » : 23 h de jeûne et 1 h autorisée pour un grand repas complet.",
     exampleFr:
-      "En 16:8, vous mangez par exemple entre 12 h et 20 h et jeûnez de 20 h à 12 h. En OMAD 23:1 avec repas à 19 h, VitalPulse affiche un compte à rebours jusqu'à 19 h puis vous alerte quand la fenêtre d'1 h est ouverte.",
+      "En 16:8, vous mangez par exemple entre 12 h et 20 h et jeûnez de 20 h à 12 h. En OMAD 23:1 avec repas à 19 h, FolloWeight affiche un compte à rebours jusqu'à 19 h puis vous alerte quand la fenêtre d'1 h est ouverte.",
     benchmarkFr:
       "En fenêtre courte (20:4 ou OMAD), soignez les protéines, les légumes et l'hydratation sur le repas unique ; déconseillé en cas de grossesse, < 18 ans ou antécédents de TCA.",
     keywords: ["omad", "23:1", "16:8", "18:6", "20:4", "jeune intermittent", "fenetre repas", "autorise a manger"],
@@ -588,9 +630,9 @@ export const GLOSSARY_TERMS: Record<GlossaryTermId, GlossaryEntry> = {
     shortTagFr: "Connexion montre / ceinture",
     category: "jeune_metabolisme",
     simpleFr:
-      "Le standard universel Bluetooth qui permet à VitalPulse de lire votre rythme cardiaque en direct depuis une montre compatible ou une ceinture cardio (Polar, Garmin, Wahoo, Decathlon...) sans passer par un serveur cloud.",
+      "Le standard universel Bluetooth qui permet à FolloWeight de lire votre rythme cardiaque en direct depuis une montre compatible ou une ceinture cardio (Polar, Garmin, Wahoo, Decathlon...) sans passer par un serveur cloud.",
     exampleFr:
-      "En activant le mode diffusion cardio sur votre montre Garmin/Polar, VitalPulse affiche vos BPM en direct pendant votre séance.",
+      "En activant le mode diffusion cardio sur votre montre Garmin/Polar, FolloWeight affiche vos BPM en direct pendant votre séance.",
     benchmarkFr:
       "Les marques Samsung Health et Apple Watch nécessitent l'application mobile/pont natif ou un export manuel rapide selon le navigateur.",
     keywords: ["bluetooth", "gatt", "0x180d", "montre", "cardio", "bpm", "garmin", "samsung", "apple"],
@@ -710,7 +752,7 @@ export const GLOSSARY_TERMS: Record<GlossaryTermId, GlossaryEntry> = {
     exampleFr:
       "Un bodybuilder très musclé ou quelqu'un qui vient de faire une grosse séance de jambes la veille peut avoir une créatinine un peu haute sans avoir les reins abîmés.",
     benchmarkFr:
-      "À lire avec le DFG estimé (CKD-EPI 2021). Si la filtration est basse, VitalPulse protège vos reins en évitant les excès de protéines.",
+      "À lire avec le DFG estimé (CKD-EPI 2021). Si la filtration est basse, FolloWeight protège vos reins en évitant les excès de protéines.",
     keywords: ["creatinine", "reins", "filtration", "dfg", "ckd-epi"],
   },
   blood_alat: {

@@ -254,7 +254,9 @@ describe("VitalPulse storage migration v2 -> v3", () => {
     } as unknown as Parameters<typeof migrateVitalPulseState>[0];
 
     const v3Once = migrateVitalPulseState(legacyV2);
-    expect(v3Once.version).toBe(4);
+    expect(v3Once.version).toBe(5);
+    expect(v3Once.fwAiMessages.length).toBeGreaterThan(0);
+    expect(v3Once.subscription.tier).toBe("free");
     expect(Array.isArray(v3Once.enabledWidgets)).toBe(true);
     expect(v3Once.enabledWidgets.length).toBeGreaterThan(0);
     expect(v3Once.fasting).toBeDefined();

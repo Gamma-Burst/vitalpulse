@@ -17,6 +17,7 @@ import {
   MealEntry,
   MealType,
   OilLevel,
+  PrimaryGoal,
   SpecialMode,
 } from "@/types/vitalpulse";
 import { compressImageFile } from "@/lib/native-bridge";
@@ -27,6 +28,7 @@ interface MealScannerViewProps {
   meals: MealEntry[];
   todayDateKey: string;
   specialMode: SpecialMode;
+  primaryGoal?: PrimaryGoal;
   highlightedMealId?: string | null;
   onSaveMeal: (meal: MealEntry) => void;
   onUpdateMeal: (meal: MealEntry) => void;
@@ -118,6 +120,7 @@ export function MealScannerView({
   meals,
   todayDateKey,
   specialMode,
+  primaryGoal,
   highlightedMealId,
   onSaveMeal,
   onUpdateMeal,
@@ -189,6 +192,7 @@ export function MealScannerView({
           portionEatenPct,
           mealType,
           specialMode,
+          primaryGoal,
           oilLevel: overrideOil,
         }),
       });

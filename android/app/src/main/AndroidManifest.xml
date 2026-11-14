@@ -37,7 +37,7 @@
         <receiver
             android:name=".VitalPulseWidgetProvider"
             android:exported="true"
-            android:label="VitalPulse Widget">
+            android:label="FolloWeight Widget">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
