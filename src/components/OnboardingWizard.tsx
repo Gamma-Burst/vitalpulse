@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import {
   Check,
@@ -40,6 +40,7 @@ import {
   requestFastingNotificationPermission,
   triggerLightHaptic,
 } from "@/lib/native-bridge";
+import { blurActiveEditableElement, scrollViewportToTop } from "@/lib/scroll-utils";
 import type { GlossaryTermId } from "@/data/glossary-terms";
 
 export interface OnboardingWizardProps {
@@ -170,6 +171,7 @@ export function OnboardingWizard({
   onSkipDemo,
 }: OnboardingWizardProps) {
   const shouldReduceMotion = useReducedMotion();
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const [step, setStep] = useState(0);
   const [name, setName] = useState(
     initialProfile.isDemoProfile ? "Mon profil" : initialProfile.name || "Mon profil"
@@ -235,6 +237,11 @@ export function OnboardingWizard({
       setWearableEcosystem("apple_watch");
     }
   }, [initialWearable.ecosystem, initialWearable.lastSyncAt]);
+
+  useEffect(() => {
+    blurActiveEditableElement();
+    scrollViewportToTop({ container: containerRef.current, smooth: false });
+  }, [step]);
   const [enabledWidgets, setEnabledWidgets] = useState<DashboardWidgetId[]>(
     initialWidgets.length > 0
       ? initialWidgets
@@ -320,6 +327,7 @@ export function OnboardingWizard({
   }
 
   function handleFinish() {
+    blurActiveEditableElement();
     triggerLightHaptic();
     const effectiveProtocol = fastingBlockedByClinical ? "none" : fastingProtocol;
     if (effectiveProtocol !== "none" && fastingNotifications) {
@@ -347,7 +355,10 @@ export function OnboardingWizard({
   ];
 
   return (
-    <div className="vp-onboarding fixed inset-0 z-50 flex flex-col overflow-y-auto bg-[var(--vp-bg)] px-4 py-5 text-[var(--vp-text)]">
+    <div
+      ref={containerRef}
+      className="vp-onboarding fixed inset-0 z-50 flex flex-col overflow-y-auto bg-[var(--vp-bg)] px-4 py-5 text-[var(--vp-text)]"
+    >
       <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col justify-between gap-5">
         <div>
           {/* Barre supérieure */}
@@ -369,6 +380,7 @@ export function OnboardingWizard({
             <button
               type="button"
               onClick={() => {
+                blurActiveEditableElement();
                 triggerLightHaptic();
                 onSkipDemo();
               }}

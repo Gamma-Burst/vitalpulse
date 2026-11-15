@@ -73,6 +73,7 @@ import {
 } from "@/lib/billing-bridge";
 import { GlossaryPortalHost, openGlossaryCatalog } from "@/components/ui/InfoTip";
 import { parseAppleWatchSyncParams } from "@/lib/wearables-bridge";
+import { blurActiveEditableElement, scrollViewportToTop } from "@/lib/scroll-utils";
 import {
   BloodPanelEntry,
   BodyMeasurementEntry,
@@ -132,6 +133,7 @@ export default function VitalPulseApp() {
   const savedNoticeTimerRef = useRef<number | null>(null);
 
   const notifySavedAndScrollHome = useCallback((messageFr: string) => {
+    blurActiveEditableElement();
     setSavedNotice(messageFr);
     if (savedNoticeTimerRef.current !== null) {
       window.clearTimeout(savedNoticeTimerRef.current);
@@ -140,9 +142,7 @@ export default function VitalPulseApp() {
       setSavedNotice(null);
       savedNoticeTimerRef.current = null;
     }, 4000);
-    if (typeof window !== "undefined") {
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    }
+    scrollViewportToTop({ smooth: true });
   }, []);
 
   useEffect(() => {
@@ -295,6 +295,10 @@ export default function VitalPulseApp() {
       // ignore storage errors
     }
   }, [theme]);
+
+  useEffect(() => {
+    scrollViewportToTop({ smooth: false });
+  }, [activeTab]);
 
   function commitState(updater: (prev: VitalPulseState) => VitalPulseState) {
     setState((prev) => {
@@ -553,6 +557,8 @@ export default function VitalPulseApp() {
     void saveVitalPulseState(fresh);
     setShowOnboardingOverride(false);
     setActiveTab("dashboard");
+    notifySavedAndScrollHome("Profil configuré — bienvenue dans votre espace FolloWeight !");
+    scrollViewportToTop({ smooth: false });
   }
 
   function handleOnboardingSkipDemo() {
@@ -565,6 +571,7 @@ export default function VitalPulseApp() {
     }));
     setShowOnboardingOverride(false);
     setActiveTab("dashboard");
+    scrollViewportToTop({ smooth: false });
   }
 
   const showOnboardingWizard =
@@ -869,7 +876,7 @@ export default function VitalPulseApp() {
                 rangeDays={rangeDays}
                 onRangeChange={setRangeDays}
                 onAddWater={addWaterMl}
-                onQuickLogWeight={(weightKg, waistCm) =>
+                onQuickLogWeight={(weightKg, waistCm) => {
                   commitState((prev) => ({
                     ...prev,
                     profile: {
@@ -887,8 +894,9 @@ export default function VitalPulseApp() {
                         waistCm,
                       },
                     ],
-                  }))
-                }
+                  }));
+                  scrollViewportToTop({ smooth: true });
+                }}
                 onNavigateTab={(tab, subTab) => {
                   if (subTab) setBodyLabSubTab(subTab);
                   setActiveTab(tab);
@@ -944,9 +952,10 @@ export default function VitalPulseApp() {
                 primaryGoal={state.profile.primaryGoal}
                 highlightedMealId={highlightedMealId}
                 onOpenBarcode={() => setBarcodeOpen(true)}
-                onSaveMeal={(meal: MealEntry) =>
-                  commitState((prev) => ({ ...prev, meals: [meal, ...prev.meals] }))
-                }
+                onSaveMeal={(meal: MealEntry) => {
+                  commitState((prev) => ({ ...prev, meals: [meal, ...prev.meals] }));
+                  scrollViewportToTop({ smooth: true });
+                }}
                 onUpdateMeal={(updated: MealEntry) =>
                   commitState((prev) => ({
                     ...prev,
@@ -978,9 +987,10 @@ export default function VitalPulseApp() {
                     fridgeScans: [scan, ...prev.fridgeScans.slice(0, 9)],
                   }))
                 }
-                onLogRecipeAsMeal={(meal: MealEntry) =>
-                  commitState((prev) => ({ ...prev, meals: [meal, ...prev.meals] }))
-                }
+                onLogRecipeAsMeal={(meal: MealEntry) => {
+                  commitState((prev) => ({ ...prev, meals: [meal, ...prev.meals] }));
+                  scrollViewportToTop({ smooth: true });
+                }}
               />
             )}
 
@@ -1068,12 +1078,14 @@ export default function VitalPulseApp() {
                   setState(fresh);
                   void saveVitalPulseState(fresh);
                   setActiveTab("dashboard");
+                  scrollViewportToTop({ smooth: false });
                 }}
                 onResetDemo={() => {
                   const demo = buildDemoSeedState();
                   demo.profile.onboardingCompleted = true;
                   setState(demo);
                   void saveVitalPulseState(demo);
+                  scrollViewportToTop({ smooth: false });
                 }}
               />
             )}
@@ -1087,7 +1099,7 @@ export default function VitalPulseApp() {
                 bloodPanels={state.bloodPanels}
                 bodyPhotoMetas={state.bodyPhotoMetas}
                 initialSubTab={bodyLabSubTab}
-                onSaveMeasurement={(entry: BodyMeasurementEntry) =>
+                onSaveMeasurement={(entry: BodyMeasurementEntry) => {
                   commitState((prev) => {
                     const filtered = prev.measurements.filter((m) => m.id !== entry.id);
                     const nextMeasurements = [...filtered, entry].sort((a, b) =>
@@ -1117,15 +1129,16 @@ export default function VitalPulseApp() {
                       measurements: nextMeasurements,
                       weights: nextWeights,
                     };
-                  })
-                }
+                  });
+                  scrollViewportToTop({ smooth: true });
+                }}
                 onDeleteMeasurement={(id: string) =>
                   commitState((prev) => ({
                     ...prev,
                     measurements: prev.measurements.filter((m) => m.id !== id),
                   }))
                 }
-                onSaveBloodPanel={(panel: BloodPanelEntry) =>
+                onSaveBloodPanel={(panel: BloodPanelEntry) => {
                   commitState((prev) => {
                     const filtered = prev.bloodPanels.filter((b) => b.id !== panel.id);
                     return {
@@ -1134,8 +1147,9 @@ export default function VitalPulseApp() {
                         a.dateKey.localeCompare(b.dateKey)
                       ),
                     };
-                  })
-                }
+                  });
+                  scrollViewportToTop({ smooth: true });
+                }}
                 onDeleteBloodPanel={(id: string) =>
                   commitState((prev) => ({
                     ...prev,
