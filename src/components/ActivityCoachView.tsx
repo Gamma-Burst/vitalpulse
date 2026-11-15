@@ -21,6 +21,9 @@ import {
 } from "@/data/exercises-compendium";
 import { computeAnthropometrics, computeWorkoutNetCalories } from "@/lib/metabolic-engine";
 import { detectPlatformCapabilities } from "@/lib/native-bridge";
+import { getExerciseVisualSpec, MUSCLE_LABELS_FR } from "@/lib/exercise-biomechanics";
+import { ExerciseVisualStage } from "@/components/coach/ExerciseVisualStage";
+import { MiniExerciseAvatar } from "@/components/coach/MiniExerciseAvatar";
 import { DetailSheet } from "@/components/ui/DetailSheet";
 import { InfoTip } from "@/components/ui/InfoTip";
 import {
@@ -102,6 +105,7 @@ export function ActivityCoachView({
 
   // Lecteur d'exercice actif
   const [activeExercise, setActiveExercise] = useState<ExerciseDefinition | null>(null);
+  const [selectedMoveIndex, setSelectedMoveIndex] = useState(0);
   const [customMinutes, setCustomMinutes] = useState(10);
   const [minutesDraft, setMinutesDraft] = useState("10");
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
@@ -193,7 +197,14 @@ export function ActivityCoachView({
         if (!e.sportTag || !favoriteSportIds.includes(e.sportTag)) return false;
       }
       if (q) {
-        const hay = `${e.title} ${e.targetMuscles} ${e.equipment} ${e.difficulty}`.toLowerCase();
+        const spec = getExerciseVisualSpec(e);
+        const musclesFr = spec.movements
+          .flatMap((m) => [...m.primaryMuscles, ...m.secondaryMuscles])
+          .map((m) => MUSCLE_LABELS_FR[m] ?? m)
+          .join(" ");
+        const moveLabels = spec.movements.map((m) => m.labelFr).join(" ");
+        const hay =
+          `${e.title} ${e.targetMuscles} ${e.equipment} ${e.difficulty} ${e.instructions.join(" ")} ${moveLabels} ${musclesFr}`.toLowerCase();
         if (!hay.includes(q)) return false;
       }
       return true;
@@ -203,8 +214,20 @@ export function ActivityCoachView({
   const currentIntensityMult =
     INTENSITY_PRESETS.find((p) => p.label === intensityLabel)?.mult ?? 1.0;
 
-  function startExercisePlayer(ex: ExerciseDefinition) {
+  function startExercisePlayer(ex: ExerciseDefinition, moveIdx?: number) {
+    const spec = getExerciseVisualSpec(ex);
+    const q = searchQuery.trim().toLowerCase();
+    const matchingIdx = q
+      ? spec.movements.findIndex((m) => m.labelFr.toLowerCase().includes(q))
+      : -1;
+    const resolvedIdx =
+      typeof moveIdx === "number"
+        ? Math.max(0, Math.min(spec.movements.length - 1, moveIdx))
+        : matchingIdx >= 0
+          ? matchingIdx
+          : 0;
     setActiveExercise(ex);
+    setSelectedMoveIndex(resolvedIdx);
     setCustomMinutes(ex.defaultMinutes);
     setMinutesDraft(String(ex.defaultMinutes));
     setSecondsLeft(ex.defaultMinutes * 60);
@@ -619,6 +642,11 @@ export function ActivityCoachView({
       >
       {activeExercise && (
         <div className="space-y-4">
+          <ExerciseVisualStage
+            key={`${activeExercise.id}-${selectedMoveIndex}`}
+            exercise={activeExercise}
+            initialMoveIndex={selectedMoveIndex}
+          />
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <p className="text-xs text-slate-300">{activeExercise.antiDemotivationTip}</p>
@@ -873,8 +901,8 @@ export function ActivityCoachView({
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Chercher sport (foot, push, vélo...)"
-                aria-label="Rechercher un sport ou exercice"
+                placeholder="Chercher sport, muscle, exercice..."
+                aria-label="Rechercher un sport, muscle ou exercice"
                 className="pl-8 pr-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none w-56"
               />
             </div>
@@ -921,6 +949,7 @@ export function ActivityCoachView({
               ex.met,
               ex.defaultMinutes
             );
+            const visualSpec = getExerciseVisualSpec(ex);
             const diffBadgeClass =
               ex.difficulty === "Intense"
                 ? "bg-rose-500/20 text-rose-200 border border-rose-400/35"
@@ -933,7 +962,7 @@ export function ActivityCoachView({
                 className="rounded-xl bg-slate-900/90 border border-slate-800 p-4 flex flex-col justify-between gap-3 hover:border-emerald-400/40 transition"
               >
                 <div>
-                  <div className="flex items-center justify-between gap-2 text-[11px] mb-1">
+                  <div className="flex items-center justify-between gap-2 text-[11px] mb-2">
                     <span className={`px-2 py-0.5 rounded-full font-medium ${diffBadgeClass}`}>
                       {ex.difficulty} · {ex.defaultMinutes} min
                     </span>
@@ -941,11 +970,37 @@ export function ActivityCoachView({
                       +{estKcal} kcal nets
                     </span>
                   </div>
-                  <h4 className="text-sm font-bold text-white leading-snug">{ex.title}</h4>
-                  <p className="text-[11px] text-slate-400 mt-1">
-                    Matériel : {ex.equipment} · {ex.targetMuscles}
-                  </p>
+                  <div className="flex items-start gap-3">
+                    <button
+                      type="button"
+                      onClick={() => startExercisePlayer(ex)}
+                      aria-label={`Voir l'animation 3D pour ${ex.title}`}
+                      className="shrink-0 rounded-xl bg-slate-950/90 border border-slate-800 hover:border-emerald-400/50 p-1 transition cursor-pointer"
+                    >
+                      <MiniExerciseAvatar exerciseId={ex.id} size={76} />
+                    </button>
+                    <div className="min-w-0 flex-1">
+                      <h4 className="text-sm font-bold text-white leading-snug">{ex.title}</h4>
+                      <p className="text-[11px] text-slate-400 mt-1">
+                        Matériel : {ex.equipment} · {ex.targetMuscles}
+                      </p>
+                    </div>
+                  </div>
                   <p className="text-xs text-slate-300 mt-2">{ex.antiDemotivationTip}</p>
+                  {visualSpec.movements.length > 1 && (
+                    <div className="flex flex-wrap gap-1.5 mt-2.5">
+                      {visualSpec.movements.map((mv, idx) => (
+                        <button
+                          key={`${ex.id}-mv-${idx}`}
+                          type="button"
+                          onClick={() => startExercisePlayer(ex, idx)}
+                          className="px-2 py-0.5 rounded-lg bg-slate-800/90 hover:bg-emerald-500/20 border border-slate-700 hover:border-emerald-400/40 text-[10px] font-medium text-slate-200 hover:text-emerald-200 transition"
+                        >
+                          {mv.labelFr}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-800/80">
@@ -955,7 +1010,7 @@ export function ActivityCoachView({
                     className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-medium"
                   >
                     <Timer className="w-3.5 h-3.5 text-sky-400" />
-                    Démarrer guidé
+                    Voir coach & Démarrer
                   </button>
                   <button
                     type="button"

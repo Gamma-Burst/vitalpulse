@@ -598,3 +598,48 @@ export interface FwAiMessage {
   provider?: "openai-fw-ai" | "clinical-deterministic";
   quickActions?: string[];
 }
+
+export type MuscleGroupId =
+  | "chest"
+  | "upper_back"
+  | "lats"
+  | "shoulders"
+  | "biceps"
+  | "triceps"
+  | "forearms"
+  | "abs_core"
+  | "obliques"
+  | "lower_back"
+  | "glutes"
+  | "quads"
+  | "hamstrings"
+  | "calves"
+  | "hip_flexors"
+  | "neck_traps"
+  | "cardio_heart";
+
+export type CoachPropType =
+  | "none"
+  | "dumbbells"
+  | "barbell"
+  | "bench_dumbbells"
+  | "pullup_bar"
+  | "dip_bars"
+  | "chair"
+  | "wall"
+  | "stairs"
+  | "bike"
+  | "rower"
+  | "jump_rope"
+  | "punching_bag"
+  | "kettlebell"
+  | "racket"
+  | "soccer_ball"
+  | "basketball"
+  | "climbing_wall"
+  | "yoga_mat"
+  | "pool_water"
+  | "backpack_poles";
+
+export type CameraViewPreset = "three_quarter" | "side_profile" | "front" | "floor_low";
+
