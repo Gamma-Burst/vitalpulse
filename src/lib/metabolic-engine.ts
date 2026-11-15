@@ -26,6 +26,80 @@ const ACTIVITY_MAINTENANCE_MULTIPLIERS: Record<ActivityProfile, number> = {
   very_active: 1.75,
 };
 
+const ISO_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/**
+ * Calcule l'âge exact en années révolues à partir d'une date ISO YYYY-MM-DD.
+ * Retourne null si la date est invalide, future ou hors plage humaine [10..110].
+ */
+export function computeAgeFromBirthDate(
+  birthDateIso?: string | null,
+  referenceDate: Date = new Date()
+): number | null {
+  if (typeof birthDateIso !== "string") return null;
+  const trimmed = birthDateIso.trim();
+  const match = ISO_DATE_RE.exec(trimmed);
+  if (!match) return null;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  if (
+    parsed.getUTCFullYear() !== year ||
+    parsed.getUTCMonth() !== month - 1 ||
+    parsed.getUTCDate() !== day
+  ) {
+    return null;
+  }
+
+  const refYear = referenceDate.getFullYear();
+  const refMonth = referenceDate.getMonth() + 1;
+  const refDay = referenceDate.getDate();
+
+  let age = refYear - year;
+  if (refMonth < month || (refMonth === month && refDay < day)) {
+    age -= 1;
+  }
+  if (age < 10 || age > 110) return null;
+  return age;
+}
+
+export function isValidBirthDateIso(
+  birthDateIso?: string | null,
+  referenceDate: Date = new Date()
+): birthDateIso is string {
+  return computeAgeFromBirthDate(birthDateIso, referenceDate) !== null;
+}
+
+/**
+ * Résout l'âge effectif d'un profil (priorité à la date de naissance si valide).
+ */
+export function resolveEffectiveAge(
+  profile: { age?: number; birthDate?: string } | null | undefined,
+  referenceDate: Date = new Date()
+): number {
+  const fromDob = computeAgeFromBirthDate(profile?.birthDate, referenceDate);
+  if (fromDob !== null) return fromDob;
+  const rawAge = profile?.age;
+  return Math.max(10, Math.min(110, typeof rawAge === "number" && Number.isFinite(rawAge) ? Math.round(rawAge) : 35));
+}
+
+export function formatBirthDateFr(birthDateIso?: string | null): string | null {
+  if (!isValidBirthDateIso(birthDateIso)) return null;
+  const match = ISO_DATE_RE.exec(birthDateIso.trim());
+  if (!match) return null;
+  const dt = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  return new Intl.DateTimeFormat("fr-FR", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(dt);
+}
+
 /**
  * Calcule le bilan anthropométrique complet :
  * - IMC (OMS)
@@ -44,7 +118,7 @@ export function computeAnthropometrics(profile: UserProfile): AnthropometricRepo
     30,
     Math.min(250, Number.isFinite(profile.weightKg) ? profile.weightKg : 75)
   );
-  const age = Math.max(10, Math.min(110, Number.isFinite(profile.age) ? profile.age : 35));
+  const age = resolveEffectiveAge(profile);
 
   const bmi = +(weightKg / (heightM * heightM)).toFixed(1);
   let bmiCategoryFr = "Corpulence normale (OMS)";

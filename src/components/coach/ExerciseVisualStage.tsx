@@ -83,7 +83,7 @@ export function ExerciseVisualStage({
     <div className="space-y-3">
       {/* Onglets visuels : Coach 3D / Anatomie / Photos */}
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="inline-flex rounded-xl border border-slate-800 bg-slate-900/90 p-1 text-xs">
+        <div className="grid w-full grid-cols-3 rounded-xl border border-slate-800 bg-slate-900/90 p-1 text-xs sm:inline-flex sm:w-auto">
           <button
             type="button"
             onClick={() => setActiveTab("coach_3d")}

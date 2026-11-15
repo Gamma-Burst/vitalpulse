@@ -72,6 +72,7 @@ import {
   startSevenDayFreeTrial,
 } from "@/lib/billing-bridge";
 import { GlossaryPortalHost, openGlossaryCatalog } from "@/components/ui/InfoTip";
+import { parseAppleWatchSyncParams } from "@/lib/wearables-bridge";
 import {
   BloodPanelEntry,
   BodyMeasurementEntry,
@@ -155,7 +156,106 @@ export default function VitalPulseApp() {
   useEffect(() => {
     let mounted = true;
     void loadVitalPulseState().then((loaded) => {
-      if (mounted) setState(loaded);
+      if (!mounted) return;
+      if (typeof window !== "undefined") {
+        const awSnap = parseAppleWatchSyncParams(
+          window.location.search,
+          window.location.hash
+        );
+        if (awSnap) {
+          const curDayKey = formatDateKey();
+          let nextSteps = loaded.steps;
+          if (awSnap.steps !== undefined) {
+            const exists = loaded.steps.some((s) => s.dateKey === curDayKey);
+            nextSteps = exists
+              ? loaded.steps.map((s) =>
+                  s.dateKey === curDayKey
+                    ? {
+                        ...s,
+                        steps: awSnap.steps!,
+                        source: "health_connect",
+                        updatedAt: new Date().toISOString(),
+                      }
+                    : s
+                )
+              : [
+                  ...loaded.steps,
+                  {
+                    dateKey: curDayKey,
+                    steps: awSnap.steps,
+                    source: "health_connect",
+                    updatedAt: new Date().toISOString(),
+                  },
+                ];
+          }
+          const updated: VitalPulseState = {
+            ...loaded,
+            steps: nextSteps,
+            profile:
+              awSnap.weightKg !== undefined
+                ? { ...loaded.profile, weightKg: awSnap.weightKg }
+                : loaded.profile,
+            wearable: {
+              ...loaded.wearable,
+              ecosystem: "apple_watch",
+              deviceName: awSnap.sourceLabel,
+              lastSyncAt: new Date().toISOString(),
+              lastHeartRateBpm:
+                awSnap.heartRateBpm ?? loaded.wearable.lastHeartRateBpm,
+              syncedStepsToday:
+                awSnap.steps ?? loaded.wearable.syncedStepsToday,
+              syncedActiveKcalToday:
+                awSnap.activeKcal ?? loaded.wearable.syncedActiveKcalToday,
+              syncedExerciseMinutesToday:
+                awSnap.exerciseMinutes ??
+                loaded.wearable.syncedExerciseMinutesToday,
+            },
+          };
+          void saveVitalPulseState(updated);
+          setState(updated);
+
+          try {
+            const cleanedUrl = new URL(window.location.href);
+            for (const k of [
+              "aw_sync",
+              "steps",
+              "pas",
+              "kcal",
+              "activeKcal",
+              "bpm",
+              "hr",
+              "weight",
+              "poids",
+              "ex",
+              "exercise",
+              "source",
+            ]) {
+              cleanedUrl.searchParams.delete(k);
+            }
+            if (cleanedUrl.hash.includes("aw_sync=")) {
+              cleanedUrl.hash = "";
+            }
+            window.history.replaceState(
+              null,
+              "",
+              `${cleanedUrl.pathname}${cleanedUrl.search}${cleanedUrl.hash}`
+            );
+          } catch {
+            // ignore URL rewrite errors
+          }
+
+          const msgParts: string[] = [];
+          if (awSnap.steps !== undefined) msgParts.push(`${awSnap.steps} pas`);
+          if (awSnap.activeKcal !== undefined) msgParts.push(`${awSnap.activeKcal} kcal`);
+          if (awSnap.heartRateBpm !== undefined) msgParts.push(`${awSnap.heartRateBpm} BPM`);
+          if (awSnap.weightKg !== undefined) msgParts.push(`${awSnap.weightKg} kg`);
+          notifySavedAndScrollHome(
+            `Apple Watch synchronisée (${msgParts.join(" · ") || "données du jour"}) !`
+          );
+          return;
+        }
+      }
+      setState(loaded);
     });
 
     if (typeof window !== "undefined") {
@@ -183,7 +283,7 @@ export default function VitalPulseApp() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [notifySavedAndScrollHome]);
 
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -474,7 +574,7 @@ export default function VitalPulseApp() {
 
   return (
     <MotionConfig reducedMotion="user">
-      <div className="min-h-screen bg-[var(--vp-bg)] text-[var(--vp-text)] vp-main-pb lg:flex">
+      <div className="min-h-screen max-w-[100vw] overflow-x-clip bg-[var(--vp-bg)] text-[var(--vp-text)] vp-main-pb lg:flex">
         {showOnboardingWizard && (
           <OnboardingWizard
             initialProfile={state.profile}
@@ -605,10 +705,10 @@ export default function VitalPulseApp() {
         {/* Main Content */}
         <div className="flex-1 min-w-0">
           {/* Topbar Mobile Épurée */}
-          <header className="lg:hidden sticky top-0 z-30 bg-[var(--vp-surface-glass)] backdrop-blur-md border-b border-slate-500/15 px-3.5 py-2.5 flex items-center justify-between gap-2">
-            <FolloWeightLogo size={30} showWordmark={true} subtitle="" />
+          <header className="lg:hidden sticky top-0 z-30 bg-[var(--vp-surface-glass)] backdrop-blur-md border-b border-slate-500/15 px-3 py-2 flex items-center justify-between gap-2">
+            <FolloWeightLogo size={28} showWordmark={true} subtitle="" compactMobileWordmark />
 
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 shrink-0">
               {installPrompt && (
                 <button
                   type="button"
@@ -616,24 +716,9 @@ export default function VitalPulseApp() {
                   className="inline-flex items-center gap-1 px-2 py-1.5 rounded-xl bg-emerald-500 text-slate-950 font-bold text-[11px]"
                 >
                   <Download className="w-3 h-3" />
-                  PWA
+                  App
                 </button>
               )}
-              <button
-                type="button"
-                onClick={() => {
-                  triggerLightHaptic();
-                  setActiveTab("fw_ai");
-                }}
-                aria-label="Coach FW AI"
-                className={`flex h-8 w-8 items-center justify-center rounded-xl border ${
-                  activeTab === "fw_ai"
-                    ? "border-emerald-400 bg-emerald-500/20 text-emerald-300"
-                    : "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
-                }`}
-              >
-                <Sparkles className="h-4 w-4" />
-              </button>
               <button
                 type="button"
                 onClick={() => {
@@ -649,21 +734,6 @@ export default function VitalPulseApp() {
                 type="button"
                 onClick={() => {
                   triggerLightHaptic();
-                  setActiveTab("activity");
-                }}
-                aria-label="Bouger & Exercices"
-                className={`flex h-8 w-8 items-center justify-center rounded-xl border ${
-                  activeTab === "activity"
-                    ? "border-emerald-400 bg-emerald-500/20 text-emerald-300"
-                    : "border-slate-500/25 bg-slate-500/10 text-slate-300"
-                }`}
-              >
-                <Footprints className="h-4 w-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  triggerLightHaptic();
                   setActiveTab("profile");
                 }}
                 aria-label="Profil & Défis"
@@ -674,21 +744,6 @@ export default function VitalPulseApp() {
                 }`}
               >
                 <UserCheck className="h-4 w-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  triggerLightHaptic();
-                  setActiveTab("medical");
-                }}
-                aria-label="Veille Médicale"
-                className={`flex h-8 w-8 items-center justify-center rounded-xl border ${
-                  activeTab === "medical"
-                    ? "border-emerald-400 bg-emerald-500/20 text-emerald-300"
-                    : "border-slate-500/25 bg-slate-500/10 text-slate-300"
-                }`}
-              >
-                <BookOpen className="h-4 w-4" />
               </button>
               <button
                 type="button"
@@ -973,6 +1028,8 @@ export default function VitalPulseApp() {
                 anthro={anthro}
                 todayBalance={todayBalance}
                 challenges={state.challenges}
+                theme={theme}
+                onChangeTheme={setTheme}
                 onReopenOnboarding={() => setShowOnboardingOverride(true)}
                 onSaveProfile={(nextProfile: UserProfile) => updateProfilePatch(nextProfile)}
                 onSavedReturnHome={(msg: string) => {
@@ -1225,6 +1282,10 @@ export default function VitalPulseApp() {
           onOpenFasting={() => setActiveTab("fasting")}
           onAddWater250={() => addWaterMl(250)}
           onOpenWearables={() => setWearablesOpen(true)}
+          onOpenFwAi={() => setActiveTab("fw_ai")}
+          onOpenActivity={() => setActiveTab("activity")}
+          onOpenMedical={() => setActiveTab("medical")}
+          onOpenGlossary={() => openGlossaryCatalog()}
           waterTodayMl={todayBalance.waterMl}
         />
 

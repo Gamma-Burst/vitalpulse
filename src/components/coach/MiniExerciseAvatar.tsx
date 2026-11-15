@@ -463,7 +463,7 @@ export function MiniExerciseAvatar({
     <div
       ref={containerRef}
       style={{ width: size, height: size }}
-      className={`relative shrink-0 overflow-hidden rounded-2xl border border-slate-700/80 bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950/35 shadow-inner ${className}`}
+      className={`vp-keep-dark relative shrink-0 overflow-hidden rounded-2xl border border-slate-700/80 bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950/35 shadow-inner ${className}`}
       aria-label={`Animation du mouvement : ${move.labelFr}`}
     >
       <svg viewBox={`0 0 ${vb} ${vb}`} className="h-full w-full">

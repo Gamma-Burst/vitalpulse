@@ -5,6 +5,7 @@ import {
   UserProfile,
   WeightEntry,
 } from "@/types/vitalpulse";
+import { resolveEffectiveAge } from "@/lib/metabolic-engine";
 
 export type MeasurementSiteKey =
   | "waistCm"
@@ -159,7 +160,8 @@ export function computeBodyComposition(params: {
     const hM = Math.max(1.2, profile.heightCm / 100);
     const bmi = currentWeight / (hM * hM);
     const sexFlag = profile.sex === "male" ? 1 : 0;
-    rfmPct = +Math.max(6, Math.min(58, 1.2 * bmi + 0.23 * profile.age - 10.8 * sexFlag - 5.4)).toFixed(1);
+    const effectiveAge = resolveEffectiveAge(profile);
+    rfmPct = +Math.max(6, Math.min(58, 1.2 * bmi + 0.23 * effectiveAge - 10.8 * sexFlag - 5.4)).toFixed(1);
   }
 
   const centralPct =

@@ -1,7 +1,10 @@
+import { resolveEffectiveAge } from "@/lib/metabolic-engine";
+
 export interface FwAiContextPayload {
   profile: {
     name?: string;
     age: number;
+    birthDate?: string;
     sex: "male" | "female";
     weightKg: number;
     targetWeightKg: number;
@@ -111,7 +114,7 @@ export function buildDeterministicFwAiReply(params: {
   }
 
   const name = ctx?.profile?.name || "vous";
-  const age = ctx?.profile?.age ?? 34;
+  const age = resolveEffectiveAge(ctx?.profile);
   const isMinor = age < 18 || Boolean(ctx?.anthro?.minorSafetyLock);
   const isPregnant = Boolean(ctx?.profile?.pregnant);
   const renalGuard = Boolean(ctx?.latestBloodPanel?.renalProteinGuardTriggered);

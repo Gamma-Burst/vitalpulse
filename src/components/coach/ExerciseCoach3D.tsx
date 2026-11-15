@@ -946,7 +946,7 @@ export function ExerciseCoach3D({ move, onWebGLUnavailable }: ExerciseCoach3DPro
   );
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-emerald-400/25 bg-slate-950 shadow-lg">
+    <div className="vp-keep-dark overflow-hidden rounded-2xl border border-emerald-400/25 bg-slate-950 shadow-lg">
       {/* Barre supérieure contrôles caméra & vitesse */}
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/90 bg-slate-900/90 px-3 py-2 text-[11px]">
         <div className="flex items-center gap-1.5">

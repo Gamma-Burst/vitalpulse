@@ -894,8 +894,8 @@ export function ActivityCoachView({
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative">
+          <div className="flex w-full sm:w-auto flex-wrap items-center gap-2">
+            <div className="relative flex-1 sm:flex-initial">
               <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
@@ -903,7 +903,7 @@ export function ActivityCoachView({
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Chercher sport, muscle, exercice..."
                 aria-label="Rechercher un sport, muscle ou exercice"
-                className="pl-8 pr-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none w-56"
+                className="pl-8 pr-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none w-full sm:w-56"
               />
             </div>
             {favoriteSportIds.length > 0 && (

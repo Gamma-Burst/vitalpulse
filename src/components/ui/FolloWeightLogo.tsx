@@ -6,6 +6,7 @@ interface FolloWeightLogoProps {
   size?: number;
   showWordmark?: boolean;
   subtitle?: string;
+  compactMobileWordmark?: boolean;
   className?: string;
 }
 
@@ -16,6 +17,7 @@ export function FolloWeightLogo({
   size = 38,
   showWordmark = true,
   subtitle = "followeight.com",
+  compactMobileWordmark = false,
   className = "",
 }: FolloWeightLogoProps) {
   const uid = useId().replace(/:/g, "");
@@ -65,8 +67,12 @@ export function FolloWeightLogo({
       </svg>
 
       {showWordmark && (
-        <div className="leading-tight">
-          <div className="font-display text-base font-extrabold tracking-tight text-white">
+        <div
+          className={`leading-tight min-w-0 ${
+            compactMobileWordmark ? "hidden min-[360px]:block" : ""
+          }`}
+        >
+          <div className="font-display text-base font-extrabold tracking-tight text-[var(--vp-text)] truncate">
             Follo<span className="text-emerald-400">Weight</span>
           </div>
           {subtitle && (

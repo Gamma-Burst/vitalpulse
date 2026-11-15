@@ -19,8 +19,8 @@ export const WEARABLE_ECOSYSTEMS: WearableEcosystemSpec[] = [
   {
     id: "apple_watch",
     name: "Apple Watch & Apple Santé",
-    platformNote: "Export XML Apple Santé (App Santé → Exporter) ou HealthKit sur build iOS",
-    syncMethods: ["Pas quotidiens", "Anneaux activité", "Cardio BPM", "Poids"],
+    platformNote: "iPhone : Scan capture Forme/Santé, Raccourci iOS 1-clic ou export ZIP/XML Apple Santé",
+    syncMethods: ["Anneaux Forme (IA)", "Raccourci iOS 1-clic", "Export ZIP/XML", "Cardio BPM"],
     accentColor: "#FB7185",
   },
   {
@@ -138,10 +138,404 @@ export async function connectBluetoothHeartRate(
 export interface ParsedWearableSnapshot {
   steps?: number;
   activeKcal?: number;
+  exerciseMinutes?: number;
   weightKg?: number;
   heartRateBpm?: number;
   sourceLabel: string;
 }
+
+/**
+ * Détecte un appareil Apple tactile (iPhone / iPad / iPod) où Safari/WebKit
+ * bloque l'API Web Bluetooth dans tous les navigateurs iOS.
+ */
+export function isAppleTouchDevice(
+  userAgent?: string,
+  platform?: string,
+  maxTouchPoints?: number
+): boolean {
+  const ua =
+    userAgent ??
+    (typeof navigator !== "undefined" ? navigator.userAgent : "");
+  const plat =
+    platform ??
+    (typeof navigator !== "undefined" ? navigator.platform : "");
+  const touches =
+    maxTouchPoints ??
+    (typeof navigator !== "undefined" ? navigator.maxTouchPoints : 0);
+
+  if (/iPhone|iPad|iPod/i.test(ua)) return true;
+  if (/Macintosh/i.test(ua) && touches > 1) return true;
+  if (/iPhone|iPad|iPod/i.test(plat)) return true;
+  return false;
+}
+
+/**
+ * URL modèle destinée à l'app Raccourcis (Shortcuts) sur iPhone :
+ * permet d'injecter directement les pas, kcal actives, cardio et poids du jour
+ * dans FolloWeight en 1 toucher depuis l'iPhone.
+ */
+export function buildIosShortcutSyncUrlTemplate(origin = "https://followeight.com"): string {
+  const cleanOrigin = (origin || "https://followeight.com").replace(/\/$/, "");
+  return `${cleanOrigin}/?aw_sync=1&steps=[Pas]&kcal=[EnergieActive]&bpm=[FrequenceCardiaque]&weight=[PoidsKg]&ex=[MinutesExercice]`;
+}
+
+function toBoundedMetric(raw: string | null | undefined, min: number, max: number, allowFloat = false): number | undefined {
+  if (!raw) return undefined;
+  const cleaned = raw.trim().replace(/\s+/g, "").replace(",", ".");
+  if (!cleaned || /^\[.*\]$/.test(cleaned)) return undefined;
+  const n = Number(cleaned);
+  if (!Number.isFinite(n) || n < min || n > max) return undefined;
+  return allowFloat ? +n.toFixed(1) : Math.round(n);
+}
+
+/**
+ * Parse les paramètres d'URL envoyés par un Raccourci iOS (`?aw_sync=1&...` ou `#aw_sync=1&...`).
+ */
+export function parseAppleWatchSyncParams(
+  search: string,
+  hash = ""
+): ParsedWearableSnapshot | null {
+  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+
+  if (hash) {
+    const cleanHash = hash.startsWith("#") ? hash.slice(1) : hash;
+    const hashQuery = cleanHash.includes("?") ? cleanHash.split("?")[1] : cleanHash;
+    if (hashQuery && hashQuery.includes("=")) {
+      const hp = new URLSearchParams(hashQuery);
+      hp.forEach((v, k) => {
+        if (!params.has(k)) params.set(k, v);
+      });
+    }
+  }
+
+  const marker = params.get("aw_sync") || params.get("source");
+  if (marker !== "1" && marker !== "true" && marker !== "apple_shortcut") {
+    return null;
+  }
+
+  const steps = toBoundedMetric(params.get("steps") ?? params.get("pas"), 0, 120000);
+  const activeKcal = toBoundedMetric(params.get("kcal") ?? params.get("activeKcal"), 1, 6000);
+  const exerciseMinutes = toBoundedMetric(params.get("ex") ?? params.get("exercise"), 1, 600);
+  const heartRateBpm = toBoundedMetric(params.get("bpm") ?? params.get("hr"), 30, 230);
+  const weightKg = toBoundedMetric(params.get("weight") ?? params.get("poids"), 30, 280, true);
+
+  if (
+    steps === undefined &&
+    activeKcal === undefined &&
+    exerciseMinutes === undefined &&
+    heartRateBpm === undefined &&
+    weightKg === undefined
+  ) {
+    return null;
+  }
+
+  return {
+    steps,
+    activeKcal,
+    exerciseMinutes,
+    heartRateBpm,
+    weightKg,
+    sourceLabel: "Apple Watch · Raccourci iOS",
+  };
+}
+
+function createAppleHealthXmlAccumulator() {
+  const stepsByDate = new Map<string, number>();
+  const kcalByDate = new Map<string, number>();
+  const exerciseByDate = new Map<string, number>();
+  let latestWeight: { date: string; kg: number } | undefined;
+  let latestHr: { date: string; bpm: number } | undefined;
+  let tail = "";
+
+  const feedChunk = (chunk: string) => {
+    const combined = tail + chunk;
+    const lastClose = combined.lastIndexOf(">");
+    if (lastClose === -1) {
+      tail = combined.slice(-2048);
+      return;
+    }
+    const completePart = combined.slice(0, lastClose + 1);
+    const nextRecStart = combined.lastIndexOf("<Record", lastClose);
+    if (nextRecStart > lastClose) {
+      tail = combined.slice(nextRecStart);
+    } else {
+      tail = combined.slice(lastClose + 1);
+    }
+
+    const recordRe = /<Record\b([^>]+?)>/g;
+    let m: RegExpExecArray | null;
+    while ((m = recordRe.exec(completePart)) !== null) {
+      const attrs = m[1];
+      const typeM = attrs.match(/type="([^"]+)"/);
+      if (!typeM) continue;
+      const recType = typeM[1];
+      const valM = attrs.match(/value="([^"]+)"/);
+      const dateM = attrs.match(/startDate="(\d{4}-\d{2}-\d{2})/);
+      if (!valM || !dateM) continue;
+      const dateKey = dateM[1];
+
+      if (recType === "HKQuantityTypeIdentifierStepCount") {
+        const v = toBoundedMetric(valM[1], 0, 120000);
+        if (v !== undefined) stepsByDate.set(dateKey, (stepsByDate.get(dateKey) ?? 0) + v);
+      } else if (recType === "HKQuantityTypeIdentifierActiveEnergyBurned") {
+        const v = toBoundedMetric(valM[1], 1, 6000);
+        if (v !== undefined) kcalByDate.set(dateKey, (kcalByDate.get(dateKey) ?? 0) + v);
+      } else if (recType === "HKQuantityTypeIdentifierAppleExerciseTime") {
+        const v = toBoundedMetric(valM[1], 1, 600);
+        if (v !== undefined) exerciseByDate.set(dateKey, (exerciseByDate.get(dateKey) ?? 0) + v);
+      } else if (recType === "HKQuantityTypeIdentifierBodyMass") {
+        const v = toBoundedMetric(valM[1], 30, 280, true);
+        if (v !== undefined && (!latestWeight || dateKey >= latestWeight.date)) {
+          latestWeight = { date: dateKey, kg: v };
+        }
+      } else if (recType === "HKQuantityTypeIdentifierHeartRate") {
+        const v = toBoundedMetric(valM[1], 30, 230);
+        if (v !== undefined && (!latestHr || dateKey >= latestHr.date)) {
+          latestHr = { date: dateKey, bpm: v };
+        }
+      }
+    }
+  };
+
+  const finish = (sourceLabel = "Apple Santé (export XML)"): ParsedWearableSnapshot => {
+    if (tail) {
+      feedChunk("\n>");
+      tail = "";
+    }
+    const allDates = [
+      ...Array.from(stepsByDate.keys()),
+      ...Array.from(kcalByDate.keys()),
+      ...Array.from(exerciseByDate.keys()),
+    ].sort();
+    const latestDate = allDates.length > 0 ? allDates[allDates.length - 1] : undefined;
+
+    return {
+      steps: latestDate ? stepsByDate.get(latestDate) : undefined,
+      activeKcal: latestDate ? kcalByDate.get(latestDate) : undefined,
+      exerciseMinutes: latestDate ? exerciseByDate.get(latestDate) : undefined,
+      weightKg: latestWeight?.kg,
+      heartRateBpm: latestHr?.bpm,
+      sourceLabel: latestDate ? `${sourceLabel} · ${latestDate}` : sourceLabel,
+    };
+  };
+
+  return { feedChunk, finish };
+}
+
+interface ZipXmlTarget {
+  name: string;
+  compMethod: number;
+  compSize: number;
+  localHeaderOffset: number;
+}
+
+function readUint64AsNumber(view: DataView, offset: number): number {
+  const low = view.getUint32(offset, true);
+  const high = view.getUint32(offset + 4, true);
+  return high * 4294967296 + low;
+}
+
+async function locateZipTargetEntry(blob: Blob): Promise<ZipXmlTarget> {
+  const tailLen = Math.min(blob.size, 65557);
+  const tailBuf = await blob.slice(blob.size - tailLen, blob.size).arrayBuffer();
+  const tailView = new DataView(tailBuf);
+
+  let eocdPos = -1;
+  for (let i = tailBuf.byteLength - 22; i >= 0; i--) {
+    if (tailView.getUint32(i, true) === 0x06054b50) {
+      const commentLen = tailView.getUint16(i + 20, true);
+      if (i + 22 + commentLen === tailBuf.byteLength) {
+        eocdPos = i;
+        break;
+      }
+    }
+  }
+  if (eocdPos === -1) {
+    throw new Error("Archive ZIP invalide ou corrompue (EOCD introuvable).");
+  }
+
+  let cdSize = tailView.getUint32(eocdPos + 12, true);
+  let cdOffset = tailView.getUint32(eocdPos + 16, true);
+
+  if (cdOffset === 0xffffffff || cdSize === 0xffffffff) {
+    const locPos = eocdPos - 20;
+    if (locPos >= 0 && tailView.getUint32(locPos, true) === 0x07064b50) {
+      const z64Offset = readUint64AsNumber(tailView, locPos + 8);
+      const z64Buf = await blob.slice(z64Offset, z64Offset + 56).arrayBuffer();
+      const z64View = new DataView(z64Buf);
+      if (z64View.getUint32(0, true) === 0x06064b50) {
+        cdSize = readUint64AsNumber(z64View, 40);
+        cdOffset = readUint64AsNumber(z64View, 48);
+      }
+    }
+  }
+
+  const cdBuf = await blob.slice(cdOffset, cdOffset + cdSize).arrayBuffer();
+  const cdView = new DataView(cdBuf);
+  const decoder = new TextDecoder("utf-8");
+
+  let cursor = 0;
+  let fallbackCandidate: ZipXmlTarget | null = null;
+
+  while (cursor + 46 <= cdBuf.byteLength) {
+    if (cdView.getUint32(cursor, true) !== 0x02014b50) break;
+    const compMethod = cdView.getUint16(cursor + 10, true);
+    let compSize = cdView.getUint32(cursor + 20, true);
+    let uncompSize = cdView.getUint32(cursor + 24, true);
+    const nameLen = cdView.getUint16(cursor + 28, true);
+    const extraLen = cdView.getUint16(cursor + 30, true);
+    const commentLen = cdView.getUint16(cursor + 32, true);
+    let localHeaderOffset = cdView.getUint32(cursor + 42, true);
+
+    const name = decoder.decode(new Uint8Array(cdBuf, cursor + 46, nameLen));
+
+    if (
+      (compSize === 0xffffffff || uncompSize === 0xffffffff || localHeaderOffset === 0xffffffff) &&
+      extraLen >= 4
+    ) {
+      let exPos = cursor + 46 + nameLen;
+      const exEnd = exPos + extraLen;
+      while (exPos + 4 <= exEnd) {
+        const headerId = cdView.getUint16(exPos, true);
+        const dataSize = cdView.getUint16(exPos + 2, true);
+        if (headerId === 0x0001) {
+          let zPtr = exPos + 4;
+          if (uncompSize === 0xffffffff && zPtr + 8 <= exPos + 4 + dataSize) {
+            uncompSize = readUint64AsNumber(cdView, zPtr);
+            zPtr += 8;
+          }
+          if (compSize === 0xffffffff && zPtr + 8 <= exPos + 4 + dataSize) {
+            compSize = readUint64AsNumber(cdView, zPtr);
+            zPtr += 8;
+          }
+          if (localHeaderOffset === 0xffffffff && zPtr + 8 <= exPos + 4 + dataSize) {
+            localHeaderOffset = readUint64AsNumber(cdView, zPtr);
+          }
+          break;
+        }
+        exPos += 4 + dataSize;
+      }
+    }
+
+    const lower = name.toLowerCase();
+    const isAppleExportXml =
+      !lower.startsWith("__macosx/") &&
+      (lower === "export.xml" || lower.endsWith("/export.xml"));
+
+    if (isAppleExportXml) {
+      return { name, compMethod, compSize, localHeaderOffset };
+    }
+
+    if (
+      !fallbackCandidate &&
+      !lower.startsWith("__macosx/") &&
+      !lower.endsWith("export_cda.xml") &&
+      (lower.endsWith(".xml") || lower.endsWith(".csv") || lower.endsWith(".json"))
+    ) {
+      fallbackCandidate = { name, compMethod, compSize, localHeaderOffset };
+    }
+
+    cursor += 46 + nameLen + extraLen + commentLen;
+  }
+
+  if (fallbackCandidate) return fallbackCandidate;
+  throw new Error(
+    "Aucun fichier export.xml (ni CSV/JSON) trouvé dans l'archive ZIP Apple Santé."
+  );
+}
+
+async function readStreamChunks(
+  stream: ReadableStream<Uint8Array>,
+  onText: (chunk: string) => void
+): Promise<void> {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder("utf-8");
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (value && value.byteLength > 0) {
+      onText(decoder.decode(value, { stream: true }));
+    }
+  }
+  const rest = decoder.decode();
+  if (rest) onText(rest);
+}
+
+/**
+ * Lit et analyse un fichier wearable (.zip Apple Santé en streaming sans saturer la RAM,
+ * .xml volumineux, .csv, .json ou .txt).
+ */
+export async function extractAndParseWearableFile(
+  file: Blob,
+  fileName = "export.xml"
+): Promise<ParsedWearableSnapshot> {
+  const magic = new Uint8Array(await file.slice(0, 4).arrayBuffer());
+  const isZipMagic =
+    magic.length >= 4 &&
+    magic[0] === 0x50 &&
+    magic[1] === 0x4b &&
+    (magic[2] === 0x03 || magic[2] === 0x05);
+
+  if (isZipMagic || fileName.toLowerCase().endsWith(".zip")) {
+    const target = await locateZipTargetEntry(file);
+    const lhBuf = await file
+      .slice(target.localHeaderOffset, target.localHeaderOffset + 30)
+      .arrayBuffer();
+    const lhView = new DataView(lhBuf);
+    if (lhView.getUint32(0, true) !== 0x04034b50) {
+      throw new Error("En-tête ZIP local invalide.");
+    }
+    const lhNameLen = lhView.getUint16(26, true);
+    const lhExtraLen = lhView.getUint16(28, true);
+    const dataStart = target.localHeaderOffset + 30 + lhNameLen + lhExtraLen;
+    const dataSlice = file.slice(dataStart, dataStart + target.compSize);
+
+    let textStream: ReadableStream<Uint8Array>;
+    if (target.compMethod === 0) {
+      textStream = dataSlice.stream();
+    } else if (target.compMethod === 8) {
+      if (typeof DecompressionStream === "undefined") {
+        throw new Error(
+          "Votre navigateur ne supporte pas la décompression ZIP locale (exportez export.xml ou utilisez le Raccourci iOS)."
+        );
+      }
+      textStream = dataSlice
+        .stream()
+        .pipeThrough(new DecompressionStream("deflate-raw"));
+    } else {
+      throw new Error(`Méthode de compression ZIP non supportée (${target.compMethod}).`);
+    }
+
+    if (target.name.toLowerCase().endsWith(".xml")) {
+      const acc = createAppleHealthXmlAccumulator();
+      await readStreamChunks(textStream, acc.feedChunk);
+      return acc.finish("Apple Santé (export.zip)");
+    }
+
+    let collected = "";
+    await readStreamChunks(textStream, (chunk) => {
+      collected += chunk;
+    });
+    return parseWearableExportText(target.name, collected);
+  }
+
+  // Gros XML (> 2 Mo) : lecture streaming anti-crash iOS Safari
+  if (fileName.toLowerCase().endsWith(".xml") && file.size > 2 * 1024 * 1024) {
+    const acc = createAppleHealthXmlAccumulator();
+    await readStreamChunks(file.stream(), acc.feedChunk);
+    return acc.finish("Apple Santé (export.xml)");
+  }
+
+  const rawText = await file.text();
+  if (rawText.includes("<HealthData") || rawText.includes("HKQuantityTypeIdentifier")) {
+    const acc = createAppleHealthXmlAccumulator();
+    acc.feedChunk(rawText);
+    return acc.finish("Apple Santé (export XML)");
+  }
+  return parseWearableExportText(fileName, rawText);
+}
+
+export interface ParsedWearableSnapshotInternal extends ParsedWearableSnapshot {}
 
 /**
  * Parseur universel pour imports Apple Santé XML, Samsung Health CSV/JSON, Garmin ou Fitbit JSON.

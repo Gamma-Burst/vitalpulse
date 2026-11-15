@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import {
   Check,
@@ -26,19 +26,20 @@ import {
   WearableSyncState,
 } from "@/types/vitalpulse";
 import { SPORT_DISCIPLINES_CATALOG } from "@/data/exercises-compendium";
-import { computeAnthropometrics } from "@/lib/metabolic-engine";
+import { InfoTip } from "@/components/ui/InfoTip";
+import { BirthDateField } from "@/components/ui/BirthDateField";
+import { computeAnthropometrics, isValidBirthDateIso, resolveEffectiveAge } from "@/lib/metabolic-engine";
 import {
   FASTING_PROTOCOLS,
   formatAllowedDurationFr,
   getDefaultEatingStartHm,
   getProtocolSpec,
 } from "@/lib/fasting-engine";
-import { WEARABLE_ECOSYSTEMS } from "@/lib/wearables-bridge";
+import { isAppleTouchDevice, WEARABLE_ECOSYSTEMS } from "@/lib/wearables-bridge";
 import {
   requestFastingNotificationPermission,
   triggerLightHaptic,
 } from "@/lib/native-bridge";
-import { InfoTip } from "@/components/ui/InfoTip";
 import type { GlossaryTermId } from "@/data/glossary-terms";
 
 export interface OnboardingWizardProps {
@@ -174,7 +175,10 @@ export function OnboardingWizard({
     initialProfile.isDemoProfile ? "Mon profil" : initialProfile.name || "Mon profil"
   );
   const [sex, setSex] = useState<Sex>(initialProfile.sex || "male");
-  const [ageInput, setAgeInput] = useState<string>(String(initialProfile.age || 34));
+  const [birthDateInput, setBirthDateInput] = useState<string | undefined>(
+    isValidBirthDateIso(initialProfile.birthDate) ? initialProfile.birthDate : undefined
+  );
+  const [ageNumber, setAgeNumber] = useState<number>(() => resolveEffectiveAge(initialProfile));
   const [heightInput, setHeightInput] = useState<string>(String(initialProfile.heightCm || 175));
   const [weightInput, setWeightInput] = useState<string>(String(initialProfile.weightKg || 78));
   const [targetWeightInput, setTargetWeightInput] = useState<string>(
@@ -221,6 +225,16 @@ export function OnboardingWizard({
   const [wearableEcosystem, setWearableEcosystem] = useState<WearableEcosystem>(
     initialWearable.ecosystem || "samsung_health"
   );
+
+  useEffect(() => {
+    if (
+      isAppleTouchDevice() &&
+      !initialWearable.lastSyncAt &&
+      (!initialWearable.ecosystem || initialWearable.ecosystem === "samsung_health")
+    ) {
+      setWearableEcosystem("apple_watch");
+    }
+  }, [initialWearable.ecosystem, initialWearable.lastSyncAt]);
   const [enabledWidgets, setEnabledWidgets] = useState<DashboardWidgetId[]>(
     initialWidgets.length > 0
       ? initialWidgets
@@ -234,7 +248,8 @@ export function OnboardingWizard({
         ...initialProfile,
         name: name.trim() || "Mon profil",
         sex,
-        age: Math.round(parseBoundedNumber(ageInput, initialProfile.age || 34, 12, 100)),
+        age: resolveEffectiveAge({ age: ageNumber, birthDate: birthDateInput }),
+        ...(isValidBirthDateIso(birthDateInput) ? { birthDate: birthDateInput } : {}),
         heightCm: Math.round(parseBoundedNumber(heightInput, initialProfile.heightCm || 175, 120, 230)),
         weightKg: parseBoundedNumber(weightInput, initialProfile.weightKg || 78, 35, 250),
         targetWeightKg: parseBoundedNumber(
@@ -272,7 +287,8 @@ export function OnboardingWizard({
       initialProfile,
       name,
       sex,
-      ageInput,
+      birthDateInput,
+      ageNumber,
       heightInput,
       weightInput,
       targetWeightInput,
@@ -503,7 +519,7 @@ export function OnboardingWizard({
                       "Rythme hebdomadaire souhaité"
                     )}
                   </label>
-                  <div className="mt-2 grid grid-cols-3 gap-2">
+                  <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
                     {(primaryGoal === "muscle_gain"
                       ? [
                           { val: 0.15, label: "Sec (+0,15 kg/sem)" },
@@ -552,7 +568,7 @@ export function OnboardingWizard({
                 </p>
               </div>
 
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
                 <div>
                   <label className="text-xs text-slate-400">Profil biologique</label>
                   <div className="mt-1 grid grid-cols-2 gap-1.5">
@@ -578,22 +594,15 @@ export function OnboardingWizard({
                   </div>
                 </div>
 
-                <div>
-                  <label className="text-xs text-slate-400">Âge (ans)</label>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={ageInput}
-                    onChange={(e) => setAgeInput(sanitizeIntInput(e.target.value))}
-                    onBlur={() => {
-                      if (ageInput.trim()) {
-                        setAgeInput(
-                          String(Math.round(parseBoundedNumber(ageInput, 34, 12, 100)))
-                        );
-                      }
+                <div className="sm:col-span-2">
+                  <BirthDateField
+                    birthDate={birthDateInput}
+                    age={ageNumber}
+                    compact
+                    onChange={({ birthDate, age }) => {
+                      setBirthDateInput(birthDate);
+                      setAgeNumber(age);
                     }}
-                    placeholder="34"
-                    className="mt-1 w-full rounded-xl border border-slate-500/25 bg-slate-900/60 px-3 py-2 text-sm text-white tabular-nums"
                   />
                 </div>
 
@@ -1076,8 +1085,8 @@ export function OnboardingWizard({
                 <h2 className="font-display text-2xl font-extrabold text-white">
                   Montre connectée & Capteurs
                 </h2>
-                <p className="mt-1 text-sm text-slate-400">
-                  Choisissez votre écosystème principal. Dans cette version Web/APK, vous pourrez connecter un capteur cardio Bluetooth en direct ou importer votre export Samsung/Apple/Garmin/Fitbit.
+                  <p className="mt-1 text-sm text-slate-400">
+                  Choisissez votre écosystème principal. Sur iPhone / Apple Watch (où Apple bloque Web Bluetooth), FolloWeight synchronise sans erreur par capture IA des Anneaux Forme, Raccourci iOS 1-clic ou import export.zip / XML. Sur Android / PC, vous pouvez aussi connecter un capteur cardio Bluetooth LE en direct.
                 </p>
               </div>
 
@@ -1104,6 +1113,17 @@ export function OnboardingWizard({
                   );
                 })}
               </div>
+
+              {wearableEcosystem === "apple_watch" && (
+                <div className="rounded-2xl border border-rose-400/35 bg-rose-500/10 p-3 text-xs text-rose-100">
+                  <p className="font-bold text-white">
+                    Apple Watch prête sans erreur Bluetooth iOS
+                  </p>
+                  <p className="mt-1 text-slate-300">
+                    Une fois dans l&apos;application (bouton Montre), synchronisez en 1 clic par capture photo de vos Anneaux Forme, via le Raccourci iOS ou en important <code>export.zip</code> depuis Apple Santé.
+                  </p>
+                </div>
+              )}
 
               <button
                 type="button"

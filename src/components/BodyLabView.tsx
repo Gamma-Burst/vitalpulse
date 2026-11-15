@@ -31,6 +31,7 @@ import {
   MEASUREMENT_SITE_META,
   MeasurementSiteKey,
 } from "@/lib/body-composition";
+import { resolveEffectiveAge } from "@/lib/metabolic-engine";
 import { processBodyProgressPhoto } from "@/lib/native-bridge";
 import {
   deleteBodyPhotoDataUrl,
@@ -340,7 +341,7 @@ export function BodyLabView({
           rawText: bloodRawText,
           markers: manualMarkers,
           context: { fasting, pregnant, labName: labName.trim() || undefined },
-          profile: { age: profile.age, sex: profile.sex },
+          profile: { age: resolveEffectiveAge(profile), sex: profile.sex },
         }),
       });
       const json = await res.json();
@@ -824,14 +825,17 @@ export function BodyLabView({
                     const yAt = (v: number) => PT + (1 - (v - minV) / span) * (H - PT - PB);
 
                     return (
-                      <svg viewBox={`0 0 ${W} ${H}`} className="w-full min-w-[460px] h-auto">
+                      <svg
+                        viewBox={`0 0 ${W} ${H}`}
+                        className={`w-full h-auto ${sortedMeas.length <= 10 ? "" : "min-w-[460px]"}`}
+                      >
                         {[0, 0.25, 0.5, 0.75, 1].map((t) => {
                           const v = +(minV + t * span).toFixed(0);
                           const y = yAt(v);
                           return (
                             <g key={t}>
-                              <line x1={PL} y1={y} x2={W - PR} y2={y} stroke="#1e293b" strokeDasharray="3 3" />
-                              <text x={PL - 6} y={y + 3} textAnchor="end" fontSize="10" fill="#64748b">
+                              <line x1={PL} y1={y} x2={W - PR} y2={y} stroke="var(--vp-chart-grid, #1e293b)" strokeDasharray="3 3" />
+                              <text x={PL - 6} y={y + 3} textAnchor="end" fontSize="10" fill="var(--vp-chart-axis, #64748b)">
                                 {v} cm
                               </text>
                             </g>
@@ -862,7 +866,7 @@ export function BodyLabView({
                                 />
                               )}
                               {pts.map((p, i) => (
-                                <circle key={i} cx={p.x} cy={p.y} r="4" fill={meta.color} stroke="#0B1215" strokeWidth="1.5">
+                                <circle key={i} cx={p.x} cy={p.y} r="4" fill={meta.color} stroke="var(--vp-chart-dot-stroke, #0B1215)" strokeWidth="1.5">
                                   <title>{`${meta.label} (${p.date}) : ${p.val} cm`}</title>
                                 </circle>
                               ))}
@@ -877,7 +881,7 @@ export function BodyLabView({
                             y={H - 10}
                             textAnchor="middle"
                             fontSize="10"
-                            fill="#94a3b8"
+                            fill="var(--vp-chart-axis, #94a3b8)"
                           >
                             {row.dateKey.slice(5)}
                           </text>
@@ -921,9 +925,12 @@ export function BodyLabView({
                             </span>
                           ))}
                         </div>
-                        <svg viewBox={`0 0 ${W} ${H}`} className="w-full min-w-[460px] h-auto">
-                          <line x1={PL} y1={yAt(100)} x2={W - PR} y2={yAt(100)} stroke="#475569" strokeDasharray="4 4" />
-                          <text x={PL - 6} y={yAt(100) + 3} textAnchor="end" fontSize="10" fill="#cbd5e1">
+                        <svg
+                        viewBox={`0 0 ${W} ${H}`}
+                        className={`w-full h-auto ${base100Series.length <= 10 ? "" : "min-w-[460px]"}`}
+                      >
+                          <line x1={PL} y1={yAt(100)} x2={W - PR} y2={yAt(100)} stroke="var(--vp-chart-grid, #475569)" strokeDasharray="4 4" />
+                          <text x={PL - 6} y={yAt(100) + 3} textAnchor="end" fontSize="10" fill="var(--vp-chart-axis, #cbd5e1)">
                             100
                           </text>
                           {lines.map((l) => {
@@ -951,7 +958,7 @@ export function BodyLabView({
                             );
                           })}
                           {base100Series.map((p, idx) => (
-                            <text key={p.dateKey} x={xAt(idx)} y={H - 10} textAnchor="middle" fontSize="10" fill="#94a3b8">
+                            <text key={p.dateKey} x={xAt(idx)} y={H - 10} textAnchor="middle" fontSize="10" fill="var(--vp-chart-axis, #94a3b8)">
                               {p.dateKey.slice(5)}
                             </text>
                           ))}

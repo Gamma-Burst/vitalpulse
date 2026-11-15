@@ -16,7 +16,7 @@ export function AnatomicalMuscleMap({
   const fillFor = (id: MuscleGroupId): string => {
     if (primaryMuscles.includes(id)) return "#10b981";
     if (secondaryMuscles.includes(id)) return "#38bdf8";
-    return "#1e293b";
+    return "var(--vp-body-silhouette, #1e293b)";
   };
 
   const opacityFor = (id: MuscleGroupId): number => {
@@ -28,7 +28,7 @@ export function AnatomicalMuscleMap({
   const strokeFor = (id: MuscleGroupId): string => {
     if (primaryMuscles.includes(id)) return "#34d399";
     if (secondaryMuscles.includes(id)) return "#7dd3fc";
-    return "#334155";
+    return "var(--vp-body-stroke, #334155)";
   };
 
   const renderZone = (
@@ -58,8 +58,8 @@ export function AnatomicalMuscleMap({
           </p>
           <svg viewBox="0 0 140 250" className="mx-auto h-48 w-auto">
             {/* Silhouette tête + squelette neutre */}
-            <ellipse cx="70" cy="22" rx="13" ry="15" fill="#1e293b" stroke="#475569" strokeWidth="1.2" />
-            <rect x="64" y="36" width="12" height="10" rx="4" fill="#1e293b" />
+            <ellipse cx="70" cy="22" rx="13" ry="15" fill="var(--vp-body-silhouette, #1e293b)" stroke="var(--vp-body-muted, #475569)" strokeWidth="1.2" />
+            <rect x="64" y="36" width="12" height="10" rx="4" fill="var(--vp-body-silhouette, #1e293b)" />
 
             {/* Trapèzes avant & cou */}
             {renderZone("neck_traps", "M54,43 L64,39 L76,39 L86,43 L78,49 L62,49 Z")}
@@ -110,14 +110,14 @@ export function AnatomicalMuscleMap({
             {renderZone("quads", "M91,128 L74,131 L77,178 L93,175 Z")}
 
             {/* Tibias / Pieds neutres + mollets visibles côté */}
-            <path d="M48,180 L62,180 L59,224 L49,224 Z" fill="#1e293b" stroke="#334155" strokeWidth="1" />
-            <path d="M92,180 L78,180 L81,224 L91,224 Z" fill="#1e293b" stroke="#334155" strokeWidth="1" />
+            <path d="M48,180 L62,180 L59,224 L49,224 Z" fill="var(--vp-body-silhouette, #1e293b)" stroke="var(--vp-body-stroke, #334155)" strokeWidth="1" />
+            <path d="M92,180 L78,180 L81,224 L91,224 Z" fill="var(--vp-body-silhouette, #1e293b)" stroke="var(--vp-body-stroke, #334155)" strokeWidth="1" />
             {renderZone("calves", "M45,185 L49,185 L49,212 L44,205 Z")}
             {renderZone("calves", "M95,185 L91,185 L91,212 L96,205 Z")}
 
             {/* Pieds */}
-            <ellipse cx="53" cy="231" rx="7" ry="4" fill="#334155" />
-            <ellipse cx="87" cy="231" rx="7" ry="4" fill="#334155" />
+            <ellipse cx="53" cy="231" rx="7" ry="4" fill="var(--vp-body-stroke, #334155)" />
+            <ellipse cx="87" cy="231" rx="7" ry="4" fill="var(--vp-body-stroke, #334155)" />
           </svg>
         </div>
 
@@ -127,7 +127,7 @@ export function AnatomicalMuscleMap({
             Vue Postérieure (Dos)
           </p>
           <svg viewBox="0 0 140 250" className="mx-auto h-48 w-auto">
-            <ellipse cx="70" cy="22" rx="13" ry="15" fill="#1e293b" stroke="#475569" strokeWidth="1.2" />
+            <ellipse cx="70" cy="22" rx="13" ry="15" fill="var(--vp-body-silhouette, #1e293b)" stroke="var(--vp-body-muted, #475569)" strokeWidth="1.2" />
 
             {/* Nuque & Trapèzes */}
             {renderZone("neck_traps", "M54,43 L70,36 L86,43 L78,62 L62,62 Z")}
@@ -167,10 +167,10 @@ export function AnatomicalMuscleMap({
             {renderZone("calves", "M92,183 Q85,179 78,184 L81,216 L90,216 Z")}
 
             {/* Chevilles & Pieds */}
-            <path d="M51,216 L58,216 L57,228 L51,228 Z" fill="#1e293b" />
-            <path d="M89,216 L82,216 L83,228 L89,228 Z" fill="#1e293b" />
-            <ellipse cx="54" cy="232" rx="6" ry="3.5" fill="#334155" />
-            <ellipse cx="86" cy="232" rx="6" ry="3.5" fill="#334155" />
+            <path d="M51,216 L58,216 L57,228 L51,228 Z" fill="var(--vp-body-silhouette, #1e293b)" />
+            <path d="M89,216 L82,216 L83,228 L89,228 Z" fill="var(--vp-body-silhouette, #1e293b)" />
+            <ellipse cx="54" cy="232" rx="6" ry="3.5" fill="var(--vp-body-stroke, #334155)" />
+            <ellipse cx="86" cy="232" rx="6" ry="3.5" fill="var(--vp-body-stroke, #334155)" />
           </svg>
         </div>
       </div>

@@ -8,6 +8,10 @@ import {
   Clock,
   Droplets,
   Watch,
+  Sparkles,
+  Footprints,
+  BookOpen,
+  HelpCircle,
 } from "lucide-react";
 import { DetailSheet } from "@/components/ui/DetailSheet";
 import { triggerLightHaptic } from "@/lib/native-bridge";
@@ -21,6 +25,10 @@ export interface QuickActionSheetProps {
   onOpenFasting: () => void;
   onAddWater250: () => void;
   onOpenWearables: () => void;
+  onOpenFwAi?: () => void;
+  onOpenActivity?: () => void;
+  onOpenMedical?: () => void;
+  onOpenGlossary?: () => void;
   waterTodayMl: number;
 }
 
@@ -33,6 +41,10 @@ export function QuickActionSheet({
   onOpenFasting,
   onAddWater250,
   onOpenWearables,
+  onOpenFwAi,
+  onOpenActivity,
+  onOpenMedical,
+  onOpenGlossary,
   waterTodayMl,
 }: QuickActionSheetProps) {
   const actions = [
@@ -102,6 +114,66 @@ export function QuickActionSheet({
         onOpenWearables();
       },
     },
+    ...(onOpenFwAi
+      ? [
+          {
+            id: "fw_ai",
+            title: "Coach FW AI",
+            subtitle: "Assistant nutrition & bilan",
+            icon: Sparkles,
+            color: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
+            run: () => {
+              onClose();
+              onOpenFwAi();
+            },
+          },
+        ]
+      : []),
+    ...(onOpenActivity
+      ? [
+          {
+            id: "activity",
+            title: "Sport & Coach 3D",
+            subtitle: "44 exercices guidés",
+            icon: Footprints,
+            color: "bg-amber-500/15 text-amber-300 border-amber-500/30",
+            run: () => {
+              onClose();
+              onOpenActivity();
+            },
+          },
+        ]
+      : []),
+    ...(onOpenMedical
+      ? [
+          {
+            id: "medical",
+            title: "Veille Médicale",
+            subtitle: "Études & recommandations",
+            icon: BookOpen,
+            color: "bg-cyan-500/15 text-cyan-300 border-cyan-500/30",
+            run: () => {
+              onClose();
+              onOpenMedical();
+            },
+          },
+        ]
+      : []),
+    ...(onOpenGlossary
+      ? [
+          {
+            id: "glossary",
+            title: "Lexique Santé",
+            subtitle: "Termes clairs sans jargon",
+            icon: HelpCircle,
+            color: "bg-sky-500/15 text-sky-300 border-sky-500/30",
+            run: () => {
+              onClose();
+              onOpenGlossary();
+            },
+          },
+        ]
+      : []),
   ];
 
   return (

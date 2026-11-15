@@ -29,6 +29,7 @@ import {
   getDefaultEatingStartHm,
   getProtocolSpec,
 } from "@/lib/fasting-engine";
+import { resolveEffectiveAge } from "@/lib/metabolic-engine";
 import { FastingHorseshoeArc } from "@/components/ui/LiveMetricVisuals";
 import { DetailSheet } from "@/components/ui/DetailSheet";
 import { InfoTip } from "@/components/ui/InfoTip";
@@ -77,7 +78,7 @@ export function FastingView({
     [fasting, nowMs]
   );
 
-  const clinicalWarning = profile.age < 18 || bmi < 18.5;
+  const clinicalWarning = resolveEffectiveAge(profile) < 18 || bmi < 18.5;
 
   function selectProtocol(id: FastingProtocolId, customHours?: number) {
     triggerLightHaptic();

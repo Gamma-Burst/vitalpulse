@@ -25,7 +25,11 @@ import { buildDemoSeedState, DEMO_BODY_PHOTOS } from "@/data/demo-seed";
 import { SPORT_DISCIPLINES_CATALOG } from "@/data/exercises-compendium";
 import { createDefaultSubscriptionState, normalizeSubscriptionForToday } from "@/lib/billing-bridge";
 import { getProtocolSpec } from "@/lib/fasting-engine";
-import { computeAnthropometrics } from "@/lib/metabolic-engine";
+import {
+  computeAgeFromBirthDate,
+  computeAnthropometrics,
+  isValidBirthDateIso,
+} from "@/lib/metabolic-engine";
 
 export const CURRENT_STATE_VERSION = 5;
 
@@ -97,9 +101,17 @@ export function sanitizeUserProfile(raw?: Partial<UserProfile>): UserProfile {
       ).slice(0, 10)
     : undefined;
 
+  const validBirthDate = isValidBirthDateIso(raw?.birthDate)
+    ? raw!.birthDate!.trim()
+    : undefined;
+  const computedBirthAge = validBirthDate
+    ? computeAgeFromBirthDate(validBirthDate)
+    : null;
+
   const base: UserProfile = {
     name: typeof raw?.name === "string" && raw.name.trim() ? raw.name.trim() : "Mon profil",
-    age: clampNum(raw?.age, 12, 105, 34),
+    age: clampNum(computedBirthAge ?? raw?.age, 12, 105, 34),
+    ...(validBirthDate ? { birthDate: validBirthDate } : {}),
     sex: raw?.sex === "female" ? "female" : "male",
     heightCm: clampNum(raw?.heightCm, 120, 230, 175),
     weightKg: clampNum(raw?.weightKg, 30, 250, 78, 1),

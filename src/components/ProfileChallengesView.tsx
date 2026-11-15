@@ -7,8 +7,10 @@ import {
   BellRing,
   CheckCircle2,
   Info,
+  Moon,
   PlusCircle,
   RotateCcw,
+  Sun,
   Trash2,
   UserCheck,
 } from "lucide-react";
@@ -29,6 +31,12 @@ import { SPORT_DISCIPLINES_CATALOG } from "@/data/exercises-compendium";
 import { subscribeBrowserToPush } from "@/lib/native-bridge";
 import { DetailSheet } from "@/components/ui/DetailSheet";
 import { InfoTip } from "@/components/ui/InfoTip";
+import { BirthDateField } from "@/components/ui/BirthDateField";
+import {
+  formatBirthDateFr,
+  isValidBirthDateIso,
+  resolveEffectiveAge,
+} from "@/lib/metabolic-engine";
 
 interface ProfileChallengesViewProps {
   profile: UserProfile;
@@ -43,6 +51,8 @@ interface ProfileChallengesViewProps {
   onResetDemo: () => void;
   onReopenOnboarding?: () => void;
   onSavedReturnHome?: (messageFr: string) => void;
+  theme?: "dark" | "light";
+  onChangeTheme?: (next: "dark" | "light") => void;
 }
 
 export function ProfileChallengesView({
@@ -58,9 +68,10 @@ export function ProfileChallengesView({
   onResetDemo,
   onReopenOnboarding,
   onSavedReturnHome,
+  theme = "dark",
+  onChangeTheme,
 }: ProfileChallengesViewProps) {
   const [form, setForm] = useState<UserProfile>(profile);
-  const [ageDraft, setAgeDraft] = useState<string>(String(profile.age));
   const [heightDraft, setHeightDraft] = useState<string>(String(profile.heightCm));
   const [weightDraft, setWeightDraft] = useState<string>(String(profile.weightKg));
   const [targetWeightDraft, setTargetWeightDraft] = useState<string>(
@@ -88,7 +99,6 @@ export function ProfileChallengesView({
 
   const syncDraftsFromProfile = (source: UserProfile) => {
     setForm(source);
-    setAgeDraft(String(source.age));
     setHeightDraft(String(source.heightCm));
     setWeightDraft(String(source.weightKg));
     setTargetWeightDraft(String(source.targetWeightKg));
@@ -129,10 +139,12 @@ export function ProfileChallengesView({
         ? undefined
         : parseDraftNum(waistTrimmed, 42, 190, true, form.waistCm ?? 80);
 
+    const validDob = isValidBirthDateIso(form.birthDate) ? form.birthDate : undefined;
     const finalProfile: UserProfile = {
       ...form,
       name: form.name.trim() || profile.name,
-      age: parseDraftNum(ageDraft, 12, 105, false, form.age),
+      age: resolveEffectiveAge({ age: form.age, birthDate: validDob }),
+      birthDate: validDob,
       heightCm: parseDraftNum(heightDraft, 120, 230, false, form.heightCm),
       weightKg: parseDraftNum(weightDraft, 30, 280, true, form.weightKg),
       targetWeightKg: parseDraftNum(targetWeightDraft, 35, 250, true, form.targetWeightKg),
@@ -170,7 +182,6 @@ export function ProfileChallengesView({
   useEffect(() => {
     if (profileSheetOpen) return;
     setForm(profile);
-    setAgeDraft(String(profile.age));
     setHeightDraft(String(profile.heightCm));
     setWeightDraft(String(profile.weightKg));
     setTargetWeightDraft(String(profile.targetWeightKg));
@@ -184,6 +195,7 @@ export function ProfileChallengesView({
     setCalorieAuto(profile.dailyCalorieGoalOverride === undefined);
   }, [
     profile.age,
+    profile.birthDate,
     profile.heightCm,
     profile.weightKg,
     profile.targetWeightKg,
@@ -456,14 +468,56 @@ export function ProfileChallengesView({
         )}
       </div>
 
+      {onChangeTheme && (
+        <div className="vp-card p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <h3 className="text-sm sm:text-base font-bold text-white">
+              Apparence de l&apos;interface
+            </h3>
+            <p className="text-xs text-slate-400">
+              Choisissez entre le mode sombre Obsidienne ou le mode clair Porcelaine haute lisibilité.
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => onChangeTheme("dark")}
+              className={`inline-flex items-center justify-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-bold transition ${
+                theme === "dark"
+                  ? "border-emerald-400 bg-emerald-500 text-slate-950"
+                  : "border-slate-700 bg-slate-900 text-slate-300"
+              }`}
+            >
+              <Moon className="h-3.5 w-3.5" />
+              Sombre
+            </button>
+            <button
+              type="button"
+              onClick={() => onChangeTheme("light")}
+              className={`inline-flex items-center justify-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-bold transition ${
+                theme === "light"
+                  ? "border-emerald-500 bg-emerald-500 text-slate-950"
+                  : "border-slate-700 bg-slate-900 text-slate-300"
+              }`}
+            >
+              <Sun className="h-3.5 w-3.5" />
+              Clair
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Carte concise Profil + Drawer d'édition */}
       <div className="vp-card p-4 sm:p-5 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h3 className="text-base sm:text-lg font-bold text-white">
-              Profil : {profile.name} ({profile.age} ans · {profile.heightCm} cm · {profile.weightKg} kg)
+              Profil : {profile.name} ({resolveEffectiveAge(profile)} ans · {profile.heightCm} cm · {profile.weightKg} kg)
             </h3>
             <p className="text-xs text-slate-400">
+              {formatBirthDateFr(profile.birthDate)
+                ? `Né(e) le ${formatBirthDateFr(profile.birthDate)} · `
+                : ""}
               Cible {profile.targetWeightKg} kg · {profile.dailyStepGoal} pas/j
             </p>
           </div>
@@ -528,23 +582,15 @@ export function ProfileChallengesView({
               className="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-white"
             />
           </label>
-          <label className="space-y-1">
-            <span className="text-slate-400 block">Âge (ans)</span>
-            <input
-              type="text"
-              inputMode="numeric"
-              value={ageDraft}
-              {...bindNumericDraft(
-                setAgeDraft,
-                12,
-                105,
-                false,
-                (age) => setForm((prev) => ({ ...prev, age })),
-                form.age
-              )}
-              className="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-white"
+          <div className="sm:col-span-2">
+            <BirthDateField
+              birthDate={form.birthDate}
+              age={form.age}
+              onChange={({ birthDate, age }) =>
+                setForm((prev) => ({ ...prev, birthDate, age }))
+              }
             />
-          </label>
+          </div>
           <label className="space-y-1">
             <span className="text-slate-400 block">Sexe biologique (BMR/RFM)</span>
             <select
@@ -1144,7 +1190,7 @@ export function ProfileChallengesView({
                   setChDays,
                   chDays
                 )}
-                className="ml-1.5 w-16 rounded-lg bg-slate-950 border border-slate-700 px-2 py-1.5 text-white"
+                className="ml-1.5 w-20 rounded-lg bg-slate-950 border border-slate-700 px-2 py-1.5 text-white"
               />
             </label>
             <label className="text-slate-400">

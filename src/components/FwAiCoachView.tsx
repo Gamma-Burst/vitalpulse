@@ -24,6 +24,7 @@ import { canSendFwAiMessage } from "@/lib/billing-bridge";
 import { computeFastingLiveStatus } from "@/lib/fasting-engine";
 import { FolloWeightLogo } from "@/components/ui/FolloWeightLogo";
 import type { FwAiContextPayload } from "@/lib/fw-ai-engine";
+import { resolveEffectiveAge } from "@/lib/metabolic-engine";
 
 interface FwAiCoachViewProps {
   profile: UserProfile;
@@ -77,7 +78,8 @@ export function FwAiCoachView({
     return {
       profile: {
         name: profile.name,
-        age: profile.age,
+        age: resolveEffectiveAge(profile),
+        birthDate: profile.birthDate,
         sex: profile.sex,
         weightKg: profile.weightKg,
         targetWeightKg: profile.targetWeightKg,

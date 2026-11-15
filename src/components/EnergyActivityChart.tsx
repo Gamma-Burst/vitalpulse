@@ -168,7 +168,9 @@ export function EnergyActivityChart({
         <div className="w-full overflow-x-auto">
           <svg
             viewBox={`0 0 ${chartW} ${chartH}`}
-            className="w-full min-w-[480px] h-56 select-none"
+            className={`w-full h-56 select-none ${
+              balances.length <= 14 ? "" : "min-w-[460px]"
+            }`}
             role="img"
             aria-label="Graphique activité et calories par jour"
           >
@@ -182,13 +184,13 @@ export function EnergyActivityChart({
                     x2={chartW - padR}
                     y1={y}
                     y2={y}
-                    stroke="rgba(148,163,184,0.12)"
+                    stroke="var(--vp-chart-grid, rgba(148,163,184,0.12))"
                     strokeDasharray="3 3"
                   />
                   <text
                     x={padL - 6}
                     y={y + 4}
-                    fill="#94a3b8"
+                    fill="var(--vp-chart-axis, #94a3b8)"
                     fontSize="10"
                     textAnchor="end"
                   >
@@ -272,8 +274,8 @@ export function EnergyActivityChart({
                   cx={cx}
                   cy={cy}
                   r={i === safeIdx ? 5 : 3}
-                  fill="#38bdf8"
-                  stroke="#0b1215"
+                  fill="#0284c7"
+                  stroke="var(--vp-chart-dot-stroke, #0b1215)"
                   strokeWidth="1.5"
                   className="cursor-pointer"
                   onClick={() => setSelectedIndex(i)}
@@ -356,7 +358,7 @@ export function EnergyActivityChart({
             </p>
           </div>
           <form
-            className="flex flex-wrap items-center gap-2"
+            className="flex w-full sm:w-auto flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2"
             onSubmit={(e) => {
               e.preventDefault();
               if (document.activeElement instanceof HTMLElement) {
@@ -375,39 +377,41 @@ export function EnergyActivityChart({
               }
             }}
           >
-            <input
-              type="text"
-              inputMode="decimal"
-              value={weightInput}
-              onFocus={() => {
-                weightFocusedRef.current = true;
-              }}
-              onBlur={() => {
-                weightFocusedRef.current = false;
-              }}
-              onChange={(e) => setWeightInput(e.target.value.replace(/[^\d.,]/g, ""))}
-              placeholder="Poids kg"
-              aria-label="Nouveau poids en kg"
-              className="w-24 rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-xs text-white tabular-nums"
-            />
-            <input
-              type="text"
-              inputMode="decimal"
-              value={waistInput}
-              onFocus={() => {
-                waistFocusedRef.current = true;
-              }}
-              onBlur={() => {
-                waistFocusedRef.current = false;
-              }}
-              onChange={(e) => setWaistInput(e.target.value.replace(/[^\d.,]/g, ""))}
-              placeholder="Taille cm"
-              aria-label="Tour de taille en cm"
-              className="w-24 rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-xs text-white tabular-nums"
-            />
+            <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
+              <input
+                type="text"
+                inputMode="decimal"
+                value={weightInput}
+                onFocus={() => {
+                  weightFocusedRef.current = true;
+                }}
+                onBlur={() => {
+                  weightFocusedRef.current = false;
+                }}
+                onChange={(e) => setWeightInput(e.target.value.replace(/[^\d.,]/g, ""))}
+                placeholder="Poids kg"
+                aria-label="Nouveau poids en kg"
+                className="w-full sm:w-28 rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-xs text-white tabular-nums"
+              />
+              <input
+                type="text"
+                inputMode="decimal"
+                value={waistInput}
+                onFocus={() => {
+                  waistFocusedRef.current = true;
+                }}
+                onBlur={() => {
+                  waistFocusedRef.current = false;
+                }}
+                onChange={(e) => setWaistInput(e.target.value.replace(/[^\d.,]/g, ""))}
+                placeholder="Taille cm"
+                aria-label="Tour de taille en cm"
+                className="w-full sm:w-28 rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-xs text-white tabular-nums"
+              />
+            </div>
             <button
               type="submit"
-              className="px-3.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold text-xs transition"
+              className="w-full sm:w-auto px-3.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold text-xs transition"
             >
               Noter pesée
             </button>
@@ -416,7 +420,12 @@ export function EnergyActivityChart({
 
         {wPoints.length > 0 && (
           <div className="w-full overflow-x-auto">
-            <svg viewBox={`0 0 ${wSvgW} ${wSvgH}`} className="w-full min-w-[440px] h-40">
+            <svg
+              viewBox={`0 0 ${wSvgW} ${wSvgH}`}
+              className={`w-full h-40 select-none ${
+                wPoints.length <= 14 ? "" : "min-w-[460px]"
+              }`}
+            >
               {[0, 0.5, 1].map((t) => {
                 const y = 14 + wPlotH * (1 - t);
                 const labelKg = (minW + spanW * t).toFixed(1);
@@ -427,10 +436,16 @@ export function EnergyActivityChart({
                       x2={wSvgW - 16}
                       y1={y}
                       y2={y}
-                      stroke="rgba(148,163,184,0.12)"
+                      stroke="var(--vp-chart-grid, rgba(148,163,184,0.12))"
                       strokeDasharray="3 3"
                     />
-                    <text x={34} y={y + 4} fill="#94a3b8" fontSize="10" textAnchor="end">
+                    <text
+                      x={34}
+                      y={y + 4}
+                      fill="var(--vp-chart-axis, #94a3b8)"
+                      fontSize="10"
+                      textAnchor="end"
+                    >
                       {labelKg}
                     </text>
                   </g>
@@ -439,7 +454,7 @@ export function EnergyActivityChart({
               {wPoints.length > 1 && (
                 <polyline
                   fill="none"
-                  stroke="#34d399"
+                  stroke="var(--vp-chart-ema, #34d399)"
                   strokeWidth="3"
                   strokeLinecap="round"
                   points={emaPolyline}
@@ -453,10 +468,23 @@ export function EnergyActivityChart({
                 const yEma = 14 + wPlotH - ((p.emaWeightKg - minW) / spanW) * wPlotH;
                 return (
                   <g key={p.dateKey}>
-                    <circle cx={x} cy={yRaw} r={4} fill="#38bdf8" opacity={0.85} />
-                    <circle cx={x} cy={yEma} r={3.5} fill="#34d399" stroke="#0b1215" strokeWidth="1.2" />
+                    <circle cx={x} cy={yRaw} r={4} fill="#0284c7" opacity={0.85} />
+                    <circle
+                      cx={x}
+                      cy={yEma}
+                      r={3.5}
+                      fill="var(--vp-chart-ema, #34d399)"
+                      stroke="var(--vp-chart-dot-stroke, #0b1215)"
+                      strokeWidth="1.2"
+                    />
                     {(wPoints.length <= 14 || i % 2 === 0) && (
-                      <text x={x} y={wSvgH - 6} fill="#94a3b8" fontSize="9.5" textAnchor="middle">
+                      <text
+                        x={x}
+                        y={wSvgH - 6}
+                        fill="var(--vp-chart-axis, #94a3b8)"
+                        fontSize="9.5"
+                        textAnchor="middle"
+                      >
                         {p.dateKey.slice(5)}
                       </text>
                     )}

@@ -103,6 +103,7 @@ export interface WearableSyncState {
   lastHeartRateBpm?: number;
   syncedStepsToday?: number;
   syncedActiveKcalToday?: number;
+  syncedExerciseMinutesToday?: number;
 }
 
 export interface QuietHours {
@@ -113,6 +114,7 @@ export interface QuietHours {
 export interface UserProfile {
   name: string;
   age: number;
+  birthDate?: string; // ISO YYYY-MM-DD — calcule l'âge automatiquement
   sex: Sex;
   heightCm: number;
   weightKg: number;

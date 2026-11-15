@@ -248,7 +248,7 @@ export function BarcodeScannerModal({
         )}
 
         {cameraActive && (
-          <div className="relative overflow-hidden rounded-2xl border border-emerald-400/50 bg-black">
+          <div className="vp-keep-dark relative overflow-hidden rounded-2xl border border-emerald-400/50 bg-black">
             <video ref={videoRef} playsInline muted className="h-48 w-full object-cover" />
             <button
               type="button"
@@ -351,7 +351,7 @@ export function BarcodeScannerModal({
                       setGrams(clamped);
                       setGramsDraft(String(clamped));
                     }}
-                    className="w-16 rounded-lg border border-slate-600 bg-slate-950 px-2 py-1 text-right font-bold text-white tabular-nums"
+                    className="w-20 rounded-lg border border-slate-600 bg-slate-950 px-2 py-1 text-right font-bold text-white tabular-nums"
                   />
                   <span className="font-bold text-white">g</span>
                 </div>
