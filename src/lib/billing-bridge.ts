@@ -377,6 +377,7 @@ export interface PurchaseActionResult {
 function resolveRevenueCatAndroidSdkKey(): string | null {
   const k =
     process.env.NEXT_PUBLIC_REVENUECAT_ANDROID_KEY?.trim() ||
+    process.env.NEXT_PUBLIC_REVENUECAT_API_KEY?.trim() ||
     process.env.NEXT_PUBLIC_REVENUECAT_GOOGLE_KEY?.trim();
   return k || null;
 }

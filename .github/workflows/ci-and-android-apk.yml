@@ -38,7 +38,8 @@ jobs:
       - name: Sync Capacitor Android with Vercel Production URL
         env:
           NEXT_PUBLIC_APP_URL: ${{ vars.NEXT_PUBLIC_APP_URL || 'https://followeight.com' }}
-          NEXT_PUBLIC_REVENUECAT_ANDROID_KEY: ${{ secrets.NEXT_PUBLIC_REVENUECAT_ANDROID_KEY || vars.NEXT_PUBLIC_REVENUECAT_ANDROID_KEY || '' }}
+          NEXT_PUBLIC_REVENUECAT_ANDROID_KEY: ${{ secrets.NEXT_PUBLIC_REVENUECAT_ANDROID_KEY || secrets.NEXT_PUBLIC_REVENUECAT_API_KEY || vars.NEXT_PUBLIC_REVENUECAT_ANDROID_KEY || '' }}
+          NEXT_PUBLIC_REVENUECAT_API_KEY: ${{ secrets.NEXT_PUBLIC_REVENUECAT_API_KEY || secrets.NEXT_PUBLIC_REVENUECAT_ANDROID_KEY || vars.NEXT_PUBLIC_REVENUECAT_ANDROID_KEY || '' }}
         run: npx cap sync android
       - name: Configure Release Signing if Keystore Secret Present
         id: signing

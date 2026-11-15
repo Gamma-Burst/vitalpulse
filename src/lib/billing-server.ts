@@ -51,6 +51,7 @@ function fromBase64Url(encoded: string): Buffer {
 export function getBillingHmacSecret(secretOverride?: string): string {
   if (secretOverride && secretOverride.trim()) return secretOverride.trim();
   const explicit =
+    process.env.FW_PLUS_SIGNING_SECRET?.trim() ||
     process.env.FOLLOWEIGHT_BILLING_HMAC_SECRET?.trim() ||
     process.env.BILLING_HMAC_SECRET?.trim();
   if (explicit) return explicit;
@@ -94,6 +95,7 @@ export function getFollowEightStripeWebhookSecret(): string | null {
 export function getServerBillingStatus(): ServerBillingStatus {
   const rcAndroidKey =
     process.env.NEXT_PUBLIC_REVENUECAT_ANDROID_KEY?.trim() ||
+    process.env.NEXT_PUBLIC_REVENUECAT_API_KEY?.trim() ||
     process.env.NEXT_PUBLIC_REVENUECAT_GOOGLE_KEY?.trim();
   return {
     stripeConfigured: Boolean(getFollowEightStripeSecretKey()),

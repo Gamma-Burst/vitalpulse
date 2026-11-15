@@ -30,6 +30,7 @@ Thumbs.db
 /android/local.properties
 *.apk
 *.aab
+/release/
 
 # Android Release Keystores & local reports
 *.jks
