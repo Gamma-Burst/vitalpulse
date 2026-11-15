@@ -1,4 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import {
+  isTierEntitledToPaidQuota,
+  verifyEntitlementToken,
+} from "@/lib/billing-server";
 import { FridgeIngredient, StepByStepRecipe } from "@/types/vitalpulse";
 
 export const runtime = "nodejs";
@@ -255,7 +259,22 @@ export async function POST(req: NextRequest) {
     const apiKey = process.env.OPENAI_API_KEY;
     const model = process.env.OPENAI_VISION_MODEL || "gpt-4o-mini";
 
-    if (apiKey && (isRasterImageDataUrl(imageBase64) || userNotes.length >= 4)) {
+    const rawLicenseToken =
+      typeof body.licenseToken === "string" ? body.licenseToken.trim() : "";
+    const verifiedToken = rawLicenseToken
+      ? verifyEntitlementToken(rawLicenseToken)
+      : { valid: false };
+    const hasVerifiedPlusToken =
+      verifiedToken.valid &&
+      isTierEntitledToPaidQuota(verifiedToken.payload?.tier);
+    const allowVisionByClient = body.allowVisionAi !== false;
+    const allowCloudVision = allowVisionByClient || hasVerifiedPlusToken;
+
+    if (
+      apiKey &&
+      allowCloudVision &&
+      (isRasterImageDataUrl(imageBase64) || userNotes.length >= 4)
+    ) {
       try {
         const prompt = [
           `Tu es chef cuisinier nutritionniste. Analyse le contenu du réfrigérateur/placard (image et/ou texte utilisateur).`,

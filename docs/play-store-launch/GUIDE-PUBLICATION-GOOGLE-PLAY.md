@@ -28,7 +28,7 @@
 
 | Formule | Prix TTC | Canal | Marge / Rôle |
 |---|---|---|---|
-| **FolloWeight Essentiel** | **0 € à vie** | Web & Android | Gratuit sans pub (poids EMA, code-barres, OMAD, 44 exos, 5 msg FW AI/j, 3 scans photo/j, 1 recherche Web/j) |
+| **FolloWeight Essentiel** | **0 € à vie** | Web & Android | Gratuit sans pub (poids EMA, code-barres, OMAD, 44 exos, 5 msg FW AI/j, Pack découverte 5 scans photo IA offerts, 1 recherche Web/j) |
 | **FW+ Annuel (Recommandé)** | **29,99 € / an** (soit **2,49 € / mois**) · **7 j d'essai gratuit** | Google Play & Stripe Web | Formule phare (< 30 €/an vs 60–80 €/an concurrents) |
 | **FW+ Mensuel** | **4,99 € / mois** | Google Play & Stripe Web | Sans engagement, point d'entrée flexible |
 | **Pass Fondateur 5 ans** | **69,90 € une fois** (~1,17 €/mois) | `followeight.com` (Web uniquement) | Trésorerie directe sans commission store 15–30 % |

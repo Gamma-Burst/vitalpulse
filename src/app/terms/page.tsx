@@ -52,7 +52,7 @@ export default function TermsPage() {
             </h2>
             <ul className="list-disc pl-5 space-y-1 text-slate-300">
               <li>
-                <strong>FolloWeight Essentiel (0 €) :</strong> suivi poids EMA, scan code-barres illimité, minuteur de jeûne/OMAD, 44 exercices, analyse sanguine déterministe locale, plus 5 questions Coach FW AI et 3 scans photo par jour.
+                <strong>FolloWeight Essentiel (0 €) :</strong> suivi poids EMA, scan code-barres illimité, minuteur de jeûne/OMAD, 44 exercices, analyse sanguine déterministe locale, plus 5 questions Coach FW AI et un pack découverte de 5 scans photo IA offerts.
               </li>
               <li>
                 <strong>FolloWeight Plus (FW+) :</strong> <strong>29,99 € / an</strong> (avec 7 jours d&apos;essai gratuit, soit 2,49 € / mois) ou <strong>4,99 € / mois</strong> sans engagement. Usage personnel raisonnable jusqu&apos;à 80 requêtes Coach/Vision par jour (dont 5 recherches Web temps réel par jour / 30 par mois).

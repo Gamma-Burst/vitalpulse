@@ -69,6 +69,7 @@ import {
   activatePlanTier,
   isFwPlusActive,
   recordFwAiMessageUsage,
+  recordVisionScanUsage,
   recordWebSearchUsage,
   startSevenDayFreeTrial,
   verifyWebCheckoutSession,
@@ -1000,6 +1001,17 @@ export default function VitalPulseApp() {
                 specialMode={state.profile.specialMode}
                 primaryGoal={state.profile.primaryGoal}
                 highlightedMealId={highlightedMealId}
+                subscription={state.subscription}
+                onRecordVisionScan={() =>
+                  commitState((prev) => ({
+                    ...prev,
+                    subscription: recordVisionScanUsage(prev.subscription, todayKey),
+                  }))
+                }
+                onOpenSubscriptionModal={(reason) => {
+                  setSubscriptionReasonFr(reason ?? null);
+                  setSubscriptionOpen(true);
+                }}
                 onOpenBarcode={() => setBarcodeOpen(true)}
                 onSaveMeal={(meal: MealEntry) => {
                   commitState((prev) => ({ ...prev, meals: [meal, ...prev.meals] }));
@@ -1030,6 +1042,17 @@ export default function VitalPulseApp() {
                 primaryGoal={state.profile.primaryGoal}
                 todayDateKey={todayKey}
                 historyScans={state.fridgeScans}
+                subscription={state.subscription}
+                onRecordVisionScan={() =>
+                  commitState((prev) => ({
+                    ...prev,
+                    subscription: recordVisionScanUsage(prev.subscription, todayKey),
+                  }))
+                }
+                onOpenSubscriptionModal={(reason) => {
+                  setSubscriptionReasonFr(reason ?? null);
+                  setSubscriptionOpen(true);
+                }}
                 onSaveFridgeScan={(scan: FridgeScanSession) =>
                   commitState((prev) => ({
                     ...prev,

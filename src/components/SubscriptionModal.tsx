@@ -13,8 +13,9 @@ import {
 } from "lucide-react";
 import { SubscriptionState, SubscriptionTier } from "@/types/vitalpulse";
 import {
+  canRunVisionScan,
   FREE_DAILY_FW_AI_LIMIT,
-  FREE_DAILY_VISION_SCAN_LIMIT,
+  FREE_DISCOVERY_VISION_SCANS,
   getPlansForPlatform,
   isFwPlusActive,
   isNativeAndroidStoreBuild,
@@ -93,6 +94,10 @@ export function SubscriptionModal({
     subscription.dailyAiDateKey === todayKey ? subscription.fwAiMessagesUsedToday : 0;
   const visionUsed =
     subscription.dailyAiDateKey === todayKey ? subscription.visionScansUsedToday : 0;
+  const visionQuota = useMemo(
+    () => canRunVisionScan(subscription, todayKey),
+    [subscription, todayKey]
+  );
 
   const visiblePlans = useMemo(
     () => getPlansForPlatform(!mounted ? true : isNativeAndroid),
@@ -282,8 +287,16 @@ export function SubscriptionModal({
                   )}
               </div>
               <p className="text-xs text-slate-300">
-                Aujourd&apos;hui : {aiUsed}/{plusActive ? "80" : FREE_DAILY_FW_AI_LIMIT} questions FW AI ·{" "}
-                {visionUsed}/{plusActive ? "80" : FREE_DAILY_VISION_SCAN_LIMIT} scans photo IA
+                {plusActive ? (
+                  <>
+                    Aujourd&apos;hui : {aiUsed}/80 questions FW AI · {visionUsed}/80 scans photo IA
+                  </>
+                ) : (
+                  <>
+                    Aujourd&apos;hui : {aiUsed}/{FREE_DAILY_FW_AI_LIMIT} questions FW AI · Pack découverte :{" "}
+                    {visionQuota.remaining}/{FREE_DISCOVERY_VISION_SCANS} scans photo IA
+                  </>
+                )}
               </p>
             </div>
           </div>

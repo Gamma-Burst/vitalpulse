@@ -591,6 +591,7 @@ export interface SubscriptionState {
   dailyAiDateKey: string;
   fwAiMessagesUsedToday: number;
   visionScansUsedToday: number;
+  totalFreeVisionScansUsed?: number;
   dailyWebSearchDateKey?: string;
   dailyWebSearchCount?: number;
   licenseToken?: string;

@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Camera,
   CheckCircle2,
   Columns,
+  Crown,
   Edit3,
   History,
   RefreshCw,
@@ -19,7 +20,9 @@ import {
   OilLevel,
   PrimaryGoal,
   SpecialMode,
+  SubscriptionState,
 } from "@/types/vitalpulse";
+import { canRunVisionScan } from "@/lib/billing-bridge";
 import { compressImageFile } from "@/lib/native-bridge";
 import { applyOilClarifierDelta } from "@/data/ciqual-reference";
 import { InfoTip } from "@/components/ui/InfoTip";
@@ -30,6 +33,9 @@ interface MealScannerViewProps {
   specialMode: SpecialMode;
   primaryGoal?: PrimaryGoal;
   highlightedMealId?: string | null;
+  subscription: SubscriptionState;
+  onRecordVisionScan: () => void;
+  onOpenSubscriptionModal: (reason?: string) => void;
   onSaveMeal: (meal: MealEntry) => void;
   onUpdateMeal: (meal: MealEntry) => void;
   onDeleteMeal: (mealId: string) => void;
@@ -122,6 +128,9 @@ export function MealScannerView({
   specialMode,
   primaryGoal,
   highlightedMealId,
+  subscription,
+  onRecordVisionScan,
+  onOpenSubscriptionModal,
   onSaveMeal,
   onUpdateMeal,
   onDeleteMeal,
@@ -129,6 +138,11 @@ export function MealScannerView({
 }: MealScannerViewProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
+
+  const visionQuota = useMemo(
+    () => canRunVisionScan(subscription, todayDateKey),
+    [subscription, todayDateKey]
+  );
 
   const [photoDataUrl, setPhotoDataUrl] = useState<string>("");
   const [userNotes, setUserNotes] = useState<string>("");
@@ -179,6 +193,15 @@ export function MealScannerView({
       setErrorMsg("Ajoutez une photo de votre plat ou décrivez-le dans la zone de texte en dessous.");
       return;
     }
+    const hasPhoto = Boolean(photoDataUrl);
+    if (hasPhoto && !visionQuota.allowed) {
+      onOpenSubscriptionModal(
+        visionQuota.isPlus
+          ? "Limite quotidienne de sécurité atteinte pour aujourd'hui."
+          : "Vos 5 scans photo IA de découverte ont été utilisés ! Activez vos 7 jours d'essai gratuit FolloWeight Plus (FW+) pour scanner vos assiettes et votre frigo en illimité — le lecteur code-barres EAN et la saisie texte restent 100 % gratuits et sans pub."
+      );
+      return;
+    }
     setAnalyzing(true);
     setErrorMsg(null);
     try {
@@ -194,10 +217,15 @@ export function MealScannerView({
           specialMode,
           primaryGoal,
           oilLevel: overrideOil,
+          allowVisionAi: hasPhoto ? visionQuota.allowed : visionQuota.isPlus,
+          licenseToken: subscription.licenseToken,
         }),
       });
       if (!res.ok) throw new Error("Erreur d'analyse serveur");
       const json = await res.json();
+      if (hasPhoto && json.analysisProvider === "openai-vision") {
+        onRecordVisionScan();
+      }
       setDraftResult({
         mealType,
         photoDataUrl: photoDataUrl || undefined,
@@ -312,6 +340,15 @@ export function MealScannerView({
 
   async function handleReanalyzeSavedMeal() {
     if (!selectedMeal) return;
+    const hasSavedPhoto = Boolean(selectedMeal.photoDataUrl);
+    if (hasSavedPhoto && !visionQuota.allowed) {
+      onOpenSubscriptionModal(
+        visionQuota.isPlus
+          ? "Limite quotidienne de sécurité atteinte pour aujourd'hui."
+          : "Vos 5 scans photo IA de découverte ont été utilisés ! Activez vos 7 jours d'essai gratuit FolloWeight Plus (FW+) pour ré-analyser vos photos en illimité — vous pouvez aussi modifier vos notes texte sans photo."
+      );
+      return;
+    }
     setReanalyzing(true);
     try {
       const res = await fetch("/api/analyze-meal", {
@@ -324,10 +361,15 @@ export function MealScannerView({
           portionEatenPct: selectedMeal.portionEatenPct,
           mealType: selectedMeal.mealType,
           specialMode,
+          allowVisionAi: hasSavedPhoto ? visionQuota.allowed : visionQuota.isPlus,
+          licenseToken: subscription.licenseToken,
         }),
       });
       if (!res.ok) return;
       const json = await res.json();
+      if (hasSavedPhoto && json.analysisProvider === "openai-vision") {
+        onRecordVisionScan();
+      }
       const newRev: AnalysisRevision = {
         revisionId: `rev-${Date.now()}`,
         createdAt: new Date().toISOString(),
@@ -383,6 +425,29 @@ export function MealScannerView({
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => onOpenSubscriptionModal()}
+              className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-bold transition ${
+                visionQuota.isPlus
+                  ? "border-amber-400/40 bg-amber-500/15 text-amber-200"
+                  : visionQuota.allowed
+                    ? "border-emerald-400/35 bg-emerald-500/15 text-emerald-200 hover:bg-emerald-500/25"
+                    : "border-rose-400/40 bg-rose-500/15 text-rose-200 hover:bg-rose-500/25"
+              }`}
+            >
+              {visionQuota.isPlus ? (
+                <>
+                  <Crown className="w-3.5 h-3.5" />
+                  FW+ Scans Illimités
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-3.5 h-3.5" />
+                  Découverte : {visionQuota.remaining}/{visionQuota.limit} scans photo · FW+
+                </>
+              )}
+            </button>
             {onOpenBarcode && (
               <button
                 type="button"
@@ -401,6 +466,40 @@ export function MealScannerView({
             </button>
           </div>
         </div>
+
+        {!visionQuota.isPlus && !visionQuota.allowed && (
+          <div className="rounded-xl border border-emerald-400/35 bg-emerald-500/10 p-3 flex flex-wrap items-center justify-between gap-2.5 text-xs">
+            <div className="text-slate-200">
+              <strong className="text-emerald-300">
+                Pack découverte épuisé ({visionQuota.limit}/{visionQuota.limit} scans photo IA) :
+              </strong>{" "}
+              débloquez les scans photo illimités avec 7 jours gratuits, ou utilisez le scan code-barres EAN et la saisie texte gratuits sans pub.
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() =>
+                  onOpenSubscriptionModal(
+                    "Vos 5 scans photo IA de découverte ont été utilisés ! Activez vos 7 jours d'essai gratuit FolloWeight Plus (FW+) pour scanner vos assiettes et votre frigo en illimité — le lecteur code-barres EAN et la saisie texte restent 100 % gratuits et sans pub."
+                  )
+                }
+                className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-500 px-3 py-1.5 text-xs font-extrabold text-slate-950 hover:bg-emerald-400"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                Essayer FW+ 7 jours gratuits (Scans photo illimités)
+              </button>
+              {onOpenBarcode && (
+                <button
+                  type="button"
+                  onClick={onOpenBarcode}
+                  className="rounded-xl border border-amber-400/40 bg-amber-500/15 px-3 py-1.5 text-xs font-bold text-amber-200 hover:bg-amber-500/25"
+                >
+                  Code-barres EAN gratuit illimité
+                </button>
+              )}
+            </div>
+          </div>
+        )}
 
         {showSamples && (
           <div className="flex flex-wrap gap-1.5 pt-1">

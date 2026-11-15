@@ -1,11 +1,12 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Camera,
   Check,
   ChefHat,
   Clock,
+  Crown,
   Lock,
   Play,
   PlusCircle,
@@ -19,7 +20,9 @@ import {
   PrimaryGoal,
   SpecialMode,
   StepByStepRecipe,
+  SubscriptionState,
 } from "@/types/vitalpulse";
+import { canRunVisionScan } from "@/lib/billing-bridge";
 import { compressImageFile } from "@/lib/native-bridge";
 
 interface FridgeChefViewProps {
@@ -31,6 +34,9 @@ interface FridgeChefViewProps {
   primaryGoal?: PrimaryGoal;
   todayDateKey: string;
   historyScans: FridgeScanSession[];
+  subscription: SubscriptionState;
+  onRecordVisionScan: () => void;
+  onOpenSubscriptionModal: (reason?: string) => void;
   onSaveFridgeScan: (session: FridgeScanSession) => void;
   onLogRecipeAsMeal: (meal: MealEntry) => void;
 }
@@ -64,11 +70,19 @@ export function FridgeChefView({
   primaryGoal,
   todayDateKey,
   historyScans,
+  subscription,
+  onRecordVisionScan,
+  onOpenSubscriptionModal,
   onSaveFridgeScan,
   onLogRecipeAsMeal,
 }: FridgeChefViewProps) {
   const camRef = useRef<HTMLInputElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
+
+  const visionQuota = useMemo(
+    () => canRunVisionScan(subscription, todayDateKey),
+    [subscription, todayDateKey]
+  );
 
   const [photoDataUrl, setPhotoDataUrl] = useState("");
   const [userNotes, setUserNotes] = useState("");
@@ -128,6 +142,15 @@ export function FridgeChefView({
   }
 
   async function analyzeFridge() {
+    const hasPhoto = Boolean(photoDataUrl);
+    if (hasPhoto && !visionQuota.allowed) {
+      onOpenSubscriptionModal(
+        visionQuota.isPlus
+          ? "Limite quotidienne de sécurité atteinte pour aujourd'hui."
+          : "Vos 5 scans photo IA de découverte ont été utilisés ! Activez vos 7 jours d'essai gratuit FolloWeight Plus (FW+) pour photographier votre frigo et vos assiettes en illimité — la saisie texte de vos ingrédients ci-dessous reste 100 % gratuite et sans pub."
+      );
+      return;
+    }
     setLoading(true);
     try {
       const res = await fetch("/api/analyze-fridge", {
@@ -144,10 +167,15 @@ export function FridgeChefView({
           maxMinutes,
           specialMode,
           primaryGoal,
+          allowVisionAi: hasPhoto ? visionQuota.allowed : visionQuota.isPlus,
+          licenseToken: subscription.licenseToken,
         }),
       });
       if (!res.ok) return;
       const json = await res.json();
+      if (hasPhoto && json.provider === "openai-vision") {
+        onRecordVisionScan();
+      }
       setIngredients(json.detectedIngredients || []);
       setRecipes(json.recipes || []);
       setActiveRecipeId(json.recipes?.[0]?.id ?? null);
@@ -223,27 +251,75 @@ export function FridgeChefView({
               Prenez en photo votre frigo ou vos aliments : les recettes s&apos;adaptent automatiquement à ce qu&apos;il vous reste à manger aujourd&apos;hui (&laquo;&nbsp;Ferme ta journée&nbsp;&raquo;).
             </p>
           </div>
-          <div className="rounded-xl bg-slate-950/70 border border-emerald-400/30 px-3 py-2 text-xs text-right">
-            {rawRemainingKcal !== undefined && rawRemainingKcal <= 0 ? (
-              <>
-                <span className="text-amber-300 block font-semibold">
-                  Objectif calorique atteint
-                </span>
-                <strong className="text-emerald-300 tabular-nums">
-                  Idée légère suggérée (~250 kcal)
-                </strong>
-              </>
-            ) : (
-              <>
-                <span className="text-slate-400 block">Budget restant aujourd&apos;hui</span>
-                <strong className="text-emerald-300 tabular-nums">
-                  {Math.max(200, remainingKcal)} kcal ·{" "}
-                  {Math.max(15, Math.round(remainingProteinG))} g protéines
-                </strong>
-              </>
-            )}
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => onOpenSubscriptionModal()}
+              className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-bold transition ${
+                visionQuota.isPlus
+                  ? "border-amber-400/40 bg-amber-500/15 text-amber-200"
+                  : visionQuota.allowed
+                    ? "border-emerald-400/35 bg-emerald-500/15 text-emerald-200 hover:bg-emerald-500/25"
+                    : "border-rose-400/40 bg-rose-500/15 text-rose-200 hover:bg-rose-500/25"
+              }`}
+            >
+              {visionQuota.isPlus ? (
+                <>
+                  <Crown className="w-3.5 h-3.5" />
+                  FW+ Scans Illimités
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-3.5 h-3.5" />
+                  Découverte : {visionQuota.remaining}/{visionQuota.limit} scans photo · FW+
+                </>
+              )}
+            </button>
+            <div className="rounded-xl bg-slate-950/70 border border-emerald-400/30 px-3 py-2 text-xs text-right">
+              {rawRemainingKcal !== undefined && rawRemainingKcal <= 0 ? (
+                <>
+                  <span className="text-amber-300 block font-semibold">
+                    Objectif calorique atteint
+                  </span>
+                  <strong className="text-emerald-300 tabular-nums">
+                    Idée légère suggérée (~250 kcal)
+                  </strong>
+                </>
+              ) : (
+                <>
+                  <span className="text-slate-400 block">Budget restant aujourd&apos;hui</span>
+                  <strong className="text-emerald-300 tabular-nums">
+                    {Math.max(200, remainingKcal)} kcal ·{" "}
+                    {Math.max(15, Math.round(remainingProteinG))} g protéines
+                  </strong>
+                </>
+              )}
+            </div>
           </div>
         </div>
+
+        {!visionQuota.isPlus && !visionQuota.allowed && (
+          <div className="rounded-xl border border-emerald-400/35 bg-emerald-500/10 p-3 flex flex-wrap items-center justify-between gap-2.5 text-xs">
+            <div className="text-slate-200">
+              <strong className="text-emerald-300">
+                Pack découverte épuisé ({visionQuota.limit}/{visionQuota.limit} scans photo IA) :
+              </strong>{" "}
+              débloquez l&apos;analyse photo de votre frigo en illimité avec 7 jours gratuits, ou saisissez vos ingrédients par texte ci-dessous gratuitement sans pub.
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                onOpenSubscriptionModal(
+                  "Vos 5 scans photo IA de découverte ont été utilisés ! Activez vos 7 jours d'essai gratuit FolloWeight Plus (FW+) pour photographier votre frigo et vos assiettes en illimité — la saisie texte de vos ingrédients ci-dessous reste 100 % gratuite et sans pub."
+                )
+              }
+              className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-500 px-3 py-1.5 text-xs font-extrabold text-slate-950 hover:bg-emerald-400 shrink-0"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              Essayer FW+ 7 jours gratuits (Scans photo illimités)
+            </button>
+          </div>
+        )}
 
         <input
           ref={camRef}

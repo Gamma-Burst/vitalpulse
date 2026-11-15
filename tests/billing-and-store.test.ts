@@ -5,11 +5,16 @@ import {
   verifyStripeWebhookSignature,
 } from "../src/lib/billing-server";
 import {
+  canRunVisionScan,
   canUseLiveWebSearch,
   createDefaultSubscriptionState,
+  FREE_DISCOVERY_VISION_SCANS,
+  FW_PLUS_DAILY_SOFT_CAP,
   getPlansForPlatform,
   normalizeSubscriptionForToday,
+  recordVisionScanUsage,
   recordWebSearchUsage,
+  startSevenDayFreeTrial,
 } from "../src/lib/billing-bridge";
 import {
   buildDeterministicFwAiReply,
@@ -89,6 +94,41 @@ describe("FolloWeight Play Store & Web Billing", () => {
     const nextDay = normalizeSubscriptionForToday(sub, "2026-11-16");
     expect(nextDay.dailyWebSearchCount).toBe(0);
     expect(canUseLiveWebSearch(nextDay, "2026-11-16").allowed).toBe(true);
+  });
+
+  it("applique le Pack Découverte de 5 scans photo IA offerts sans reset quotidien et débloque 80/j avec FW+", () => {
+    expect(FREE_DISCOVERY_VISION_SCANS).toBe(5);
+    let sub = createDefaultSubscriptionState("2026-11-15");
+    const initial = canRunVisionScan(sub, "2026-11-15");
+    expect(initial.allowed).toBe(true);
+    expect(initial.remaining).toBe(5);
+    expect(initial.limit).toBe(5);
+    expect(initial.isDiscoveryPack).toBe(true);
+
+    for (let i = 0; i < 5; i += 1) {
+      sub = recordVisionScanUsage(sub, "2026-11-15");
+    }
+    const exhausted = canRunVisionScan(sub, "2026-11-15");
+    expect(exhausted.allowed).toBe(false);
+    expect(exhausted.remaining).toBe(0);
+
+    // Le pack découverte ne se réinitialise pas le lendemain
+    const nextDay = normalizeSubscriptionForToday(sub, "2026-11-16");
+    expect(nextDay.visionScansUsedToday).toBe(0);
+    expect(nextDay.totalFreeVisionScansUsed).toBe(5);
+    expect(canRunVisionScan(nextDay, "2026-11-16").allowed).toBe(false);
+
+    // L'activation de l'essai FW+ 7j débloque immédiatement le plafond FW+ (80/jour)
+    const trial = startSevenDayFreeTrial(nextDay, "2026-11-16");
+    const trialQuota = canRunVisionScan(trial, "2026-11-16");
+    expect(trialQuota.allowed).toBe(true);
+    expect(trialQuota.isPlus).toBe(true);
+    expect(trialQuota.isDiscoveryPack).toBe(false);
+    expect(trialQuota.limit).toBe(FW_PLUS_DAILY_SOFT_CAP);
+
+    const afterPlusScan = recordVisionScanUsage(trial, "2026-11-16");
+    expect(afterPlusScan.totalFreeVisionScansUsed).toBe(5);
+    expect(afterPlusScan.visionScansUsedToday).toBe(1);
   });
 });
 

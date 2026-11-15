@@ -4,6 +4,10 @@ import {
   applyOilClarifierDelta,
   matchCiqualFood,
 } from "@/data/ciqual-reference";
+import {
+  isTierEntitledToPaidQuota,
+  verifyEntitlementToken,
+} from "@/lib/billing-server";
 import { MealType, OilLevel, PrimaryGoal, SpecialMode } from "@/types/vitalpulse";
 
 export const runtime = "nodejs";
@@ -34,7 +38,22 @@ export async function POST(req: NextRequest) {
     const apiKey = process.env.OPENAI_API_KEY;
     const model = process.env.OPENAI_VISION_MODEL || "gpt-4o-mini";
 
-    if (apiKey && (isRasterImageDataUrl(imageBase64) || userNotes.length >= 4)) {
+    const rawLicenseToken =
+      typeof body.licenseToken === "string" ? body.licenseToken.trim() : "";
+    const verifiedToken = rawLicenseToken
+      ? verifyEntitlementToken(rawLicenseToken)
+      : { valid: false };
+    const hasVerifiedPlusToken =
+      verifiedToken.valid &&
+      isTierEntitledToPaidQuota(verifiedToken.payload?.tier);
+    const allowVisionByClient = body.allowVisionAi !== false;
+    const allowCloudVision = allowVisionByClient || hasVerifiedPlusToken;
+
+    if (
+      apiKey &&
+      allowCloudVision &&
+      (isRasterImageDataUrl(imageBase64) || userNotes.length >= 4)
+    ) {
       try {
         const userPrompt = [
           `Analyse ce repas pour un suivi médical et nutritionnel de précision (référentiel ANSES Ciqual & Inserm NOVA).`,

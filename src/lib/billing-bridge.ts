@@ -2,7 +2,8 @@ import { Capacitor } from "@capacitor/core";
 import { SubscriptionState, SubscriptionTier } from "@/types/vitalpulse";
 
 export const FREE_DAILY_FW_AI_LIMIT = 5;
-export const FREE_DAILY_VISION_SCAN_LIMIT = 3;
+export const FREE_DISCOVERY_VISION_SCANS = 5;
+export const FREE_DAILY_VISION_SCAN_LIMIT = FREE_DISCOVERY_VISION_SCANS;
 export const FW_PLUS_DAILY_SOFT_CAP = 80;
 
 export const FREE_DAILY_WEB_SEARCH_LIMIT = 1;
@@ -34,7 +35,7 @@ export const FOLLOWEIGHT_PLANS: FolloWeightPlanSpec[] = [
       "Courbe poids lissé EMA, mensurations US Navy & photos 100 % locales",
       "44 exercices & 10 sports + ravitaillement ISSN + montres connectées",
       "Analyse bilan sanguin déterministe + Lexique Santé (?)",
-      "5 questions Coach FW AI / jour + 3 scans photo IA / jour offerts",
+      "5 questions Coach FW AI / jour + Pack découverte de 5 scans photo IA offerts",
     ],
   },
   {
@@ -120,6 +121,7 @@ export function createDefaultSubscriptionState(todayKey: string): SubscriptionSt
     dailyAiDateKey: todayKey,
     fwAiMessagesUsedToday: 0,
     visionScansUsedToday: 0,
+    totalFreeVisionScansUsed: 0,
     dailyWebSearchDateKey: todayKey,
     dailyWebSearchCount: 0,
   };
@@ -171,6 +173,11 @@ export function normalizeSubscriptionForToday(
 
   const sameDay = raw?.dailyAiDateKey === todayKey;
   const sameWebDay = raw?.dailyWebSearchDateKey === todayKey;
+  const totalFreeVisionScansUsed =
+    typeof raw?.totalFreeVisionScansUsed === "number" &&
+    Number.isFinite(raw.totalFreeVisionScansUsed)
+      ? Math.max(0, Math.round(raw.totalFreeVisionScansUsed))
+      : Math.max(0, Math.round(Number(raw?.visionScansUsedToday) || 0));
 
   return {
     tier,
@@ -184,6 +191,7 @@ export function normalizeSubscriptionForToday(
     visionScansUsedToday: sameDay
       ? Math.max(0, Math.round(Number(raw?.visionScansUsedToday) || 0))
       : 0,
+    totalFreeVisionScansUsed,
     dailyWebSearchDateKey: todayKey,
     dailyWebSearchCount: sameWebDay
       ? Math.max(0, Math.round(Number(raw?.dailyWebSearchCount) || 0))
@@ -290,16 +298,28 @@ export function canRunVisionScan(
   sub: SubscriptionState,
   todayKey: string,
   nowMs: number = Date.now()
-): { allowed: boolean; remainingToday: number; limitToday: number; isPlus: boolean } {
+): {
+  allowed: boolean;
+  remaining: number;
+  limit: number;
+  remainingToday: number;
+  limitToday: number;
+  isPlus: boolean;
+  isDiscoveryPack: boolean;
+} {
   const norm = normalizeSubscriptionForToday(sub, todayKey, nowMs);
   const plus = isFwPlusActive(norm, nowMs);
-  const limitToday = plus ? FW_PLUS_DAILY_SOFT_CAP : FREE_DAILY_VISION_SCAN_LIMIT;
-  const remainingToday = Math.max(0, limitToday - norm.visionScansUsedToday);
+  const limit = plus ? FW_PLUS_DAILY_SOFT_CAP : FREE_DISCOVERY_VISION_SCANS;
+  const used = plus ? norm.visionScansUsedToday : norm.totalFreeVisionScansUsed ?? 0;
+  const remaining = Math.max(0, limit - used);
   return {
-    allowed: norm.visionScansUsedToday < limitToday,
-    remainingToday,
-    limitToday,
+    allowed: used < limit,
+    remaining,
+    limit,
+    remainingToday: remaining,
+    limitToday: limit,
     isPlus: plus,
+    isDiscoveryPack: !plus,
   };
 }
 
@@ -309,9 +329,13 @@ export function recordVisionScanUsage(
   nowMs: number = Date.now()
 ): SubscriptionState {
   const norm = normalizeSubscriptionForToday(sub, todayKey, nowMs);
+  const plus = isFwPlusActive(norm, nowMs);
   return {
     ...norm,
     visionScansUsedToday: norm.visionScansUsedToday + 1,
+    totalFreeVisionScansUsed: plus
+      ? norm.totalFreeVisionScansUsed ?? 0
+      : (norm.totalFreeVisionScansUsed ?? 0) + 1,
   };
 }
 
