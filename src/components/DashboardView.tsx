@@ -90,6 +90,7 @@ export interface DashboardViewProps {
   onSetWaterToday?: (ml: number) => void;
   onUpdateProfilePatch?: (patch: Partial<UserProfile>) => void;
   onUpdateTodaySteps?: (steps: number) => void;
+  onNotifySaved?: (messageFr: string) => void;
 }
 
 type ActiveSheetKind =
@@ -160,6 +161,7 @@ export function DashboardView({
   onSetWaterToday,
   onUpdateProfilePatch,
   onUpdateTodaySteps,
+  onNotifySaved,
 }: DashboardViewProps) {
   const shouldReduceMotion = useReducedMotion();
   const [sheet, setSheet] = useState<ActiveSheetKind>(null);
@@ -175,24 +177,41 @@ export function DashboardView({
   const [sheetFeedback, setSheetFeedback] = useState<string | null>(null);
 
   useEffect(() => {
-    setWaterGoalDraft(String(profile.dailyWaterGoalMl ?? anthro.targets.waterMl));
-  }, [profile.dailyWaterGoalMl, anthro.targets.waterMl]);
+    if (sheet !== "hydration") {
+      setWaterGoalDraft(String(profile.dailyWaterGoalMl ?? anthro.targets.waterMl));
+    }
+  }, [profile.dailyWaterGoalMl, anthro.targets.waterMl, sheet]);
 
   useEffect(() => {
-    setStepGoalDraft(String(profile.dailyStepGoal));
-  }, [profile.dailyStepGoal]);
+    if (sheet !== "steps_watch") {
+      setStepGoalDraft(String(profile.dailyStepGoal));
+    }
+  }, [profile.dailyStepGoal, sheet]);
 
   useEffect(() => {
-    setTodayStepsDraft(String(todayBalance.rawSteps));
-  }, [todayBalance.rawSteps]);
+    if (sheet !== "steps_watch") {
+      setTodayStepsDraft(String(todayBalance.rawSteps));
+    }
+  }, [todayBalance.rawSteps, sheet]);
 
   useEffect(() => {
-    setCalorieGoalDraft(String(profile.dailyCalorieGoalOverride ?? anthro.targetIntakeKcal));
-  }, [profile.dailyCalorieGoalOverride, anthro.targetIntakeKcal]);
+    if (sheet !== "energy") {
+      setCalorieGoalDraft(String(profile.dailyCalorieGoalOverride ?? anthro.targetIntakeKcal));
+    }
+  }, [profile.dailyCalorieGoalOverride, anthro.targetIntakeKcal, sheet]);
 
   useEffect(() => {
     if (!sheet) setSheetFeedback(null);
   }, [sheet]);
+
+  function finishSaveAndReturnHome(messageFr: string) {
+    if (typeof document !== "undefined" && document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+    setSheetFeedback(messageFr);
+    setSheet(null);
+    onNotifySaved?.(messageFr);
+  }
 
   useEffect(() => {
     if (!fasting || fasting.protocolId === "none") return;
@@ -290,6 +309,15 @@ export function DashboardView({
 
   function openSheet(next: ActiveSheetKind) {
     triggerLightHaptic();
+    setSheetFeedback(null);
+    if (next === "hydration") {
+      setWaterGoalDraft(String(profile.dailyWaterGoalMl ?? anthro.targets.waterMl));
+    } else if (next === "steps_watch") {
+      setStepGoalDraft(String(profile.dailyStepGoal));
+      setTodayStepsDraft(String(todayBalance.rawSteps));
+    } else if (next === "energy") {
+      setCalorieGoalDraft(String(profile.dailyCalorieGoalOverride ?? anthro.targetIntakeKcal));
+    }
     setSheet(next);
   }
 
@@ -954,7 +982,14 @@ export function DashboardView({
             currentWaistCm={profile.waistCm}
             rangeDays={rangeDays}
             onRangeChange={onRangeChange}
-            onQuickLogWeight={onQuickLogWeight}
+            onQuickLogWeight={(kg, waistCm) => {
+              onQuickLogWeight(kg, waistCm);
+              finishSaveAndReturnHome(
+                waistCm
+                  ? `Pesée enregistrée : ${kg.toFixed(1)} kg · Taille ${waistCm.toFixed(1)} cm.`
+                  : `Pesée enregistrée : ${kg.toFixed(1)} kg.`
+              );
+            }}
           />
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -1002,7 +1037,7 @@ export function DashboardView({
                   onClick={() => {
                     onUpdateProfilePatch({ dailyCalorieGoalOverride: undefined });
                     setCalorieGoalDraft(String(anthro.autoTargetIntakeKcal));
-                    setSheetFeedback(
+                    finishSaveAndReturnHome(
                       `Cible calorique remise en mode Auto (${anthro.autoTargetIntakeKcal} kcal/j).`
                     );
                   }}
@@ -1039,7 +1074,7 @@ export function DashboardView({
                     );
                     onUpdateProfilePatch({ dailyCalorieGoalOverride: clamped });
                     setCalorieGoalDraft(String(clamped));
-                    setSheetFeedback(`Cible calorique enregistrée : ${clamped} kcal/j.`);
+                    finishSaveAndReturnHome(`Cible calorique enregistrée : ${clamped} kcal/j.`);
                   }}
                 >
                   <input
@@ -1210,7 +1245,7 @@ export function DashboardView({
                   onClick={() => {
                     onUpdateProfilePatch({ dailyWaterGoalMl: undefined });
                     setWaterGoalDraft(String(anthro.autoWaterMl));
-                    setSheetFeedback(`Mode Auto EFSA activé (${anthro.autoWaterMl} mL/j).`);
+                    finishSaveAndReturnHome(`Mode Auto EFSA activé (${anthro.autoWaterMl} mL/j).`);
                   }}
                   className={`rounded-lg border px-2 py-0.5 text-[11px] font-bold ${
                     profile.dailyWaterGoalMl === undefined
@@ -1229,7 +1264,7 @@ export function DashboardView({
                     onClick={() => {
                       onUpdateProfilePatch({ dailyWaterGoalMl: ml });
                       setWaterGoalDraft(String(ml));
-                      setSheetFeedback(`Objectif eau mis à jour : ${ml} mL/j.`);
+                      finishSaveAndReturnHome(`Objectif eau mis à jour : ${ml} mL/j.`);
                     }}
                     className={`rounded-lg border px-2.5 py-1 text-[11px] font-bold tabular-nums ${
                       anthro.targets.waterMl === ml
@@ -1252,7 +1287,7 @@ export function DashboardView({
                   );
                   onUpdateProfilePatch({ dailyWaterGoalMl: clamped });
                   setWaterGoalDraft(String(clamped));
-                  setSheetFeedback(`Objectif eau enregistré : ${clamped} mL/j.`);
+                  finishSaveAndReturnHome(`Objectif eau enregistré : ${clamped} mL/j.`);
                 }}
               >
                 <input
@@ -1281,6 +1316,17 @@ export function DashboardView({
               )}
             </div>
           )}
+          <button
+            type="button"
+            onClick={() =>
+              finishSaveAndReturnHome(
+                `Hydratation enregistrée : ${todayBalance.waterMl} / ${anthro.targets.waterMl} mL.`
+              )
+            }
+            className="w-full rounded-2xl border border-slate-600/60 bg-slate-800/80 py-2.5 text-xs font-bold text-slate-100 hover:bg-slate-700/80"
+          >
+            Valider &amp; Retour à l&apos;accueil
+          </button>
         </div>
       </DetailSheet>
 
@@ -1339,7 +1385,7 @@ export function DashboardView({
                     const val = Math.max(0, Math.min(100000, Math.round(Number(todayStepsDraft) || 0)));
                     onUpdateTodaySteps(val);
                     setTodayStepsDraft(String(val));
-                    setSheetFeedback(`Pas du jour enregistrés : ${val.toLocaleString("fr-FR")}.`);
+                    finishSaveAndReturnHome(`Pas du jour enregistrés : ${val.toLocaleString("fr-FR")}.`);
                   }}
                 >
                   <input
@@ -1374,7 +1420,7 @@ export function DashboardView({
                     onClick={() => {
                       onUpdateProfilePatch({ dailyStepGoal: goal });
                       setStepGoalDraft(String(goal));
-                      setSheetFeedback(`Objectif pas défini sur ${goal.toLocaleString("fr-FR")} pas/j.`);
+                      finishSaveAndReturnHome(`Objectif pas défini sur ${goal.toLocaleString("fr-FR")} pas/j.`);
                     }}
                     className={`rounded-lg border px-2.5 py-1 text-[11px] font-bold tabular-nums ${
                       profile.dailyStepGoal === goal
@@ -1397,7 +1443,7 @@ export function DashboardView({
                   );
                   onUpdateProfilePatch({ dailyStepGoal: clamped });
                   setStepGoalDraft(String(clamped));
-                  setSheetFeedback(`Objectif pas mis à jour : ${clamped.toLocaleString("fr-FR")} pas/j.`);
+                  finishSaveAndReturnHome(`Objectif pas mis à jour : ${clamped.toLocaleString("fr-FR")} pas/j.`);
                 }}
               >
                 <input
@@ -1421,6 +1467,18 @@ export function DashboardView({
               )}
             </div>
           )}
+
+          <button
+            type="button"
+            onClick={() =>
+              finishSaveAndReturnHome(
+                `Activité enregistrée : ${todayBalance.rawSteps.toLocaleString("fr-FR")} pas · Objectif ${profile.dailyStepGoal.toLocaleString("fr-FR")} pas/j.`
+              )
+            }
+            className="w-full rounded-2xl border border-slate-600/60 bg-slate-800/80 py-2.5 text-xs font-bold text-slate-100 hover:bg-slate-700/80"
+          >
+            Valider &amp; Retour à l&apos;accueil
+          </button>
 
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {onOpenWearables && (
@@ -1465,7 +1523,14 @@ export function DashboardView({
           currentWaistCm={profile.waistCm}
           rangeDays={rangeDays}
           onRangeChange={onRangeChange}
-          onQuickLogWeight={onQuickLogWeight}
+          onQuickLogWeight={(kg, waistCm) => {
+            onQuickLogWeight(kg, waistCm);
+            finishSaveAndReturnHome(
+              waistCm
+                ? `Pesée enregistrée : ${kg.toFixed(1)} kg · Taille ${waistCm.toFixed(1)} cm.`
+                : `Pesée enregistrée : ${kg.toFixed(1)} kg.`
+            );
+          }}
         />
       </DetailSheet>
 

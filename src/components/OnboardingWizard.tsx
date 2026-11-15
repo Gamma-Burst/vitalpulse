@@ -202,6 +202,9 @@ export function OnboardingWizard({
   const [dailyStepGoal, setDailyStepGoal] = useState<number>(
     initialProfile.dailyStepGoal || 8000
   );
+  const [stepGoalDraft, setStepGoalDraft] = useState<string>(
+    String(initialProfile.dailyStepGoal || 8000)
+  );
   const [dailyWaterGoalMl, setDailyWaterGoalMl] = useState<number | undefined>(
     initialProfile.dailyWaterGoalMl
   );
@@ -804,15 +807,28 @@ export function OnboardingWizard({
                     type="text"
                     inputMode="numeric"
                     aria-label="Objectif de pas quotidien"
-                    value={String(dailyStepGoal)}
+                    value={stepGoalDraft}
                     onChange={(e) => {
                       const raw = e.target.value.replace(/[^\d]/g, "");
+                      setStepGoalDraft(raw);
                       if (!raw) return;
-                      setDailyStepGoal(Math.min(30000, Number(raw)));
+                      const parsed = Number(raw);
+                      if (Number.isFinite(parsed) && parsed > 0) {
+                        setDailyStepGoal(Math.min(30000, parsed));
+                      }
                     }}
-                    onBlur={() =>
-                      setDailyStepGoal((prev) => Math.max(1500, Math.min(30000, prev || 8000)))
-                    }
+                    onBlur={() => {
+                      const parsed = Number(stepGoalDraft);
+                      const clamped = Math.max(
+                        1500,
+                        Math.min(
+                          30000,
+                          Math.round(Number.isFinite(parsed) && parsed > 0 ? parsed : dailyStepGoal || 8000)
+                        )
+                      );
+                      setDailyStepGoal(clamped);
+                      setStepGoalDraft(String(clamped));
+                    }}
                     className="w-24 rounded-lg border border-slate-600 bg-slate-950 px-2.5 py-1 text-right text-xs font-bold text-white tabular-nums"
                   />
                 </div>
@@ -822,7 +838,11 @@ export function OnboardingWizard({
                   max={16000}
                   step={500}
                   value={Math.max(2500, Math.min(16000, dailyStepGoal))}
-                  onChange={(e) => setDailyStepGoal(Number(e.target.value))}
+                  onChange={(e) => {
+                    const next = Number(e.target.value);
+                    setDailyStepGoal(next);
+                    setStepGoalDraft(String(next));
+                  }}
                   className="w-full accent-emerald-400"
                 />
                 <div className="flex flex-wrap gap-1.5">
@@ -830,7 +850,10 @@ export function OnboardingWizard({
                     <button
                       key={preset}
                       type="button"
-                      onClick={() => setDailyStepGoal(preset)}
+                      onClick={() => {
+                        setDailyStepGoal(preset);
+                        setStepGoalDraft(String(preset));
+                      }}
                       className={`rounded-lg border px-2 py-1 text-[11px] font-bold tabular-nums ${
                         dailyStepGoal === preset
                           ? "border-emerald-400 bg-emerald-500/20 text-emerald-200"

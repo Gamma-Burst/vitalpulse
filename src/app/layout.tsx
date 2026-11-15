@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://followeight.com"),
   title: "FolloWeight · Coach Nutrition, Sport & Métabolisme IA",
   description:
     "FolloWeight (followeight.com) : photo de plat & frigo IA, coach FW AI, vrai bilan IMC/BRI/TDEE, jeûne OMAD, suivi multi-sports & prise de masse propre, bilans sanguins et montres connectées.",

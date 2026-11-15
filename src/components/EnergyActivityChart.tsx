@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Activity,
   ArrowDownRight,
@@ -45,13 +45,19 @@ export function EnergyActivityChart({
   const [waistInput, setWaistInput] = useState(
     currentWaistCm ? String(currentWaistCm) : ""
   );
+  const weightFocusedRef = useRef(false);
+  const waistFocusedRef = useRef(false);
 
   useEffect(() => {
-    setWeightInput(String(currentWeightKg));
+    if (!weightFocusedRef.current) {
+      setWeightInput(String(currentWeightKg));
+    }
   }, [currentWeightKg]);
 
   useEffect(() => {
-    setWaistInput(currentWaistCm ? String(currentWaistCm) : "");
+    if (!waistFocusedRef.current) {
+      setWaistInput(currentWaistCm ? String(currentWaistCm) : "");
+    }
   }, [currentWaistCm]);
 
   const safeIdx = Math.min(selectedIndex, Math.max(0, balances.length - 1));
@@ -353,6 +359,11 @@ export function EnergyActivityChart({
             className="flex flex-wrap items-center gap-2"
             onSubmit={(e) => {
               e.preventDefault();
+              if (document.activeElement instanceof HTMLElement) {
+                document.activeElement.blur();
+              }
+              weightFocusedRef.current = false;
+              waistFocusedRef.current = false;
               const kg = parseFloat(weightInput.replace(",", "."));
               const waist = waistInput ? parseFloat(waistInput.replace(",", ".")) : undefined;
               if (!isNaN(kg) && kg >= 30 && kg <= 250) {
@@ -368,6 +379,12 @@ export function EnergyActivityChart({
               type="text"
               inputMode="decimal"
               value={weightInput}
+              onFocus={() => {
+                weightFocusedRef.current = true;
+              }}
+              onBlur={() => {
+                weightFocusedRef.current = false;
+              }}
               onChange={(e) => setWeightInput(e.target.value.replace(/[^\d.,]/g, ""))}
               placeholder="Poids kg"
               aria-label="Nouveau poids en kg"
@@ -377,6 +394,12 @@ export function EnergyActivityChart({
               type="text"
               inputMode="decimal"
               value={waistInput}
+              onFocus={() => {
+                waistFocusedRef.current = true;
+              }}
+              onBlur={() => {
+                waistFocusedRef.current = false;
+              }}
               onChange={(e) => setWaistInput(e.target.value.replace(/[^\d.,]/g, ""))}
               placeholder="Taille cm"
               aria-label="Tour de taille en cm"

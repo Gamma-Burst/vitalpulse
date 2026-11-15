@@ -37,15 +37,20 @@ jobs:
       - run: npm ci
       - name: Sync Capacitor Android with Vercel Production URL
         env:
-          NEXT_PUBLIC_APP_URL: ${{ vars.NEXT_PUBLIC_APP_URL || 'https://vitalpulse-ten.vercel.app' }}
+          NEXT_PUBLIC_APP_URL: ${{ vars.NEXT_PUBLIC_APP_URL || 'https://followeight.com' }}
         run: npx cap sync android
-      - name: Build Debug APK with Gradle
+      - name: Build Debug APK & Release AAB with Gradle
         working-directory: android
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
+          ./gradlew assembleDebug bundleRelease --no-daemon
       - name: Upload FolloWeight Android APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: FolloWeight-Android-Debug-APK
           path: android/app/build/outputs/apk/debug/*.apk
+      - name: Upload FolloWeight Android AAB Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FolloWeight-Android-AAB-Bundle
+          path: android/app/build/outputs/bundle/release/*.aab

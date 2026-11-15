@@ -84,16 +84,21 @@ export function ActivityCoachView({
   const [manualStepsInput, setManualStepsInput] = useState(String(todayBalance.rawSteps));
   const [stepGoalDraft, setStepGoalDraft] = useState(String(profile.dailyStepGoal));
   const [showGoalEditor, setShowGoalEditor] = useState(false);
+  const [showManualSteps, setShowManualSteps] = useState(false);
   const [pedometerLive, setPedometerLive] = useState(false);
   const [caps, setCaps] = useState(() => detectPlatformCapabilities());
 
   useEffect(() => {
-    setStepGoalDraft(String(profile.dailyStepGoal));
-  }, [profile.dailyStepGoal]);
+    if (!showGoalEditor) {
+      setStepGoalDraft(String(profile.dailyStepGoal));
+    }
+  }, [profile.dailyStepGoal, showGoalEditor]);
 
   useEffect(() => {
-    setManualStepsInput(String(todayBalance.rawSteps));
-  }, [todayBalance.rawSteps]);
+    if (!showManualSteps) {
+      setManualStepsInput(String(todayBalance.rawSteps));
+    }
+  }, [todayBalance.rawSteps, showManualSteps]);
 
   // Lecteur d'exercice actif
   const [activeExercise, setActiveExercise] = useState<ExerciseDefinition | null>(null);
@@ -111,15 +116,10 @@ export function ActivityCoachView({
   const [onlyFavorites, setOnlyFavorites] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [playerSheetOpen, setPlayerSheetOpen] = useState(false);
-  const [showManualSteps, setShowManualSteps] = useState(false);
 
   useEffect(() => {
     setCaps(detectPlatformCapabilities());
   }, []);
-
-  useEffect(() => {
-    setManualStepsInput(String(todayBalance.rawSteps));
-  }, [todayBalance.rawSteps]);
 
   // Podomètre navigateur par accéléromètre (DeviceMotionEvent)
   useEffect(() => {
@@ -403,8 +403,12 @@ export function ActivityCoachView({
                         key={preset}
                         type="button"
                         onClick={() => {
+                          if (document.activeElement instanceof HTMLElement) {
+                            document.activeElement.blur();
+                          }
                           onUpdateStepGoal(preset);
                           setStepGoalDraft(String(preset));
+                          setShowGoalEditor(false);
                           setToast(`Objectif mis à jour : ${preset.toLocaleString("fr-FR")} pas/j`);
                           setTimeout(() => setToast(null), 2500);
                         }}
@@ -423,10 +427,16 @@ export function ActivityCoachView({
                   className="flex items-center gap-2"
                   onSubmit={(e) => {
                     e.preventDefault();
+                    if (document.activeElement instanceof HTMLElement) {
+                      document.activeElement.blur();
+                    }
                     const parsed = Number(stepGoalDraft.replace(/\s+/g, ""));
                     const clamped = Math.max(
                       1500,
-                      Math.min(30000, Math.round(Number.isFinite(parsed) ? parsed : profile.dailyStepGoal))
+                      Math.min(
+                        30000,
+                        Math.round(Number.isFinite(parsed) && parsed > 0 ? parsed : profile.dailyStepGoal)
+                      )
                     );
                     onUpdateStepGoal(clamped);
                     setStepGoalDraft(String(clamped));
@@ -493,8 +503,15 @@ export function ActivityCoachView({
               className="flex items-center gap-1.5"
               onSubmit={(e) => {
                 e.preventDefault();
+                if (document.activeElement instanceof HTMLElement) {
+                  document.activeElement.blur();
+                }
                 const val = Math.max(0, Math.min(100000, Math.round(Number(manualStepsInput) || 0)));
                 onUpdateSteps(val, "manual");
+                setManualStepsInput(String(val));
+                setShowManualSteps(false);
+                setToast(`Pas du jour enregistrés : ${val.toLocaleString("fr-FR")}`);
+                setTimeout(() => setToast(null), 2500);
               }}
             >
               <input

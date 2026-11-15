@@ -43,8 +43,11 @@ export function DetailSheet({
   const titleId = useId();
   const shouldReduceMotion = useReducedMotion();
   const dragControls = useDragControls();
+  const panelRef = useRef<HTMLDivElement | null>(null);
   const closeBtnRef = useRef<HTMLButtonElement | null>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
   const [isDesktop, setIsDesktop] = useState(false);
 
   useEffect(() => {
@@ -58,37 +61,45 @@ export function DetailSheet({
 
   useEffect(() => {
     if (!open || typeof document === "undefined") return;
+    const isCoarsePointer =
+      typeof window !== "undefined" &&
+      Boolean(window.matchMedia?.("(pointer: coarse)")?.matches);
     previousFocusRef.current = document.activeElement as HTMLElement | null;
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
 
-    const focusTimer = window.setTimeout(() => {
-      closeBtnRef.current?.focus();
-    }, 60);
+    const focusTimer = isCoarsePointer
+      ? null
+      : window.setTimeout(() => {
+          if (panelRef.current?.contains(document.activeElement)) return;
+          closeBtnRef.current?.focus();
+        }, 60);
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
         triggerLightHaptic();
-        onClose();
+        onCloseRef.current();
       }
     };
     window.addEventListener("keydown", onKeyDown);
 
     const popBack = pushBackIntercept(() => {
       triggerLightHaptic();
-      onClose();
+      onCloseRef.current();
       return true;
     });
 
     return () => {
-      window.clearTimeout(focusTimer);
+      if (focusTimer !== null) window.clearTimeout(focusTimer);
       window.removeEventListener("keydown", onKeyDown);
       popBack();
       document.body.style.overflow = prevOverflow;
-      previousFocusRef.current?.focus?.();
+      if (!isCoarsePointer) {
+        previousFocusRef.current?.focus?.();
+      }
     };
-  }, [open, onClose]);
+  }, [open]);
 
   function handleDragEnd(
     _event: MouseEvent | TouchEvent | PointerEvent,
@@ -154,6 +165,7 @@ export function DetailSheet({
             dragConstraints={{ top: 0, bottom: 320 }}
             dragElastic={{ top: 0, bottom: 0.45 }}
             onDragEnd={handleDragEnd}
+            ref={panelRef}
             className={`vp-sheet relative z-10 flex max-h-[88dvh] w-full flex-col rounded-t-3xl lg:h-full lg:max-h-screen lg:rounded-l-3xl lg:rounded-tr-none ${SIZE_CLASSES[size]}`}
           >
             {/* Poignée glisser mobile */}

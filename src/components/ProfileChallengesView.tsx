@@ -42,6 +42,7 @@ interface ProfileChallengesViewProps {
   onStartFreshWithProfile: (next: UserProfile) => void;
   onResetDemo: () => void;
   onReopenOnboarding?: () => void;
+  onSavedReturnHome?: (messageFr: string) => void;
 }
 
 export function ProfileChallengesView({
@@ -56,6 +57,7 @@ export function ProfileChallengesView({
   onStartFreshWithProfile,
   onResetDemo,
   onReopenOnboarding,
+  onSavedReturnHome,
 }: ProfileChallengesViewProps) {
   const [form, setForm] = useState<UserProfile>(profile);
   const [ageDraft, setAgeDraft] = useState<string>(String(profile.age));
@@ -74,8 +76,99 @@ export function ProfileChallengesView({
   const [calorieOverrideDraft, setCalorieOverrideDraft] = useState<string>(
     String(profile.dailyCalorieGoalOverride ?? anthro.autoTargetIntakeKcal)
   );
+  const [waterAuto, setWaterAuto] = useState<boolean>(profile.dailyWaterGoalMl === undefined);
+  const [calorieAuto, setCalorieAuto] = useState<boolean>(
+    profile.dailyCalorieGoalOverride === undefined
+  );
+
+  const [showSources, setShowSources] = useState(false);
+  const [profileSavedMsg, setProfileSavedMsg] = useState<string | null>(null);
+  const [profileSheetOpen, setProfileSheetOpen] = useState(false);
+  const [challengeSheetOpen, setChallengeSheetOpen] = useState(false);
+
+  const syncDraftsFromProfile = (source: UserProfile) => {
+    setForm(source);
+    setAgeDraft(String(source.age));
+    setHeightDraft(String(source.heightCm));
+    setWeightDraft(String(source.weightKg));
+    setTargetWeightDraft(String(source.targetWeightKg));
+    setWaistDraft(source.waistCm ? String(source.waistCm) : "");
+    setStepGoalDraft(String(source.dailyStepGoal));
+    setWaterGoalDraft(String(source.dailyWaterGoalMl ?? anthro.autoWaterMl));
+    setCalorieOverrideDraft(
+      String(source.dailyCalorieGoalOverride ?? anthro.autoTargetIntakeKcal)
+    );
+    setWaterAuto(source.dailyWaterGoalMl === undefined);
+    setCalorieAuto(source.dailyCalorieGoalOverride === undefined);
+  };
+
+  const parseDraftNum = (
+    raw: string,
+    min: number,
+    max: number,
+    decimal: boolean,
+    fallback: number
+  ) => {
+    const cleaned = raw.trim().replace(",", ".");
+    if (!cleaned || cleaned === ".") return fallback;
+    const parsed = Number(cleaned);
+    if (!Number.isFinite(parsed)) return fallback;
+    const bounded = Math.max(min, Math.min(max, parsed));
+    return decimal ? Math.round(bounded * 10) / 10 : Math.round(bounded);
+  };
+
+  const handleSubmitProfile = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (typeof document !== "undefined" && document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+    const minKcal = Math.max(1200, anthro.clinicalFloorKcal);
+    const waistTrimmed = waistDraft.trim();
+    const finalWaist =
+      waistTrimmed === ""
+        ? undefined
+        : parseDraftNum(waistTrimmed, 42, 190, true, form.waistCm ?? 80);
+
+    const finalProfile: UserProfile = {
+      ...form,
+      name: form.name.trim() || profile.name,
+      age: parseDraftNum(ageDraft, 12, 105, false, form.age),
+      heightCm: parseDraftNum(heightDraft, 120, 230, false, form.heightCm),
+      weightKg: parseDraftNum(weightDraft, 30, 280, true, form.weightKg),
+      targetWeightKg: parseDraftNum(targetWeightDraft, 35, 250, true, form.targetWeightKg),
+      waistCm: finalWaist,
+      dailyStepGoal: parseDraftNum(stepGoalDraft, 1500, 30000, false, form.dailyStepGoal),
+      dailyWaterGoalMl: waterAuto
+        ? undefined
+        : parseDraftNum(
+            waterGoalDraft,
+            1000,
+            4500,
+            false,
+            form.dailyWaterGoalMl ?? anthro.autoWaterMl
+          ),
+      dailyCalorieGoalOverride:
+        anthro.minorSafetyLock || calorieAuto
+          ? undefined
+          : parseDraftNum(
+              calorieOverrideDraft,
+              minKcal,
+              5500,
+              false,
+              form.dailyCalorieGoalOverride ?? anthro.autoTargetIntakeKcal
+            ),
+      isDemoProfile: false,
+    };
+
+    onSaveProfile(finalProfile);
+    setProfileSavedMsg("Profil & calculs métaboliques mis à jour !");
+    setProfileSheetOpen(false);
+    setTimeout(() => setProfileSavedMsg(null), 3500);
+    onSavedReturnHome?.("Profil & objectifs enregistrés avec succès !");
+  };
 
   useEffect(() => {
+    if (profileSheetOpen) return;
     setForm(profile);
     setAgeDraft(String(profile.age));
     setHeightDraft(String(profile.heightCm));
@@ -87,6 +180,8 @@ export function ProfileChallengesView({
     setCalorieOverrideDraft(
       String(profile.dailyCalorieGoalOverride ?? anthro.autoTargetIntakeKcal)
     );
+    setWaterAuto(profile.dailyWaterGoalMl === undefined);
+    setCalorieAuto(profile.dailyCalorieGoalOverride === undefined);
   }, [
     profile.age,
     profile.heightCm,
@@ -104,11 +199,8 @@ export function ProfileChallengesView({
     anthro.autoWaterMl,
     anthro.autoTargetIntakeKcal,
     profile,
+    profileSheetOpen,
   ]);
-  const [showSources, setShowSources] = useState(false);
-  const [profileSavedMsg, setProfileSavedMsg] = useState<string | null>(null);
-  const [profileSheetOpen, setProfileSheetOpen] = useState(false);
-  const [challengeSheetOpen, setChallengeSheetOpen] = useState(false);
 
   // Web Push
   const [pushStatus, setPushStatus] = useState<string | null>(null);
@@ -130,10 +222,12 @@ export function ProfileChallengesView({
     max: number,
     decimal: boolean,
     onValid: (val: number) => void,
-    fallback: number
+    fallback: number,
+    onDirty?: () => void
   ) {
     return {
       onChange: (e: React.ChangeEvent<HTMLInputElement>) => {
+        onDirty?.();
         const raw = decimal ? e.target.value.replace(",", ".") : e.target.value;
         const filtered = decimal
           ? raw.replace(/[^\d.]/g, "").replace(/(\..*)\./g, "$1")
@@ -376,7 +470,10 @@ export function ProfileChallengesView({
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={() => setProfileSheetOpen(true)}
+              onClick={() => {
+                syncDraftsFromProfile(profile);
+                setProfileSheetOpen(true);
+              }}
               className="px-3.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs"
             >
               Modifier mes mesures / objectifs
@@ -420,7 +517,7 @@ export function ProfileChallengesView({
         subtitle="Calibrage instantané de votre IMC, BMR et macros"
         size="lg"
       >
-      <div className="space-y-4">
+      <form className="space-y-4" onSubmit={handleSubmitProfile}>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
           <label className="space-y-1">
             <span className="text-slate-400 block">Prénom / Profil</span>
@@ -573,11 +670,12 @@ export function ProfileChallengesView({
               <button
                 type="button"
                 onClick={() => {
+                  setWaterAuto(true);
                   setForm((prev) => ({ ...prev, dailyWaterGoalMl: undefined }));
                   setWaterGoalDraft(String(anthro.autoWaterMl));
                 }}
                 className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold border ${
-                  form.dailyWaterGoalMl === undefined
+                  waterAuto
                     ? "border-sky-400 bg-sky-500/20 text-sky-200"
                     : "border-slate-700 text-slate-400 hover:border-sky-400"
                 }`}
@@ -594,8 +692,12 @@ export function ProfileChallengesView({
                 1000,
                 4500,
                 false,
-                (dailyWaterGoalMl) => setForm((prev) => ({ ...prev, dailyWaterGoalMl })),
-                form.dailyWaterGoalMl ?? anthro.autoWaterMl
+                (dailyWaterGoalMl) => {
+                  setWaterAuto(false);
+                  setForm((prev) => ({ ...prev, dailyWaterGoalMl }));
+                },
+                form.dailyWaterGoalMl ?? anthro.autoWaterMl,
+                () => setWaterAuto(false)
               )}
               className="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-white tabular-nums"
             />
@@ -607,11 +709,12 @@ export function ProfileChallengesView({
               <button
                 type="button"
                 onClick={() => {
+                  setCalorieAuto(true);
                   setForm((prev) => ({ ...prev, dailyCalorieGoalOverride: undefined }));
                   setCalorieOverrideDraft(String(anthro.autoTargetIntakeKcal));
                 }}
                 className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold border ${
-                  form.dailyCalorieGoalOverride === undefined
+                  calorieAuto
                     ? "border-emerald-400 bg-emerald-500/20 text-emerald-200"
                     : "border-slate-700 text-slate-400 hover:border-emerald-400"
                 }`}
@@ -629,9 +732,12 @@ export function ProfileChallengesView({
                 Math.max(1200, anthro.clinicalFloorKcal),
                 5500,
                 false,
-                (dailyCalorieGoalOverride) =>
-                  setForm((prev) => ({ ...prev, dailyCalorieGoalOverride })),
-                form.dailyCalorieGoalOverride ?? anthro.autoTargetIntakeKcal
+                (dailyCalorieGoalOverride) => {
+                  setCalorieAuto(false);
+                  setForm((prev) => ({ ...prev, dailyCalorieGoalOverride }));
+                },
+                form.dailyCalorieGoalOverride ?? anthro.autoTargetIntakeKcal,
+                () => setCalorieAuto(false)
               )}
               className="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-white tabular-nums disabled:opacity-50"
             />
@@ -802,19 +908,13 @@ export function ProfileChallengesView({
           </div>
 
           <button
-            type="button"
-            onClick={() => {
-              onSaveProfile({ ...form, isDemoProfile: false });
-              setProfileSavedMsg("Profil & calculs métaboliques mis à jour !");
-              setProfileSheetOpen(false);
-              setTimeout(() => setProfileSavedMsg(null), 3500);
-            }}
+            type="submit"
             className="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs sm:text-sm"
           >
             Enregistrer mon profil
           </button>
         </div>
-      </div>
+      </form>
       </DetailSheet>
 
       {/* Notifications Push & Challenges Personnalisés */}

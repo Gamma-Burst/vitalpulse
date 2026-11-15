@@ -1,6 +1,6 @@
 import type { CapacitorConfig } from "@capacitor/cli";
 
-const serverUrl = process.env.NEXT_PUBLIC_APP_URL;
+const serverUrl = process.env.NEXT_PUBLIC_APP_URL || "https://followeight.com";
 
 const config: CapacitorConfig = {
   appId: "com.followeight.app",

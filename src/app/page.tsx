@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MotionConfig } from "framer-motion";
 import {
   Activity,
@@ -127,6 +127,30 @@ export default function VitalPulseApp() {
   const [wearablesOpen, setWearablesOpen] = useState(false);
   const [subscriptionOpen, setSubscriptionOpen] = useState(false);
   const [subscriptionReasonFr, setSubscriptionReasonFr] = useState<string | null>(null);
+  const [savedNotice, setSavedNotice] = useState<string | null>(null);
+  const savedNoticeTimerRef = useRef<number | null>(null);
+
+  const notifySavedAndScrollHome = useCallback((messageFr: string) => {
+    setSavedNotice(messageFr);
+    if (savedNoticeTimerRef.current !== null) {
+      window.clearTimeout(savedNoticeTimerRef.current);
+    }
+    savedNoticeTimerRef.current = window.setTimeout(() => {
+      setSavedNotice(null);
+      savedNoticeTimerRef.current = null;
+    }, 4000);
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (savedNoticeTimerRef.current !== null) {
+        window.clearTimeout(savedNoticeTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -731,6 +755,22 @@ export default function VitalPulseApp() {
           )}
 
           <main className="max-w-6xl mx-auto p-4 sm:p-6">
+            {savedNotice && (
+              <div
+                role="status"
+                aria-live="polite"
+                className="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-emerald-400/50 bg-emerald-500/15 px-4 py-3 text-xs font-semibold text-emerald-100 shadow-lg"
+              >
+                <span>✓ {savedNotice}</span>
+                <button
+                  type="button"
+                  onClick={() => setSavedNotice(null)}
+                  className="rounded-lg border border-emerald-400/35 px-2 py-0.5 text-[11px] font-bold text-emerald-200 hover:bg-emerald-500/20"
+                >
+                  OK
+                </button>
+              </div>
+            )}
             {fastingBannerAlert && (
               <div
                 role="status"
@@ -837,6 +877,7 @@ export default function VitalPulseApp() {
                 onSetWaterToday={setWaterTodayMl}
                 onUpdateProfilePatch={updateProfilePatch}
                 onUpdateTodaySteps={(steps: number) => updateTodaySteps(steps, "manual")}
+                onNotifySaved={notifySavedAndScrollHome}
               />
             )}
 
@@ -934,6 +975,10 @@ export default function VitalPulseApp() {
                 challenges={state.challenges}
                 onReopenOnboarding={() => setShowOnboardingOverride(true)}
                 onSaveProfile={(nextProfile: UserProfile) => updateProfilePatch(nextProfile)}
+                onSavedReturnHome={(msg: string) => {
+                  setActiveTab("dashboard");
+                  notifySavedAndScrollHome(msg);
+                }}
                 onAddChallenge={(c: CustomChallenge) =>
                   commitState((prev) => ({ ...prev, challenges: [c, ...prev.challenges] }))
                 }
