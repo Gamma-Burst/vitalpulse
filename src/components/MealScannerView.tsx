@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Camera,
+  Check,
   CheckCircle2,
   Columns,
   Crown,
@@ -17,6 +18,8 @@ import {
 } from "lucide-react";
 import {
   AnalysisRevision,
+  FastingConfig,
+  FastingProtocolId,
   MealEntry,
   MealType,
   OilLevel,
@@ -26,15 +29,58 @@ import {
 } from "@/types/vitalpulse";
 import { canRunVisionScan } from "@/lib/billing-bridge";
 import { compressImageFile } from "@/lib/native-bridge";
-import { applyOilClarifierDelta } from "@/data/ciqual-reference";
+import {
+  analyzeMealDeterministically,
+  applyOilClarifierDelta,
+} from "@/data/ciqual-reference";
+import {
+  getDefaultActiveMealSlot,
+  getFastingMealSlotStatuses,
+} from "@/lib/fasting-engine";
 import { computeBmrDeficitBreakdown } from "@/lib/metabolic-engine";
 import { InfoTip } from "@/components/ui/InfoTip";
+
+type ScannerDraftPayload = Omit<MealEntry, "id" | "createdAt" | "dateKey" | "revisions">;
+
+const SCANNER_SLOT_ORDER: ReadonlyArray<{
+  key: MealType;
+  shortLabel: string;
+  label: string;
+  placeholder: string;
+}> = [
+  {
+    key: "breakfast",
+    shortLabel: "Petit-déj",
+    label: "Petit-déjeuner",
+    placeholder: "Ex : deux œufs durs et des morceaux de bacon (ou 50g flocons d'avoine, skyr)...",
+  },
+  {
+    key: "lunch",
+    shortLabel: "Déjeuner",
+    label: "Déjeuner",
+    placeholder: "Ex : 1 tartine demi gris et 4 tranches de salami à l'ail (ou 150g poulet, riz basmati)...",
+  },
+  {
+    key: "snack",
+    shortLabel: "Collation",
+    label: "Collation / Goûter",
+    placeholder: "Ex : 1 skyr, 1 pomme et 25 g d'amandes...",
+  },
+  {
+    key: "dinner",
+    shortLabel: "Dîner",
+    label: "Dîner",
+    placeholder: "Ex : pavé de saumon 150 g, pommes de terre vapeur et haricots verts...",
+  },
+];
 
 interface MealScannerViewProps {
   meals: MealEntry[];
   todayDateKey: string;
   specialMode: SpecialMode;
   primaryGoal?: PrimaryGoal;
+  fasting?: FastingConfig;
+  preferredFasting?: FastingProtocolId;
   highlightedMealId?: string | null;
   entryMode?: "photo" | "text";
   bmrKcal?: number;
@@ -134,6 +180,8 @@ export function MealScannerView({
   todayDateKey,
   specialMode,
   primaryGoal = "fat_loss",
+  fasting,
+  preferredFasting,
   highlightedMealId,
   entryMode = "photo",
   bmrKcal,
@@ -155,17 +203,68 @@ export function MealScannerView({
     [subscription, todayDateKey]
   );
 
+  const fastingSlotStatuses = useMemo(
+    () => getFastingMealSlotStatuses(fasting, preferredFasting),
+    [fasting, preferredFasting]
+  );
+
+  const todayMealsBySlot = useMemo(() => {
+    const grouped: Record<MealType, MealEntry[]> = {
+      breakfast: [],
+      lunch: [],
+      snack: [],
+      dinner: [],
+    };
+    for (const m of meals) {
+      if (m.dateKey === todayDateKey && grouped[m.mealType]) {
+        grouped[m.mealType].push(m);
+      }
+    }
+    return grouped;
+  }, [meals, todayDateKey]);
+
   const [scannerTab, setScannerTab] = useState<"photo" | "text">(entryMode);
   const [photoDataUrl, setPhotoDataUrl] = useState<string>("");
   const [userNotes, setUserNotes] = useState<string>("");
-  const [mealType, setMealType] = useState<MealType>("lunch");
+  const [textNotesBySlot, setTextNotesBySlot] = useState<Record<MealType, string>>({
+    breakfast: "",
+    lunch: "",
+    snack: "",
+    dinner: "",
+  });
+  const [overrideFastedBySlot, setOverrideFastedBySlot] = useState<Record<MealType, boolean>>({
+    breakfast: false,
+    lunch: false,
+    snack: false,
+    dinner: false,
+  });
+  const [mealType, setMealType] = useState<MealType>(() =>
+    getDefaultActiveMealSlot(fasting, preferredFasting)
+  );
   const [plateDiameterCm, setPlateDiameterCm] = useState<number>(26);
   const [portionEatenPct, setPortionEatenPct] = useState<number>(100);
   const [analyzing, setAnalyzing] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const [draftResult, setDraftResult] = useState<Omit<MealEntry, "id" | "createdAt" | "dateKey" | "revisions"> | null>(null);
+  const [draftResult, setDraftResult] = useState<ScannerDraftPayload | null>(null);
+  const [textDraftBySlot, setTextDraftBySlot] = useState<Record<MealType, ScannerDraftPayload | null>>({
+    breakfast: null,
+    lunch: null,
+    snack: null,
+    dinner: null,
+  });
   const [savedToast, setSavedToast] = useState<string | null>(null);
+
+  const activeDraftResult = scannerTab === "text" ? textDraftBySlot[mealType] : draftResult;
+  const activeNotes = scannerTab === "text" ? textNotesBySlot[mealType] : userNotes;
+
+  function setActiveDraft(next: ScannerDraftPayload | null, targetSlot: MealType = mealType) {
+    if (scannerTab === "text") {
+      setTextDraftBySlot((prev) => ({ ...prev, [targetSlot]: next }));
+    } else {
+      setDraftResult(next);
+    }
+  }
 
   // Historique, révision & comparateur
   const [selectedMeal, setSelectedMeal] = useState<MealEntry | null>(null);
@@ -175,11 +274,25 @@ export function MealScannerView({
   const [reanalyzing, setReanalyzing] = useState(false);
   const [compareIds, setCompareIds] = useState<string[]>([]);
   const [itemGramDrafts, setItemGramDrafts] = useState<Record<number, string>>({});
-  const hasDraftResult = draftResult !== null;
-  const draftDishTitle = draftResult?.dishTitle ?? "";
+  const hasDraftResult = activeDraftResult !== null;
+  const draftDishTitle = activeDraftResult?.dishTitle ?? "";
 
   useEffect(() => {
     setScannerTab(entryMode);
+    if (entryMode === "text") {
+      setMealType((cur) => {
+        if (
+          fastingSlotStatuses[cur].isFastedSlot &&
+          !textNotesBySlot[cur].trim() &&
+          todayMealsBySlot[cur].length === 0 &&
+          !overrideFastedBySlot[cur]
+        ) {
+          return getDefaultActiveMealSlot(fasting, preferredFasting);
+        }
+        return cur;
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entryMode]);
 
   useEffect(() => {
@@ -204,16 +317,23 @@ export function MealScannerView({
     setPhotoDataUrl(compressed);
   }
 
-  async function runAnalysis(overrideOil?: OilLevel, notesOverride?: string) {
-    const activeNotes = (notesOverride ?? userNotes).trim();
+  async function runAnalysis(
+    overrideOil?: OilLevel,
+    notesOverride?: string,
+    targetSlotOverride?: MealType
+  ): Promise<ScannerDraftPayload | null> {
+    const targetSlot = targetSlotOverride ?? mealType;
+    const rawSlotNotes =
+      scannerTab === "text" ? textNotesBySlot[targetSlot] : userNotes;
+    const activeText = (notesOverride ?? rawSlotNotes).trim();
     const effectivePhoto = scannerTab === "photo" ? photoDataUrl : "";
-    if (!effectivePhoto && !activeNotes) {
+    if (!effectivePhoto && !activeText) {
       setErrorMsg(
         scannerTab === "text"
-          ? "Décrivez ce que vous avez mangé (ex : deux oeuf dur et des bacon en morceau)."
+          ? "Décrivez ce que vous avez mangé (ex : 1 tartine demi gris et 4 tranches de salami à l'ail)."
           : "Ajoutez une photo de votre plat ou décrivez-le dans la zone de texte en dessous."
       );
-      return;
+      return null;
     }
     const hasPhoto = Boolean(effectivePhoto);
     if (hasPhoto && !visionQuota.allowed) {
@@ -222,10 +342,11 @@ export function MealScannerView({
           ? "Limite quotidienne de sécurité atteinte pour aujourd'hui."
           : "Vos 5 scans photo IA de découverte ont été utilisés ! Activez vos 7 jours d'essai gratuit FolloWeight Plus (FW+) pour scanner vos assiettes, votre frigo et vos codes-barres en caméra (avec détection du magasin) en illimité — la saisie manuelle code EAN et la saisie par écrit restent 100 % gratuites et sans pub."
       );
-      return;
+      return null;
     }
     setAnalyzing(true);
     setErrorMsg(null);
+    setSavedToast(null);
     try {
       const res = await fetch("/api/analyze-meal", {
         method: "POST",
@@ -233,10 +354,10 @@ export function MealScannerView({
         body: JSON.stringify({
           entryMode: hasPhoto ? "photo" : "text",
           imageBase64: effectivePhoto || undefined,
-          userNotes: activeNotes,
+          userNotes: activeText,
           plateDiameterCm,
           portionEatenPct,
-          mealType,
+          mealType: targetSlot,
           specialMode,
           primaryGoal,
           oilLevel: overrideOil,
@@ -249,38 +370,122 @@ export function MealScannerView({
       if (hasPhoto && json.analysisProvider === "openai-vision") {
         onRecordVisionScan();
       }
-      setDraftResult({
-        mealType,
+      const nextDraft: ScannerDraftPayload = {
+        mealType: targetSlot,
         photoDataUrl: effectivePhoto || undefined,
-        userNotes: activeNotes,
+        userNotes: activeText,
         plateDiameterCm,
         portionEatenPct,
         ...json,
-      });
+      };
+      if (hasPhoto) {
+        setDraftResult(nextDraft);
+      } else {
+        setTextDraftBySlot((prev) => ({ ...prev, [targetSlot]: nextDraft }));
+      }
+      return nextDraft;
     } catch (err) {
+      if (!hasPhoto) {
+        const local = analyzeMealDeterministically({
+          userNotes: activeText,
+          mealType: targetSlot,
+          plateDiameterCm,
+          portionEatenPct,
+          oilLevel: overrideOil,
+        });
+        const nextDraft: ScannerDraftPayload = {
+          mealType: targetSlot,
+          userNotes: activeText,
+          plateDiameterCm,
+          portionEatenPct,
+          ...local,
+        };
+        setTextDraftBySlot((prev) => ({ ...prev, [targetSlot]: nextDraft }));
+        return nextDraft;
+      }
       setErrorMsg(err instanceof Error ? err.message : "Analyse impossible.");
+      return null;
     } finally {
       setAnalyzing(false);
     }
   }
 
+  function commitMealDraft(draftToSave: ScannerDraftPayload) {
+    const nowIso = new Date().toISOString();
+    const newMeal: MealEntry = {
+      id: `meal-${Date.now()}`,
+      createdAt: nowIso,
+      dateKey: todayDateKey,
+      ...draftToSave,
+      revisions: [
+        {
+          revisionId: `rev-${Date.now()}`,
+          createdAt: nowIso,
+          userNotes: draftToSave.userNotes,
+          plateDiameterCm: draftToSave.plateDiameterCm,
+          portionEatenPct: draftToSave.portionEatenPct,
+          oilLevel: draftToSave.smartClarifier.oilLevel,
+          caloriesCentral: draftToSave.caloriesCentral,
+          caloriesMin: draftToSave.caloriesMin,
+          caloriesMax: draftToSave.caloriesMax,
+          macros: draftToSave.macros,
+          summaryFr: draftToSave.summaryFr,
+        },
+      ],
+    };
+    onSaveMeal(newMeal);
+    const slotLabel =
+      SCANNER_SLOT_ORDER.find((s) => s.key === draftToSave.mealType)?.label ??
+      draftToSave.mealType;
+    setSavedToast(
+      `✓ Enregistré dans ${slotLabel} : "${newMeal.dishTitle}" (~${newMeal.caloriesCentral} kcal) !`
+    );
+    if (scannerTab === "text") {
+      setTextDraftBySlot((prev) => ({ ...prev, [draftToSave.mealType]: null }));
+      setTextNotesBySlot((prev) => ({ ...prev, [draftToSave.mealType]: "" }));
+    } else {
+      setDraftResult(null);
+      setPhotoDataUrl("");
+      setUserNotes("");
+    }
+    setTimeout(() => setSavedToast(null), 4500);
+  }
+
+  async function saveWrittenSlotDirectly() {
+    const targetSlot = mealType;
+    const notes = textNotesBySlot[targetSlot].trim();
+    if (!notes) {
+      setErrorMsg("Écrivez ce que vous avez mangé avant d'enregistrer ce repas.");
+      return;
+    }
+    const existing = textDraftBySlot[targetSlot];
+    if (existing && existing.userNotes.trim() === notes) {
+      commitMealDraft(existing);
+      return;
+    }
+    const computed = await runAnalysis(undefined, notes, targetSlot);
+    if (computed) {
+      commitMealDraft(computed);
+    }
+  }
+
   function applyQuickOilAdjustment(newLevel: OilLevel) {
-    if (!draftResult) return;
-    const oldDelta = draftResult.smartClarifier.appliedOilDeltaKcal || 0;
+    if (!activeDraftResult) return;
+    const oldDelta = activeDraftResult.smartClarifier.appliedOilDeltaKcal || 0;
     const newDelta = Math.round(applyOilClarifierDelta(newLevel) * (portionEatenPct / 100));
     const diffKcal = newDelta - oldDelta;
     const diffFatG = +(diffKcal / 9).toFixed(1);
-    setDraftResult({
-      ...draftResult,
-      caloriesCentral: Math.max(20, draftResult.caloriesCentral + diffKcal),
-      caloriesMin: Math.max(10, draftResult.caloriesMin + diffKcal),
-      caloriesMax: Math.max(30, draftResult.caloriesMax + diffKcal),
+    setActiveDraft({
+      ...activeDraftResult,
+      caloriesCentral: Math.max(20, activeDraftResult.caloriesCentral + diffKcal),
+      caloriesMin: Math.max(10, activeDraftResult.caloriesMin + diffKcal),
+      caloriesMax: Math.max(30, activeDraftResult.caloriesMax + diffKcal),
       macros: {
-        ...draftResult.macros,
-        fatG: Math.max(0, +(draftResult.macros.fatG + diffFatG).toFixed(1)),
+        ...activeDraftResult.macros,
+        fatG: Math.max(0, +(activeDraftResult.macros.fatG + diffFatG).toFixed(1)),
       },
       smartClarifier: {
-        ...draftResult.smartClarifier,
+        ...activeDraftResult.smartClarifier,
         oilLevel: newLevel,
         appliedOilDeltaKcal: newDelta,
       },
@@ -288,10 +493,10 @@ export function MealScannerView({
   }
 
   function updateDraftItemGrams(idx: number, newGrams: number) {
-    if (!draftResult || !draftResult.items[idx]) return;
-    const target = draftResult.items[idx];
+    if (!activeDraftResult || !activeDraftResult.items[idx]) return;
+    const target = activeDraftResult.items[idx];
     const ratio = newGrams / Math.max(1, target.grams);
-    const updatedItems = draftResult.items.map((it, i) =>
+    const updatedItems = activeDraftResult.items.map((it, i) =>
       i !== idx
         ? it
         : {
@@ -312,53 +517,26 @@ export function MealScannerView({
     const deltaFib = updatedItems[idx].fiberG - target.fiberG;
     const deltaSod = updatedItems[idx].sodiumMg - target.sodiumMg;
 
-    setDraftResult({
-      ...draftResult,
+    setActiveDraft({
+      ...activeDraftResult,
       items: updatedItems,
-      caloriesCentral: Math.max(10, draftResult.caloriesCentral + deltaKcal),
-      caloriesMin: Math.max(10, draftResult.caloriesMin + deltaKcal),
-      caloriesMax: Math.max(20, draftResult.caloriesMax + deltaKcal),
+      caloriesCentral: Math.max(10, activeDraftResult.caloriesCentral + deltaKcal),
+      caloriesMin: Math.max(10, activeDraftResult.caloriesMin + deltaKcal),
+      caloriesMax: Math.max(20, activeDraftResult.caloriesMax + deltaKcal),
       macros: {
-        ...draftResult.macros,
-        proteinG: Math.max(0, +(draftResult.macros.proteinG + deltaP).toFixed(1)),
-        carbsG: Math.max(0, +(draftResult.macros.carbsG + deltaC).toFixed(1)),
-        fatG: Math.max(0, +(draftResult.macros.fatG + deltaF).toFixed(1)),
-        fiberG: Math.max(0, +(draftResult.macros.fiberG + deltaFib).toFixed(1)),
-        sodiumMg: Math.max(0, draftResult.macros.sodiumMg + deltaSod),
+        ...activeDraftResult.macros,
+        proteinG: Math.max(0, +(activeDraftResult.macros.proteinG + deltaP).toFixed(1)),
+        carbsG: Math.max(0, +(activeDraftResult.macros.carbsG + deltaC).toFixed(1)),
+        fatG: Math.max(0, +(activeDraftResult.macros.fatG + deltaF).toFixed(1)),
+        fiberG: Math.max(0, +(activeDraftResult.macros.fiberG + deltaFib).toFixed(1)),
+        sodiumMg: Math.max(0, activeDraftResult.macros.sodiumMg + deltaSod),
       },
     });
   }
 
   function saveDraftToJournal() {
-    if (!draftResult) return;
-    const nowIso = new Date().toISOString();
-    const newMeal: MealEntry = {
-      id: `meal-${Date.now()}`,
-      createdAt: nowIso,
-      dateKey: todayDateKey,
-      ...draftResult,
-      revisions: [
-        {
-          revisionId: `rev-${Date.now()}`,
-          createdAt: nowIso,
-          userNotes: draftResult.userNotes,
-          plateDiameterCm: draftResult.plateDiameterCm,
-          portionEatenPct: draftResult.portionEatenPct,
-          oilLevel: draftResult.smartClarifier.oilLevel,
-          caloriesCentral: draftResult.caloriesCentral,
-          caloriesMin: draftResult.caloriesMin,
-          caloriesMax: draftResult.caloriesMax,
-          macros: draftResult.macros,
-          summaryFr: draftResult.summaryFr,
-        },
-      ],
-    };
-    onSaveMeal(newMeal);
-    setSavedToast(`"${newMeal.dishTitle}" enregistré dans votre journal & galerie photo !`);
-    setDraftResult(null);
-    setPhotoDataUrl("");
-    setUserNotes("");
-    setTimeout(() => setSavedToast(null), 4000);
+    if (!activeDraftResult) return;
+    commitMealDraft(activeDraftResult);
   }
 
   async function handleReanalyzeSavedMeal() {
@@ -657,88 +835,296 @@ export function MealScannerView({
           </div>
         )}
 
-        {/* TEXTBOX EN DESSOUS DE LA PHOTO OU EN MODE ÉCRIT GRATUIT */}
-        <div className="space-y-1.5">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <label
-              htmlFor="meal-user-notes"
-              className="block text-xs font-semibold text-emerald-300"
-            >
-              {scannerTab === "text"
-                ? "Décrivez votre repas par écrit (100 % gratuit, illimité) :"
-                : "Informations supplémentaires sur le plat (en dessous de la photo) :"}
-            </label>
-            {scannerTab === "text" && (
-              <button
-                type="button"
-                onClick={() => {
-                  const sample = "deux oeuf dur et des bacon en morceau";
-                  setUserNotes(sample);
-                  void runAnalysis(undefined, sample);
-                }}
-                className="rounded-lg border border-emerald-400/35 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-200 hover:bg-emerald-500/20"
-              >
-                Exemple : &quot;deux oeuf dur et des bacon en morceau&quot;
-              </button>
-            )}
-          </div>
-          <textarea
-            id="meal-user-notes"
-            rows={scannerTab === "text" ? 4 : 3}
-            value={userNotes}
-            onChange={(e) => setUserNotes(e.target.value)}
-            placeholder={
-              scannerTab === "text"
-                ? "Ex : deux oeuf dur et des bacon en morceau, ou 150g poulet grillé, 160g riz basmati, brocoli..."
-                : "Ex : cuit avec 1 c.à.s d'huile d'olive, crème légère dans la sauce, 150 g de poulet, j'ai mangé les 3/4 de l'assiette..."
-            }
-            className="w-full rounded-xl bg-slate-950/90 border border-slate-700 focus:border-emerald-400 outline-none p-3 text-sm text-white placeholder:text-slate-500"
-          />
-        </div>
+        {scannerTab === "text" ? (() => {
+          const activeSlotSpec =
+            SCANNER_SLOT_ORDER.find((s) => s.key === mealType) ?? SCANNER_SLOT_ORDER[1];
+          const activeFastingStatus = fastingSlotStatuses[mealType];
+          const activeSlotMeals = todayMealsBySlot[mealType];
+          const isSlotBlockedByFast =
+            activeFastingStatus.isFastedSlot &&
+            activeSlotMeals.length === 0 &&
+            !overrideFastedBySlot[mealType];
+          const fastedSlotsList = SCANNER_SLOT_ORDER.filter(
+            (s) => fastingSlotStatuses[s.key].isFastedSlot
+          );
 
-        {/* Paramètres d'échelle & repas */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-          <div>
-            <label className="text-slate-400 block mb-1">Moment du repas</label>
-            <select
-              value={mealType}
-              onChange={(e) => setMealType(e.target.value as MealType)}
-              className="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-white"
-            >
-              <option value="breakfast">Petit-déjeuner</option>
-              <option value="lunch">Déjeuner</option>
-              <option value="snack">Collation / Goûter</option>
-              <option value="dinner">Dîner</option>
-            </select>
-          </div>
-          <div>
-            <label className="text-slate-400 block mb-1">
-              Taille assiette : <strong className="text-white">{plateDiameterCm} cm</strong>
-            </label>
-            <input
-              type="range"
-              min={20}
-              max={32}
-              value={plateDiameterCm}
-              onChange={(e) => setPlateDiameterCm(Number(e.target.value))}
-              className="w-full accent-emerald-400"
-            />
-          </div>
-          <div>
-            <label className="text-slate-400 block mb-1">
-              Portion mangée : <strong className="text-white">{portionEatenPct}%</strong>
-            </label>
-            <input
-              type="range"
-              min={25}
-              max={150}
-              step={5}
-              value={portionEatenPct}
-              onChange={(e) => setPortionEatenPct(Number(e.target.value))}
-              className="w-full accent-emerald-400"
-            />
-          </div>
-        </div>
+          return (
+            <div className="space-y-3">
+              {fastedSlotsList.length > 0 && (
+                <div className="rounded-xl border border-violet-400/30 bg-violet-500/10 px-3 py-2 text-xs text-violet-100">
+                  Jeûne <strong>{fastedSlotsList[0] ? fastingSlotStatuses[fastedSlotsList[0].key].protocolBadge : ""}</strong> actif
+                  {fastedSlotsList[0] && fastingSlotStatuses[fastedSlotsList[0].key].eatingWindowLabel
+                    ? ` (${fastingSlotStatuses[fastedSlotsList[0].key].eatingWindowLabel})`
+                    : ""}{" "}
+                  · <strong>{fastedSlotsList.map((s) => s.label).join(", ")}</strong> automatiquement marqué{" "}
+                  <strong>Néant (0 kcal)</strong>. Chaque repas conserve son propre texte sans se copier sur les autres.
+                </div>
+              )}
+
+              <div className="grid grid-cols-4 gap-2">
+                {SCANNER_SLOT_ORDER.map((slot) => {
+                  const slotStatus = fastingSlotStatuses[slot.key];
+                  const slotSavedMeals = todayMealsBySlot[slot.key];
+                  const slotKcal = slotSavedMeals.reduce(
+                    (sum, m) => sum + Math.round(m.caloriesCentral),
+                    0
+                  );
+                  const slotHasDraft = textNotesBySlot[slot.key].trim().length > 0;
+                  const slotIsFasted =
+                    slotStatus.isFastedSlot &&
+                    slotSavedMeals.length === 0 &&
+                    !overrideFastedBySlot[slot.key];
+                  const isSelected = mealType === slot.key;
+
+                  const subLabel =
+                    slotSavedMeals.length > 0
+                      ? `${slotKcal} kcal`
+                      : slotIsFasted
+                        ? "Néant (0)"
+                        : slotHasDraft
+                          ? "Brouillon…"
+                          : "À saisir";
+
+                  return (
+                    <button
+                      key={slot.key}
+                      type="button"
+                      onClick={() => {
+                        setMealType(slot.key);
+                        setErrorMsg(null);
+                      }}
+                      className={`flex flex-col items-center justify-center rounded-xl py-2 px-1.5 text-center transition ${
+                        isSelected
+                          ? "bg-emerald-500 text-slate-950 shadow-sm"
+                          : slotIsFasted
+                            ? "border border-violet-400/35 bg-violet-500/10 text-violet-200 hover:border-violet-400"
+                            : slotSavedMeals.length > 0
+                              ? "border border-emerald-400/40 bg-emerald-500/10 text-emerald-200 hover:border-emerald-400"
+                              : "border border-slate-700 bg-slate-900/75 text-slate-300 hover:border-slate-500"
+                      }`}
+                    >
+                      <span className="text-xs font-extrabold">{slot.shortLabel}</span>
+                      <span
+                        className={`text-[10px] font-bold mt-0.5 tabular-nums ${
+                          isSelected
+                            ? "text-slate-900"
+                            : slotIsFasted
+                              ? "text-violet-300"
+                              : slotSavedMeals.length > 0
+                                ? "text-emerald-300"
+                                : slotHasDraft
+                                  ? "text-amber-300"
+                                  : "text-slate-400"
+                        }`}
+                      >
+                        {subLabel}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {activeSlotMeals.length > 0 && (
+                <div className="space-y-1.5 rounded-xl border border-emerald-400/30 bg-slate-950/75 p-3">
+                  <div className="flex items-center justify-between text-xs font-bold text-emerald-300">
+                    <span>Déjà enregistré aujourd&apos;hui dans {activeSlotSpec.label}</span>
+                    <span className="tabular-nums">
+                      {activeSlotMeals.reduce((s, m) => s + Math.round(m.caloriesCentral), 0)} kcal
+                    </span>
+                  </div>
+                  <div className="space-y-1.5">
+                    {activeSlotMeals.map((meal) => (
+                      <div
+                        key={meal.id}
+                        className="flex items-center justify-between gap-2 rounded-lg border border-slate-800 bg-slate-900/90 px-3 py-2 text-xs"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate font-semibold text-white">
+                            {meal.userNotes?.trim() || meal.dishTitle}
+                          </p>
+                          <p className="text-[11px] text-slate-400 tabular-nums">
+                            {meal.caloriesCentral} kcal · P {meal.macros.proteinG}g · G {meal.macros.carbsG}g · L {meal.macros.fatG}g
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          aria-label={`Supprimer ${meal.dishTitle}`}
+                          onClick={() => onDeleteMeal(meal.id)}
+                          className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-500/15 hover:text-rose-300 transition shrink-0"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {isSlotBlockedByFast ? (
+                <div className="space-y-2.5 rounded-2xl border border-violet-400/35 bg-slate-950/85 p-4 text-xs">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="font-extrabold text-white text-sm">
+                      {activeSlotSpec.label} : Néant (0 kcal)
+                    </p>
+                    <span className="rounded-full bg-violet-500/20 px-2.5 py-0.5 text-[10px] font-extrabold text-violet-200">
+                      {activeFastingStatus.pillBadgeFr ?? "Jeûne actif"}
+                    </span>
+                  </div>
+                  <p className="text-slate-300 leading-relaxed">
+                    {activeFastingStatus.reasonFr} Vous n&apos;avez rien à saisir ici : les autres créneaux restent totalement indépendants.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setOverrideFastedBySlot((prev) => ({ ...prev, [mealType]: true }))
+                    }
+                    className="rounded-xl border border-slate-600/70 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:border-emerald-400"
+                  >
+                    J&apos;ai quand même mangé sur ce créneau
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div className="space-y-1.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <label
+                        htmlFor="meal-user-notes"
+                        className="block text-xs font-semibold text-emerald-300"
+                      >
+                        Repas pour : {activeSlotSpec.label} (100 % gratuit, indépendant des autres repas)
+                      </label>
+                      {activeNotes.trim().length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTextNotesBySlot((prev) => ({ ...prev, [mealType]: "" }));
+                            setTextDraftBySlot((prev) => ({ ...prev, [mealType]: null }));
+                            setErrorMsg(null);
+                          }}
+                          className="text-[11px] font-semibold text-slate-400 hover:text-rose-300"
+                        >
+                          Effacer ce repas
+                        </button>
+                      )}
+                    </div>
+                    <textarea
+                      id="meal-user-notes"
+                      rows={4}
+                      value={activeNotes}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setTextNotesBySlot((prev) => ({ ...prev, [mealType]: val }));
+                        setTextDraftBySlot((prev) => {
+                          const existing = prev[mealType];
+                          if (existing && existing.userNotes.trim() !== val.trim()) {
+                            return { ...prev, [mealType]: null };
+                          }
+                          return prev;
+                        });
+                      }}
+                      placeholder={activeSlotSpec.placeholder}
+                      className="w-full rounded-xl bg-slate-950/90 border border-slate-700 focus:border-emerald-400 outline-none p-3 text-sm text-white placeholder:text-slate-500"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                    <div>
+                      <label className="text-slate-400 block mb-1">
+                        Taille assiette : <strong className="text-white">{plateDiameterCm} cm</strong>
+                      </label>
+                      <input
+                        type="range"
+                        min={20}
+                        max={32}
+                        value={plateDiameterCm}
+                        onChange={(e) => setPlateDiameterCm(Number(e.target.value))}
+                        className="w-full accent-emerald-400"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-slate-400 block mb-1">
+                        Portion mangée : <strong className="text-white">{portionEatenPct}%</strong>
+                      </label>
+                      <input
+                        type="range"
+                        min={25}
+                        max={150}
+                        step={5}
+                        value={portionEatenPct}
+                        onChange={(e) => setPortionEatenPct(Number(e.target.value))}
+                        className="w-full accent-emerald-400"
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          );
+        })() : (
+          <>
+            {/* TEXTBOX EN DESSOUS DE LA PHOTO */}
+            <div className="space-y-1.5">
+              <label
+                htmlFor="meal-user-notes"
+                className="block text-xs font-semibold text-emerald-300"
+              >
+                Informations supplémentaires sur le plat (en dessous de la photo) :
+              </label>
+              <textarea
+                id="meal-user-notes"
+                rows={3}
+                value={userNotes}
+                onChange={(e) => setUserNotes(e.target.value)}
+                placeholder="Ex : cuit avec 1 c.à.s d'huile d'olive, crème légère dans la sauce, 150 g de poulet, j'ai mangé les 3/4 de l'assiette..."
+                className="w-full rounded-xl bg-slate-950/90 border border-slate-700 focus:border-emerald-400 outline-none p-3 text-sm text-white placeholder:text-slate-500"
+              />
+            </div>
+
+            {/* Paramètres d'échelle & repas */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+              <div>
+                <label className="text-slate-400 block mb-1">Moment du repas</label>
+                <select
+                  value={mealType}
+                  onChange={(e) => setMealType(e.target.value as MealType)}
+                  className="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-white"
+                >
+                  <option value="breakfast">Petit-déjeuner</option>
+                  <option value="lunch">Déjeuner</option>
+                  <option value="snack">Collation / Goûter</option>
+                  <option value="dinner">Dîner</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-slate-400 block mb-1">
+                  Taille assiette : <strong className="text-white">{plateDiameterCm} cm</strong>
+                </label>
+                <input
+                  type="range"
+                  min={20}
+                  max={32}
+                  value={plateDiameterCm}
+                  onChange={(e) => setPlateDiameterCm(Number(e.target.value))}
+                  className="w-full accent-emerald-400"
+                />
+              </div>
+              <div>
+                <label className="text-slate-400 block mb-1">
+                  Portion mangée : <strong className="text-white">{portionEatenPct}%</strong>
+                </label>
+                <input
+                  type="range"
+                  min={25}
+                  max={150}
+                  step={5}
+                  value={portionEatenPct}
+                  onChange={(e) => setPortionEatenPct(Number(e.target.value))}
+                  className="w-full accent-emerald-400"
+                />
+              </div>
+            </div>
+          </>
+        )}
 
         {errorMsg && (
           <div className="rounded-xl bg-rose-500/15 border border-rose-400/40 p-3 text-xs text-rose-200">
@@ -752,44 +1138,69 @@ export function MealScannerView({
           </div>
         )}
 
-        <button
-          type="button"
-          onClick={() => void runAnalysis()}
-          disabled={analyzing}
-          className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-sm transition disabled:opacity-60"
-        >
-          <Sparkles className={`w-4 h-4 ${analyzing ? "animate-spin" : ""}`} />
-          {analyzing
-            ? scannerTab === "text"
-              ? "Estimation Ciqual gratuite en cours..."
-              : "Analyse Vision + Ciqual en cours..."
-            : scannerTab === "text"
-              ? "Estimer gratuitement les calories & macros"
-              : "Analyser les calories, macros & santé"}
-        </button>
+        {scannerTab === "text" ? (
+          !(
+            fastingSlotStatuses[mealType].isFastedSlot &&
+            todayMealsBySlot[mealType].length === 0 &&
+            !overrideFastedBySlot[mealType]
+          ) && (
+            <div className="flex flex-wrap items-center gap-2.5">
+              <button
+                type="button"
+                onClick={() => void saveWrittenSlotDirectly()}
+                disabled={analyzing}
+                className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-sm transition disabled:opacity-60"
+              >
+                <Check className="w-4 h-4" />
+                {analyzing
+                  ? "Enregistrement..."
+                  : `Enregistrer (${SCANNER_SLOT_ORDER.find((s) => s.key === mealType)?.shortLabel ?? mealType})`}
+              </button>
+              <button
+                type="button"
+                onClick={() => void runAnalysis()}
+                disabled={analyzing}
+                className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl border border-emerald-400/50 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-200 font-bold text-sm transition disabled:opacity-60"
+              >
+                <Sparkles className={`w-4 h-4 ${analyzing ? "animate-spin" : ""}`} />
+                {analyzing ? "Estimation Ciqual gratuite..." : "Estimer avant (Gratuit)"}
+              </button>
+            </div>
+          )
+        ) : (
+          <button
+            type="button"
+            onClick={() => void runAnalysis()}
+            disabled={analyzing}
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-sm transition disabled:opacity-60"
+          >
+            <Sparkles className={`w-4 h-4 ${analyzing ? "animate-spin" : ""}`} />
+            {analyzing ? "Analyse Vision + Ciqual en cours..." : "Analyser les calories, macros & santé"}
+          </button>
+        )}
       </div>
 
       {/* Résultat complet de l'analyse en cours */}
-      {draftResult && (
+      {activeDraftResult && (
         <div className="vp-card p-4 sm:p-6 space-y-4 border-emerald-500/40">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <span className="text-[11px] uppercase tracking-wide text-emerald-300 font-semibold">
-                {draftResult.analysisProvider === "openai-vision"
+                {activeDraftResult.analysisProvider === "openai-vision"
                   ? "OpenAI Vision + Ancrage ANSES Ciqual"
-                  : draftResult.analysisProvider === "openai-text"
+                  : activeDraftResult.analysisProvider === "openai-text"
                     ? "Estimation gratuite par écrit + ANSES Ciqual"
-                    : "Calcul gratuit ANSES Ciqual"} · Confiance {Math.round(draftResult.confidence * 100)}%
+                    : "Calcul gratuit ANSES Ciqual"} · Confiance {Math.round(activeDraftResult.confidence * 100)}%
               </span>
-              <h3 className="text-xl font-bold text-white mt-0.5">{draftResult.dishTitle}</h3>
-              <p className="text-xs text-slate-300 mt-1">{draftResult.summaryFr}</p>
+              <h3 className="text-xl font-bold text-white mt-0.5">{activeDraftResult.dishTitle}</h3>
+              <p className="text-xs text-slate-300 mt-1">{activeDraftResult.summaryFr}</p>
             </div>
             <div className="text-right">
               <div className="text-2xl font-bold text-emerald-300 tabular-nums">
-                {draftResult.caloriesCentral} kcal
+                {activeDraftResult.caloriesCentral} kcal
               </div>
               <div className="text-xs text-slate-400 tabular-nums">
-                Fourchette honnête : {draftResult.caloriesMin} – {draftResult.caloriesMax} kcal
+                Fourchette honnête : {activeDraftResult.caloriesMin} – {activeDraftResult.caloriesMax} kcal
               </div>
             </div>
           </div>
@@ -798,7 +1209,7 @@ export function MealScannerView({
             const proj = computeBmrDeficitBreakdown({
               bmrKcal,
               totalExpenditureKcal,
-              intakeKcal: todayIntakeKcal + draftResult.caloriesCentral,
+              intakeKcal: todayIntakeKcal + activeDraftResult.caloriesCentral,
             });
             return (
               <div className="rounded-xl border border-violet-400/30 bg-violet-500/10 p-3 text-xs space-y-1">
@@ -816,7 +1227,7 @@ export function MealScannerView({
                 </div>
                 <p className="text-[11px] text-slate-300">
                   Total journée si ajouté :{" "}
-                  <strong className="text-white">{todayIntakeKcal + draftResult.caloriesCentral} kcal</strong> · Écart vs MB seul :{" "}
+                  <strong className="text-white">{todayIntakeKcal + activeDraftResult.caloriesCentral} kcal</strong> · Écart vs MB seul :{" "}
                   <strong className="text-violet-200">
                     {proj.balanceVsBmrKcal >= 0 ? "+" : ""}
                     {proj.balanceVsBmrKcal} kcal
@@ -830,7 +1241,7 @@ export function MealScannerView({
           {/* Clarificateur rapide 1-clic (Huiles & Sauces invisibles) */}
           <div className="rounded-xl bg-slate-900/90 border border-slate-800 p-3 space-y-2">
             <p className="text-xs font-medium text-sky-200">
-              {draftResult.smartClarifier.questionFr}
+              {activeDraftResult.smartClarifier.questionFr}
             </p>
             <div className="flex flex-wrap gap-2">
               {[
@@ -843,7 +1254,7 @@ export function MealScannerView({
                   type="button"
                   onClick={() => applyQuickOilAdjustment(opt.id)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
-                    draftResult.smartClarifier.oilLevel === opt.id
+                    activeDraftResult.smartClarifier.oilLevel === opt.id
                       ? "bg-emerald-500 text-slate-950 font-semibold"
                       : "bg-slate-800 text-slate-300 hover:bg-slate-700"
                   }`}
@@ -858,54 +1269,54 @@ export function MealScannerView({
           <div className="grid grid-cols-3 sm:grid-cols-6 gap-2.5 text-center text-xs">
             <div className="rounded-xl bg-slate-900 p-2.5">
               <span className="text-slate-400 block">Protéines</span>
-              <strong className="text-sm text-emerald-300">{draftResult.macros.proteinG} g</strong>
+              <strong className="text-sm text-emerald-300">{activeDraftResult.macros.proteinG} g</strong>
             </div>
             <div className="rounded-xl bg-slate-900 p-2.5">
               <span className="text-slate-400 block">Glucides</span>
-              <strong className="text-sm text-sky-300">{draftResult.macros.carbsG} g</strong>
+              <strong className="text-sm text-sky-300">{activeDraftResult.macros.carbsG} g</strong>
             </div>
             <div className="rounded-xl bg-slate-900 p-2.5">
               <span className="text-slate-400 block">Lipides</span>
-              <strong className="text-sm text-amber-300">{draftResult.macros.fatG} g</strong>
+              <strong className="text-sm text-amber-300">{activeDraftResult.macros.fatG} g</strong>
             </div>
             <div className="rounded-xl bg-slate-900 p-2.5">
               <span className="text-slate-400 block">Fibres</span>
-              <strong className="text-sm text-lime-300">{draftResult.macros.fiberG} g</strong>
+              <strong className="text-sm text-lime-300">{activeDraftResult.macros.fiberG} g</strong>
             </div>
             <div className="rounded-xl bg-slate-900 p-2.5">
               <span className="text-slate-400 block">
                 Sodium <InfoTip term="sodium_oms" />
               </span>
-              <strong className="text-sm text-rose-300">{draftResult.macros.sodiumMg} mg</strong>
+              <strong className="text-sm text-rose-300">{activeDraftResult.macros.sodiumMg} mg</strong>
             </div>
             <div className="rounded-xl bg-slate-900 p-2.5">
               <span className="text-slate-400 block">
                 NOVA <InfoTip term="nova" /> · CG <InfoTip term="glycemic_load" />
               </span>
               <strong className="text-sm text-white">
-                {draftResult.novaGroup} · {draftResult.glycemicLoad}
+                {activeDraftResult.novaGroup} · {activeDraftResult.glycemicLoad}
               </strong>
             </div>
           </div>
 
           {/* Micronutriments */}
           <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 text-[11px] text-slate-300 bg-slate-900/50 rounded-xl p-3">
-            <span>Fer : <strong>{draftResult.micronutrients.ironMg} mg</strong></span>
-            <span>Magnésium : <strong>{draftResult.micronutrients.magnesiumMg} mg</strong></span>
-            <span>Calcium : <strong>{draftResult.micronutrients.calciumMg} mg</strong></span>
-            <span>Potassium : <strong>{draftResult.micronutrients.potassiumMg} mg</strong></span>
-            <span>Vit. C : <strong>{draftResult.micronutrients.vitCMg} mg</strong></span>
-            <span>Vit. D : <strong>{draftResult.micronutrients.vitDUg} µg</strong></span>
+            <span>Fer : <strong>{activeDraftResult.micronutrients.ironMg} mg</strong></span>
+            <span>Magnésium : <strong>{activeDraftResult.micronutrients.magnesiumMg} mg</strong></span>
+            <span>Calcium : <strong>{activeDraftResult.micronutrients.calciumMg} mg</strong></span>
+            <span>Potassium : <strong>{activeDraftResult.micronutrients.potassiumMg} mg</strong></span>
+            <span>Vit. C : <strong>{activeDraftResult.micronutrients.vitCMg} mg</strong></span>
+            <span>Vit. D : <strong>{activeDraftResult.micronutrients.vitDUg} µg</strong></span>
           </div>
 
           {/* Détail ingrédients éditable */}
-          {draftResult.items.length > 0 && (
+          {activeDraftResult.items.length > 0 && (
             <div className="space-y-2">
               <p className="text-xs font-semibold text-slate-300">
                 Ingrédients détectés (ajustez les grammes si vous connaissez le poids exact) :
               </p>
               <div className="space-y-1.5">
-                {draftResult.items.map((item, idx) => (
+                {activeDraftResult.items.map((item, idx) => (
                   <div
                     key={`${item.name}-${idx}`}
                     className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-900/80 px-3 py-2 text-xs"
@@ -954,7 +1365,7 @@ export function MealScannerView({
 
           <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
             <span className="text-[11px] text-slate-400">
-              Satiété <InfoTip term="satiety_score" /> : {draftResult.satietyScore}/100 · Score Santé : {draftResult.healthScore}/100
+              Satiété <InfoTip term="satiety_score" /> : {activeDraftResult.satietyScore}/100 · Score Santé : {activeDraftResult.healthScore}/100
             </span>
             <button
               type="button"
@@ -962,7 +1373,7 @@ export function MealScannerView({
               className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-sm transition"
             >
               <CheckCircle2 className="w-4 h-4" />
-              Enregistrer dans le journal &amp; la galerie photo
+              Enregistrer dans le journal ({SCANNER_SLOT_ORDER.find((s) => s.key === activeDraftResult.mealType)?.shortLabel ?? activeDraftResult.mealType})
             </button>
           </div>
         </div>

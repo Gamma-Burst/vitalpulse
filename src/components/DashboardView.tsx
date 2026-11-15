@@ -17,6 +17,7 @@ import {
   ScanBarcode,
   SlidersHorizontal,
   Sparkles,
+  Trash2,
   Trophy,
   Watch,
 } from "lucide-react";
@@ -46,6 +47,8 @@ import {
   computeFastingLiveStatus,
   formatAllowedDurationFr,
   formatClockHm,
+  getDefaultActiveMealSlot,
+  getFastingMealSlotStatuses,
 } from "@/lib/fasting-engine";
 import {
   buildWeeklyAdherenceStrip,
@@ -105,8 +108,63 @@ export interface DashboardViewProps {
   onOpenGoalsModal?: () => void;
   onToggleChallengeToday?: (id: string) => void;
   onSaveMeal?: (meal: MealEntry) => void;
+  todayMeals?: MealEntry[];
+  onDeleteMeal?: (mealId: string) => void;
   onOpenWrittenMeal?: () => void;
 }
+
+type WrittenEstimatePayload = Omit<
+  MealEntry,
+  "id" | "createdAt" | "dateKey" | "mealType" | "userNotes" | "plateDiameterCm" | "portionEatenPct" | "revisions"
+>;
+
+const MEAL_SLOT_ORDER: ReadonlyArray<{ key: MealType; shortLabel: string; label: string; placeholder: string }> = [
+  {
+    key: "breakfast",
+    shortLabel: "Petit-déj",
+    label: "Petit-déjeuner",
+    placeholder: "Ex : deux œufs durs et des morceaux de bacon (ou 50g flocons d'avoine, skyr)",
+  },
+  {
+    key: "lunch",
+    shortLabel: "Déjeuner",
+    label: "Déjeuner",
+    placeholder: "Ex : 1 tartine demi gris et 4 tranches de salami à l'ail (ou 150g poulet, riz basmati)",
+  },
+  {
+    key: "snack",
+    shortLabel: "Collation",
+    label: "Collation",
+    placeholder: "Ex : 1 skyr, 1 pomme et 25 g d'amandes",
+  },
+  {
+    key: "dinner",
+    shortLabel: "Dîner",
+    label: "Dîner",
+    placeholder: "Ex : pavé de saumon 150 g, pommes de terre vapeur et haricots verts",
+  },
+];
+
+const EMPTY_SLOT_TEXTS: Record<MealType, string> = {
+  breakfast: "",
+  lunch: "",
+  snack: "",
+  dinner: "",
+};
+
+const EMPTY_SLOT_ESTIMATES: Record<MealType, WrittenEstimatePayload | null> = {
+  breakfast: null,
+  lunch: null,
+  snack: null,
+  dinner: null,
+};
+
+const EMPTY_SLOT_OVERRIDES: Record<MealType, boolean> = {
+  breakfast: false,
+  lunch: false,
+  snack: false,
+  dinner: false,
+};
 
 type ActiveSheetKind =
   | null
@@ -182,19 +240,27 @@ export function DashboardView({
   onOpenGoalsModal,
   onToggleChallengeToday,
   onSaveMeal,
+  todayMeals = [],
+  onDeleteMeal,
   onOpenWrittenMeal,
 }: DashboardViewProps) {
   const shouldReduceMotion = useReducedMotion();
   const [sheet, setSheet] = useState<ActiveSheetKind>(null);
   const [assietteModalTab, setAssietteModalTab] = useState<"text" | "photo" | "barcode">("text");
-  const [writtenNotesDraft, setWrittenNotesDraft] = useState("");
-  const [writtenMealType, setWrittenMealType] = useState<MealType>("breakfast");
-  const [writtenLoading, setWrittenLoading] = useState(false);
-  const [writtenEstimate, setWrittenEstimate] = useState<Omit<
-    MealEntry,
-    "id" | "createdAt" | "dateKey" | "mealType" | "userNotes" | "plateDiameterCm" | "portionEatenPct" | "revisions"
-  > | null>(null);
+  const [writtenDraftsBySlot, setWrittenDraftsBySlot] = useState<Record<MealType, string>>(EMPTY_SLOT_TEXTS);
+  const [writtenEstimatesBySlot, setWrittenEstimatesBySlot] = useState<
+    Record<MealType, WrittenEstimatePayload | null>
+  >(EMPTY_SLOT_ESTIMATES);
+  const [writtenEstimateSourceBySlot, setWrittenEstimateSourceBySlot] =
+    useState<Record<MealType, string>>(EMPTY_SLOT_TEXTS);
+  const [overrideFastedSlots, setOverrideFastedSlots] =
+    useState<Record<MealType, boolean>>(EMPTY_SLOT_OVERRIDES);
+  const [writtenMealType, setWrittenMealType] = useState<MealType>(() =>
+    getDefaultActiveMealSlot(fasting, profile.preferredFasting)
+  );
+  const [writtenLoadingSlot, setWrittenLoadingSlot] = useState<MealType | null>(null);
   const [writtenError, setWrittenError] = useState<string | null>(null);
+  const [writtenSavedBanner, setWrittenSavedBanner] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
   const [waterGoalDraft, setWaterGoalDraft] = useState<string>(
     String(profile.dailyWaterGoalMl ?? anthro.targets.waterMl)
@@ -230,33 +296,59 @@ export function DashboardView({
     }
   }, [profile.dailyCalorieGoalOverride, anthro.targetIntakeKcal, sheet]);
 
+  const fastingSlotStatuses = useMemo(
+    () => getFastingMealSlotStatuses(fasting, profile.preferredFasting),
+    [fasting, profile.preferredFasting]
+  );
+
+  const todayMealsBySlot = useMemo(() => {
+    const grouped: Record<MealType, MealEntry[]> = {
+      breakfast: [],
+      lunch: [],
+      snack: [],
+      dinner: [],
+    };
+    for (const m of todayMeals) {
+      if (grouped[m.mealType]) {
+        grouped[m.mealType].push(m);
+      }
+    }
+    return grouped;
+  }, [todayMeals]);
+
   useEffect(() => {
     if (!sheet) {
       setSheetFeedback(null);
       setWrittenError(null);
+      setWrittenSavedBanner(null);
     } else if (sheet === "barcode_meals") {
       setAssietteModalTab("text");
     }
   }, [sheet]);
 
-  async function runQuickWrittenEstimate(customText?: string) {
-    const notes = (customText ?? writtenNotesDraft).trim();
+  async function computeWrittenEstimateForSlot(
+    slot: MealType,
+    customText?: string
+  ): Promise<WrittenEstimatePayload | null> {
+    const notes = (customText ?? writtenDraftsBySlot[slot]).trim();
     if (!notes) {
-      setWrittenError("Écrivez ce que vous avez mangé (ex : deux œufs durs et du bacon en morceaux).");
-      return;
+      setWrittenError("Écrivez ce que vous avez mangé sur ce créneau (ex : 1 tartine demi gris et 4 tranches de salami à l'ail).");
+      return null;
     }
-    setWrittenLoading(true);
+    setWrittenLoadingSlot(slot);
     setWrittenError(null);
+    setWrittenSavedBanner(null);
     const payload = {
       entryMode: "text",
       userNotes: notes,
-      mealType: writtenMealType,
+      mealType: slot,
       plateDiameterCm: 26,
       portionEatenPct: 100,
       specialMode: profile.specialMode,
       primaryGoal: profile.primaryGoal,
       allowVisionAi: false,
     };
+    let result: WrittenEstimatePayload;
     try {
       const res = await fetch("/api/analyze-meal", {
         method: "POST",
@@ -264,19 +356,55 @@ export function DashboardView({
         body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      setWrittenEstimate(data);
+      result = (await res.json()) as WrittenEstimatePayload;
     } catch {
-      const local = analyzeMealDeterministically({
+      result = analyzeMealDeterministically({
         userNotes: notes,
-        mealType: writtenMealType,
+        mealType: slot,
         plateDiameterCm: 26,
         portionEatenPct: 100,
       });
-      setWrittenEstimate(local);
     } finally {
-      setWrittenLoading(false);
+      setWrittenLoadingSlot(null);
     }
+    setWrittenEstimatesBySlot((prev) => ({ ...prev, [slot]: result }));
+    setWrittenEstimateSourceBySlot((prev) => ({ ...prev, [slot]: notes }));
+    return result;
+  }
+
+  async function saveWrittenMealForSlot(slot: MealType, customText?: string) {
+    const notes = (customText ?? writtenDraftsBySlot[slot]).trim();
+    if (!notes) {
+      setWrittenError("Écrivez ce que vous avez mangé avant d'enregistrer.");
+      return;
+    }
+    const existingEst =
+      writtenEstimateSourceBySlot[slot] === notes ? writtenEstimatesBySlot[slot] : null;
+    const est = existingEst ?? (await computeWrittenEstimateForSlot(slot, notes));
+    if (!est) return;
+
+    onSaveMeal?.({
+      id: `meal-txt-${Date.now()}`,
+      createdAt: new Date().toISOString(),
+      dateKey: todayBalance.dateKey,
+      mealType: slot,
+      userNotes: notes,
+      plateDiameterCm: 26,
+      portionEatenPct: 100,
+      ...est,
+      revisions: [],
+    });
+
+    const slotLabel =
+      MEAL_SLOT_ORDER.find((s) => s.key === slot)?.label ?? slot;
+    setWrittenDraftsBySlot((prev) => ({ ...prev, [slot]: "" }));
+    setWrittenEstimatesBySlot((prev) => ({ ...prev, [slot]: null }));
+    setWrittenEstimateSourceBySlot((prev) => ({ ...prev, [slot]: "" }));
+    setWrittenError(null);
+    triggerLightHaptic();
+    setWrittenSavedBanner(
+      `Enregistré dans ${slotLabel} : ${est.dishTitle} (~${est.caloriesCentral} kcal). Cliquez sur un autre repas ou sur Terminé.`
+    );
   }
 
   function finishSaveAndReturnHome(messageFr: string) {
@@ -417,6 +545,18 @@ export function DashboardView({
       setTodayStepsDraft(String(todayBalance.rawSteps));
     } else if (next === "energy") {
       setCalorieGoalDraft(String(profile.dailyCalorieGoalOverride ?? anthro.targetIntakeKcal));
+    } else if (next === "barcode_meals") {
+      setWrittenError(null);
+      setWrittenSavedBanner(null);
+      setAssietteModalTab("text");
+      const curStatus = fastingSlotStatuses[writtenMealType];
+      const hasActivityInCurrent =
+        writtenDraftsBySlot[writtenMealType].trim().length > 0 ||
+        todayMealsBySlot[writtenMealType].length > 0 ||
+        overrideFastedSlots[writtenMealType];
+      if (curStatus.isFastedSlot && !hasActivityInCurrent) {
+        setWrittenMealType(getDefaultActiveMealSlot(fasting, profile.preferredFasting));
+      }
     }
     setSheet(next);
   }
@@ -1972,189 +2112,365 @@ export function DashboardView({
             </button>
           </div>
 
-          {assietteModalTab === "text" && (
-            <div className="space-y-3 rounded-2xl border border-emerald-400/25 bg-emerald-500/5 p-3.5">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-xs font-bold text-white">
-                  Décrivez ce que vous mangez en français courant
-                </span>
-                <span className="rounded-full bg-emerald-500/20 px-2.5 py-0.5 text-[10px] font-extrabold text-emerald-300">
-                  100 % GRATUIT · ILLIMITÉ · ANSES CIQUAL
-                </span>
-              </div>
+          {assietteModalTab === "text" && (() => {
+            const activeSlotSpec =
+              MEAL_SLOT_ORDER.find((s) => s.key === writtenMealType) ?? MEAL_SLOT_ORDER[1];
+            const activeFastingStatus = fastingSlotStatuses[writtenMealType];
+            const activeSlotMeals = todayMealsBySlot[writtenMealType];
+            const activeSlotDraft = writtenDraftsBySlot[writtenMealType];
+            const activeSlotEstimate = writtenEstimatesBySlot[writtenMealType];
+            const isSlotBlockedByFast =
+              activeFastingStatus.isFastedSlot &&
+              activeSlotMeals.length === 0 &&
+              !overrideFastedSlots[writtenMealType];
+            const fastedSlotsList = MEAL_SLOT_ORDER.filter(
+              (s) => fastingSlotStatuses[s.key].isFastedSlot
+            );
+            const isBusy = writtenLoadingSlot === writtenMealType;
 
-              <div className="grid grid-cols-4 gap-1.5">
-                {(
-                  [
-                    ["breakfast", "Petit-déj"],
-                    ["lunch", "Déjeuner"],
-                    ["snack", "Collation"],
-                    ["dinner", "Dîner"],
-                  ] as const
-                ).map(([k, lbl]) => (
-                  <button
-                    key={k}
-                    type="button"
-                    onClick={() => setWrittenMealType(k)}
-                    className={`rounded-xl py-1.5 text-[11px] font-bold transition ${
-                      writtenMealType === k
-                        ? "bg-emerald-500 text-slate-950"
-                        : "border border-slate-600/50 bg-slate-900/60 text-slate-300"
-                    }`}
-                  >
-                    {lbl}
-                  </button>
-                ))}
-              </div>
-
-              <textarea
-                rows={2}
-                value={writtenNotesDraft}
-                onChange={(e) => setWrittenNotesDraft(e.target.value)}
-                placeholder="Ex : deux œufs durs et des bacon en morceau (ou 150g poulet grillé, riz basmati, brocoli)"
-                className="w-full rounded-xl border border-slate-600/70 bg-slate-950 px-3 py-2.5 text-sm text-white placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none"
-              />
-
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const ex = "deux oeuf dur et des bacon en morceau";
-                    setWrittenNotesDraft(ex);
-                    void runQuickWrittenEstimate(ex);
-                  }}
-                  className="rounded-xl border border-slate-600/70 bg-slate-900/80 px-2.5 py-1.5 text-[11px] font-semibold text-slate-200 hover:border-emerald-400"
-                >
-                  Essayer : &quot;deux oeuf dur et des bacon en morceau&quot;
-                </button>
-                <div className="flex items-center gap-2 ml-auto">
-                  {onOpenWrittenMeal && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSheet(null);
-                        onOpenWrittenMeal();
-                      }}
-                      className="rounded-xl border border-slate-600/70 px-3 py-2 text-[11px] font-bold text-slate-200 hover:border-cyan-400"
-                    >
-                      Vue complète →
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    disabled={writtenLoading}
-                    onClick={() => void runQuickWrittenEstimate()}
-                    className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-500 px-3.5 py-2 text-xs font-extrabold text-slate-950 hover:bg-emerald-400 disabled:opacity-60"
-                  >
-                    <Sparkles className="h-3.5 w-3.5" />
-                    {writtenLoading ? "Calcul..." : "Estimer (Gratuit)"}
-                  </button>
+            return (
+              <div className="space-y-3 rounded-2xl border border-emerald-400/25 bg-emerald-500/5 p-3.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-xs font-bold text-white">
+                    Saisie indépendante par repas (chaque repas garde son contenu)
+                  </span>
+                  <span className="rounded-full bg-emerald-500/20 px-2.5 py-0.5 text-[10px] font-extrabold text-emerald-300">
+                    100 % GRATUIT · ILLIMITÉ · ANSES CIQUAL
+                  </span>
                 </div>
-              </div>
 
-              {writtenError && (
-                <p className="text-xs font-semibold text-rose-300">{writtenError}</p>
-              )}
+                {fastedSlotsList.length > 0 && (
+                  <div className="rounded-xl border border-violet-400/30 bg-violet-500/10 px-3 py-2 text-[11px] text-violet-100 flex flex-wrap items-center justify-between gap-1.5">
+                    <span>
+                      Jeûne <strong>{fastedSlotsList[0] ? fastingSlotStatuses[fastedSlotsList[0].key].protocolBadge : ""}</strong> actif
+                      {fastedSlotsList[0] && fastingSlotStatuses[fastedSlotsList[0].key].eatingWindowLabel
+                        ? ` (${fastingSlotStatuses[fastedSlotsList[0].key].eatingWindowLabel})`
+                        : ""}{" "}
+                      · <strong>{fastedSlotsList.map((s) => s.label).join(", ")}</strong> automatiquement à{" "}
+                      <strong>Néant (0 kcal)</strong>
+                    </span>
+                  </div>
+                )}
 
-              {writtenEstimate && (() => {
-                const projectedIntake = todayBalance.intakeKcal + writtenEstimate.caloriesCentral;
-                const projectedBreakdown = computeBmrDeficitBreakdown({
-                  bmrKcal: anthro.bmrKcal,
-                  totalExpenditureKcal: todayBalance.totalExpenditureKcal,
-                  intakeKcal: projectedIntake,
-                });
-                return (
-                  <div className="space-y-3 rounded-2xl border border-emerald-400/35 bg-slate-950/90 p-3.5 text-xs">
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div>
-                        <p className="font-bold text-white text-sm">{writtenEstimate.dishTitle}</p>
-                        <p className="text-[11px] text-slate-400">
-                          {writtenEstimate.items
-                            .map((i) => `${i.name} (${i.grams} g · ${i.kcal} kcal)`)
-                            .join(" · ")}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-display text-xl font-extrabold text-emerald-300 tabular-nums">
-                          {writtenEstimate.caloriesCentral} kcal
-                        </p>
-                        <p className="text-[10px] text-slate-400 tabular-nums">
-                          Fourchette {writtenEstimate.caloriesMin}–{writtenEstimate.caloriesMax} kcal
-                        </p>
-                      </div>
-                    </div>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {MEAL_SLOT_ORDER.map((slot) => {
+                    const slotStatus = fastingSlotStatuses[slot.key];
+                    const slotSavedMeals = todayMealsBySlot[slot.key];
+                    const slotKcal = slotSavedMeals.reduce(
+                      (sum, m) => sum + Math.round(m.caloriesCentral),
+                      0
+                    );
+                    const slotHasDraft = writtenDraftsBySlot[slot.key].trim().length > 0;
+                    const slotIsFasted =
+                      slotStatus.isFastedSlot &&
+                      slotSavedMeals.length === 0 &&
+                      !overrideFastedSlots[slot.key];
+                    const isSelected = writtenMealType === slot.key;
 
-                    <div className="grid grid-cols-3 gap-2 text-center rounded-xl bg-slate-900/90 p-2 tabular-nums">
-                      <div>
-                        <span className="text-[10px] text-slate-400 block">Protéines</span>
-                        <strong className="text-emerald-300">{writtenEstimate.macros.proteinG} g</strong>
-                      </div>
-                      <div>
-                        <span className="text-[10px] text-slate-400 block">Glucides</span>
-                        <strong className="text-cyan-300">{writtenEstimate.macros.carbsG} g</strong>
-                      </div>
-                      <div>
-                        <span className="text-[10px] text-slate-400 block">Lipides</span>
-                        <strong className="text-amber-300">{writtenEstimate.macros.fatG} g</strong>
-                      </div>
-                    </div>
+                    const subLabel =
+                      slotSavedMeals.length > 0
+                        ? `${slotKcal} kcal`
+                        : slotIsFasted
+                          ? "Néant (0)"
+                          : slotHasDraft
+                            ? "Brouillon…"
+                            : "À saisir";
 
-                    {/* Impact Métabolisme de Base & Déficit */}
-                    <div className="rounded-xl border border-violet-400/25 bg-violet-500/10 p-2.5 space-y-1">
-                      <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
-                        <span className="font-bold text-violet-200">
-                          Impact Métabolisme de base ({anthro.bmrKcal} kcal) &amp; Déficit
-                        </span>
-                        <span className="font-extrabold text-cyan-300 tabular-nums">
-                          Déficit jour :{" "}
-                          {projectedBreakdown.netDeficitTotalKcal > 0
-                            ? `+${projectedBreakdown.netDeficitTotalKcal}`
-                            : projectedBreakdown.netDeficitTotalKcal}{" "}
-                          kcal
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-slate-300">
-                        Total journée avec ce repas :{" "}
-                        <strong className="text-white">{projectedIntake} kcal</strong> · Écart vs MB seul :{" "}
-                        <strong className="text-violet-200">
-                          {projectedBreakdown.balanceVsBmrKcal >= 0 ? "+" : ""}
-                          {projectedBreakdown.balanceVsBmrKcal} kcal
-                        </strong>{" "}
-                        · {projectedBreakdown.zoneLabelFr}
-                      </p>
-                    </div>
-
-                    {onSaveMeal && (
+                    return (
                       <button
+                        key={slot.key}
                         type="button"
                         onClick={() => {
-                          onSaveMeal({
-                            id: `meal-txt-${Date.now()}`,
-                            createdAt: new Date().toISOString(),
-                            dateKey: todayBalance.dateKey,
-                            mealType: writtenMealType,
-                            userNotes: writtenNotesDraft.trim(),
-                            plateDiameterCm: 26,
-                            portionEatenPct: 100,
-                            ...writtenEstimate,
-                            revisions: [],
-                          });
-                          const savedTitle = writtenEstimate.dishTitle;
-                          const savedKcal = writtenEstimate.caloriesCentral;
-                          setWrittenNotesDraft("");
-                          setWrittenEstimate(null);
-                          finishSaveAndReturnHome(`Repas ajouté gratuitement : ${savedTitle} (~${savedKcal} kcal).`);
+                          setWrittenMealType(slot.key);
+                          setWrittenError(null);
                         }}
-                        className="w-full rounded-xl bg-emerald-500 px-4 py-2.5 text-xs font-extrabold text-slate-950 hover:bg-emerald-400"
+                        className={`flex flex-col items-center justify-center rounded-xl py-1.5 px-1 text-center transition ${
+                          isSelected
+                            ? "bg-emerald-500 text-slate-950 shadow-sm"
+                            : slotIsFasted
+                              ? "border border-violet-400/35 bg-violet-500/10 text-violet-200 hover:border-violet-400"
+                              : slotSavedMeals.length > 0
+                                ? "border border-emerald-400/40 bg-emerald-500/10 text-emerald-200 hover:border-emerald-400"
+                                : "border border-slate-600/50 bg-slate-900/60 text-slate-300 hover:border-slate-500"
+                        }`}
                       >
-                        Ajouter ce repas au journal du jour ({writtenEstimate.caloriesCentral} kcal)
+                        <span className="text-[11px] font-extrabold leading-tight">
+                          {slot.shortLabel}
+                        </span>
+                        <span
+                          className={`text-[9px] font-bold leading-tight mt-0.5 tabular-nums ${
+                            isSelected
+                              ? "text-slate-900"
+                              : slotIsFasted
+                                ? "text-violet-300"
+                                : slotSavedMeals.length > 0
+                                  ? "text-emerald-300"
+                                  : slotHasDraft
+                                    ? "text-amber-300"
+                                    : "text-slate-400"
+                          }`}
+                        >
+                          {subLabel}
+                        </span>
                       </button>
-                    )}
+                    );
+                  })}
+                </div>
+
+                {writtenSavedBanner && (
+                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-400/40 bg-emerald-500/15 px-3 py-2 text-xs text-emerald-100">
+                    <span className="font-semibold flex-1 min-w-[180px]">{writtenSavedBanner}</span>
+                    <button
+                      type="button"
+                      onClick={() => finishSaveAndReturnHome(writtenSavedBanner)}
+                      className="rounded-lg bg-emerald-500 px-2.5 py-1 text-[11px] font-extrabold text-slate-950 hover:bg-emerald-400"
+                    >
+                      Terminé
+                    </button>
                   </div>
-                );
-              })()}
-            </div>
-          )}
+                )}
+
+                {activeSlotMeals.length > 0 && (
+                  <div className="space-y-1.5 rounded-xl border border-emerald-400/30 bg-slate-950/75 p-2.5">
+                    <div className="flex items-center justify-between text-[11px] font-bold text-emerald-300">
+                      <span>Enregistré aujourd&apos;hui dans {activeSlotSpec.label}</span>
+                      <span className="tabular-nums">
+                        {activeSlotMeals.reduce((s, m) => s + Math.round(m.caloriesCentral), 0)} kcal
+                      </span>
+                    </div>
+                    <div className="space-y-1.5">
+                      {activeSlotMeals.map((meal) => (
+                        <div
+                          key={meal.id}
+                          className="flex items-center justify-between gap-2 rounded-lg border border-slate-800 bg-slate-900/90 px-2.5 py-1.5 text-xs"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate font-semibold text-white">
+                              {meal.userNotes?.trim() || meal.dishTitle}
+                            </p>
+                            <p className="text-[10px] text-slate-400 tabular-nums">
+                              {meal.caloriesCentral} kcal · P {meal.macros.proteinG}g · G {meal.macros.carbsG}g · L {meal.macros.fatG}g
+                            </p>
+                          </div>
+                          {onDeleteMeal && (
+                            <button
+                              type="button"
+                              aria-label={`Supprimer ${meal.dishTitle}`}
+                              onClick={() => onDeleteMeal(meal.id)}
+                              className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-500/15 hover:text-rose-300 transition shrink-0"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {isSlotBlockedByFast ? (
+                  <div className="space-y-2.5 rounded-2xl border border-violet-400/35 bg-slate-950/85 p-3.5 text-xs">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="font-extrabold text-white text-sm">
+                        {activeSlotSpec.label} : Néant (0 kcal)
+                      </p>
+                      <span className="rounded-full bg-violet-500/20 px-2.5 py-0.5 text-[10px] font-extrabold text-violet-200">
+                        {activeFastingStatus.pillBadgeFr ?? "Jeûne actif"}
+                      </span>
+                    </div>
+                    <p className="text-slate-300 leading-relaxed">
+                      {activeFastingStatus.reasonFr} Vous n&apos;avez rien à enregistrer ici : vos autres repas restent complètement séparés.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setOverrideFastedSlots((prev) => ({
+                          ...prev,
+                          [writtenMealType]: true,
+                        }))
+                      }
+                      className="rounded-xl border border-slate-600/70 bg-slate-900 px-3 py-1.5 text-[11px] font-semibold text-slate-200 hover:border-emerald-400"
+                    >
+                      J&apos;ai quand même mangé sur ce créneau
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="font-bold text-emerald-300">
+                          Repas pour : {activeSlotSpec.label}
+                        </span>
+                        {activeSlotDraft.trim().length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setWrittenDraftsBySlot((prev) => ({ ...prev, [writtenMealType]: "" }));
+                              setWrittenEstimatesBySlot((prev) => ({ ...prev, [writtenMealType]: null }));
+                              setWrittenEstimateSourceBySlot((prev) => ({ ...prev, [writtenMealType]: "" }));
+                              setWrittenError(null);
+                            }}
+                            className="text-slate-400 hover:text-rose-300 font-semibold"
+                          >
+                            Effacer ce repas
+                          </button>
+                        )}
+                      </div>
+                      <textarea
+                        rows={2}
+                        value={activeSlotDraft}
+                        onChange={(e) => {
+                          const nextText = e.target.value;
+                          setWrittenDraftsBySlot((prev) => ({
+                            ...prev,
+                            [writtenMealType]: nextText,
+                          }));
+                          if (writtenEstimateSourceBySlot[writtenMealType] !== nextText.trim()) {
+                            setWrittenEstimatesBySlot((prev) => ({
+                              ...prev,
+                              [writtenMealType]: null,
+                            }));
+                          }
+                        }}
+                        placeholder={activeSlotSpec.placeholder}
+                        className="w-full rounded-xl border border-slate-600/70 bg-slate-950 px-3 py-2.5 text-sm text-white placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none"
+                      />
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      {onSaveMeal && (
+                        <button
+                          type="button"
+                          disabled={isBusy}
+                          onClick={() => void saveWrittenMealForSlot(writtenMealType)}
+                          className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-500 px-3.5 py-2 text-xs font-extrabold text-slate-950 hover:bg-emerald-400 disabled:opacity-60"
+                        >
+                          <Check className="h-3.5 w-3.5" />
+                          {isBusy ? "Enregistrement..." : `Enregistrer (${activeSlotSpec.shortLabel})`}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        disabled={isBusy}
+                        onClick={() => void computeWrittenEstimateForSlot(writtenMealType)}
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-400/50 bg-emerald-500/15 px-3 py-2 text-xs font-bold text-emerald-200 hover:bg-emerald-500/25 disabled:opacity-60"
+                      >
+                        <Sparkles className="h-3.5 w-3.5" />
+                        {isBusy ? "Calcul..." : "Estimer avant (Gratuit)"}
+                      </button>
+                      {onOpenWrittenMeal && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSheet(null);
+                            onOpenWrittenMeal();
+                          }}
+                          className="ml-auto rounded-xl border border-slate-600/70 px-3 py-2 text-[11px] font-bold text-slate-200 hover:border-cyan-400"
+                        >
+                          Vue complète →
+                        </button>
+                      )}
+                    </div>
+
+                    {writtenError && (
+                      <p className="text-xs font-semibold text-rose-300">{writtenError}</p>
+                    )}
+
+                    {activeSlotEstimate && (() => {
+                      const projectedIntake =
+                        todayBalance.intakeKcal + activeSlotEstimate.caloriesCentral;
+                      const projectedBreakdown = computeBmrDeficitBreakdown({
+                        bmrKcal: anthro.bmrKcal,
+                        totalExpenditureKcal: todayBalance.totalExpenditureKcal,
+                        intakeKcal: projectedIntake,
+                      });
+                      return (
+                        <div className="space-y-3 rounded-2xl border border-emerald-400/35 bg-slate-950/90 p-3.5 text-xs">
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <div>
+                              <p className="font-bold text-white text-sm">
+                                {activeSlotEstimate.dishTitle}
+                              </p>
+                              <p className="text-[11px] text-slate-400">
+                                {activeSlotEstimate.items
+                                  .map((i) => `${i.name} (${i.grams} g · ${i.kcal} kcal)`)
+                                  .join(" · ")}
+                              </p>
+                            </div>
+                            <div className="text-right">
+                              <p className="font-display text-xl font-extrabold text-emerald-300 tabular-nums">
+                                {activeSlotEstimate.caloriesCentral} kcal
+                              </p>
+                              <p className="text-[10px] text-slate-400 tabular-nums">
+                                Fourchette {activeSlotEstimate.caloriesMin}–{activeSlotEstimate.caloriesMax} kcal
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-3 gap-2 text-center rounded-xl bg-slate-900/90 p-2 tabular-nums">
+                            <div>
+                              <span className="text-[10px] text-slate-400 block">Protéines</span>
+                              <strong className="text-emerald-300">
+                                {activeSlotEstimate.macros.proteinG} g
+                              </strong>
+                            </div>
+                            <div>
+                              <span className="text-[10px] text-slate-400 block">Glucides</span>
+                              <strong className="text-cyan-300">
+                                {activeSlotEstimate.macros.carbsG} g
+                              </strong>
+                            </div>
+                            <div>
+                              <span className="text-[10px] text-slate-400 block">Lipides</span>
+                              <strong className="text-amber-300">
+                                {activeSlotEstimate.macros.fatG} g
+                              </strong>
+                            </div>
+                          </div>
+
+                          {/* Impact Métabolisme de Base & Déficit */}
+                          <div className="rounded-xl border border-violet-400/25 bg-violet-500/10 p-2.5 space-y-1">
+                            <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                              <span className="font-bold text-violet-200">
+                                Impact Métabolisme de base ({anthro.bmrKcal} kcal) &amp; Déficit
+                              </span>
+                              <span className="font-extrabold text-cyan-300 tabular-nums">
+                                Déficit jour :{" "}
+                                {projectedBreakdown.netDeficitTotalKcal > 0
+                                  ? `+${projectedBreakdown.netDeficitTotalKcal}`
+                                  : projectedBreakdown.netDeficitTotalKcal}{" "}
+                                kcal
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-slate-300">
+                              Total journée avec ce repas :{" "}
+                              <strong className="text-white">{projectedIntake} kcal</strong> · Écart vs MB seul :{" "}
+                              <strong className="text-violet-200">
+                                {projectedBreakdown.balanceVsBmrKcal >= 0 ? "+" : ""}
+                                {projectedBreakdown.balanceVsBmrKcal} kcal
+                              </strong>{" "}
+                              · {projectedBreakdown.zoneLabelFr}
+                            </p>
+                          </div>
+
+                          {onSaveMeal && (
+                            <button
+                              type="button"
+                              disabled={isBusy}
+                              onClick={() => void saveWrittenMealForSlot(writtenMealType)}
+                              className="w-full rounded-xl bg-emerald-500 px-4 py-2.5 text-xs font-extrabold text-slate-950 hover:bg-emerald-400"
+                            >
+                              Enregistrer dans {activeSlotSpec.label} ({activeSlotEstimate.caloriesCentral} kcal)
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </>
+                )}
+              </div>
+            );
+          })()}
 
           {assietteModalTab === "photo" && (
             <div className="space-y-3">

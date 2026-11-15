@@ -254,12 +254,38 @@ export const CIQUAL_REFERENCE: CiqualEntry[] = [
   {
     id: "ciq-pain-complet",
     name: "Pain complet / aux céréales",
-    aliases: ["pain complet", "pain céréales", "tartine"],
+    aliases: ["pain complet", "pain aux cereales", "pain cereales"],
     per100g: {
       kcal: 247, proteinG: 9.2, carbsG: 43.0, fatG: 2.5, fiberG: 6.5, sugarG: 2.6, satFatG: 0.5, sodiumMg: 480,
       ironMg: 2.3, magnesiumMg: 62, calciumMg: 45, potassiumMg: 210, vitCMg: 0, vitDUg: 0,
     },
     defaultServingG: 60, gi: 50, novaGroup: 3,
+  },
+  {
+    id: "ciq-pain-gris",
+    name: "Pain demi-gris / Pain gris (tartine)",
+    aliases: [
+      "tartines de pain demi gris",
+      "tartine de pain demi gris",
+      "tartines demi gris",
+      "tartine demi gris",
+      "tartines de pain gris",
+      "tartine de pain gris",
+      "tartines pain gris",
+      "tartine pain gris",
+      "pain demi gris",
+      "demi gris",
+      "pain gris",
+      "tartines de pain",
+      "tartine de pain",
+      "tartines",
+      "tartine",
+    ],
+    per100g: {
+      kcal: 248, proteinG: 8.8, carbsG: 46.5, fatG: 1.8, fiberG: 4.8, sugarG: 2.4, satFatG: 0.4, sodiumMg: 470,
+      ironMg: 1.8, magnesiumMg: 45, calciumMg: 36, potassiumMg: 175, vitCMg: 0, vitDUg: 0,
+    },
+    defaultServingG: 70, unitWeightG: 35, gi: 62, novaGroup: 3,
   },
   {
     id: "ciq-baguette",
@@ -592,6 +618,37 @@ export const CIQUAL_REFERENCE: CiqualEntry[] = [
     defaultServingG: 80, unitWeightG: 40, gi: 0, novaGroup: 3,
   },
   {
+    id: "ciq-salami-saucisson",
+    name: "Salami / Salami à l'ail / Saucisson",
+    aliases: [
+      "salami a l ail",
+      "saucisson a l ail",
+      "saucisson sec",
+      "salami danois",
+      "salami",
+      "saucisson",
+      "cervelas",
+      "chorizo",
+      "mortadelle",
+      "rosette",
+    ],
+    per100g: {
+      kcal: 325, proteinG: 19.5, carbsG: 1.5, fatG: 27.0, fiberG: 0, sugarG: 1.0, satFatG: 10.0, sodiumMg: 1420,
+      ironMg: 1.4, magnesiumMg: 18, calciumMg: 15, potassiumMg: 310, vitCMg: 0, vitDUg: 0.4,
+    },
+    defaultServingG: 50, unitWeightG: 15, gi: 0, novaGroup: 4,
+  },
+  {
+    id: "ciq-pate-tartiner",
+    name: "Pâte à tartiner / Speculoos",
+    aliases: ["pate a tartiner", "pate de speculoos", "nutella", "speculoos"],
+    per100g: {
+      kcal: 539, proteinG: 6.0, carbsG: 57.5, fatG: 30.9, fiberG: 3.4, sugarG: 56.0, satFatG: 10.6, sodiumMg: 42,
+      ironMg: 2.2, magnesiumMg: 60, calciumMg: 105, potassiumMg: 400, vitCMg: 0, vitDUg: 0,
+    },
+    defaultServingG: 20, unitWeightG: 15, gi: 55, novaGroup: 4,
+  },
+  {
     id: "ciq-boeuf-hache",
     name: "Steak haché / Viande hachée 5–15% MG",
     aliases: ["steak hache", "viande hachee", "boulettes de boeuf", "boulettes"],
@@ -904,7 +961,7 @@ export function analyzeMealDeterministically(params: {
 
   const countTokenPattern = Object.keys(FRENCH_NUMBER_WORDS).join("|");
   const preCountRegex = new RegExp(
-    `(?:^|\\s)(${countTokenPattern}|\\d+(?:[.,]\\d+)?)\\s*(?:grosses?|petites?|belles?|grandes?|moyennes?|tranches?\\s+d[e']?\\s*|morceaux?\\s+d[e']?\\s*|cuilleres?\\s+a\\s+(?:soupe|cafe)\\s+d[e']?\\s*|cas\\s+d[e']?\\s*|cac\\s+d[e']?\\s*|verres?\\s+d[e']?\\s*|bols?\\s+d[e']?\\s*|tasses?\\s+d[e']?\\s*|poignees?\\s+d[e']?\\s*|d[e']?\\s*)?$`
+    `(?:^|\\s)(${countTokenPattern}|\\d+(?:[.,]\\d+)?)\\s*(?:grosses?|petites?|belles?|grandes?|moyennes?|tranches?\\s+d[e']?\\s*|tartines?\\s+d[e']?\\s*|rondelles?\\s+d[e']?\\s*|morceaux?\\s+d[e']?\\s*|cuilleres?\\s+a\\s+(?:soupe|cafe)\\s+d[e']?\\s*|cas\\s+d[e']?\\s*|cac\\s+d[e']?\\s*|verres?\\s+d[e']?\\s*|bols?\\s+d[e']?\\s*|tasses?\\s+d[e']?\\s*|poignees?\\s+d[e']?\\s*|d[e']?\\s*)?$`
   );
 
   for (const clause of clauses.length > 0 ? clauses : [notesNorm]) {
@@ -955,7 +1012,7 @@ export function analyzeMealDeterministically(params: {
       if (grams === null) {
         const containerMatch = before.match(
           new RegExp(
-            `(${countTokenPattern}|\\d+(?:[.,]\\d+)?)?\\s*(bol|verre|tasse|poignee|tranche|tranches)(?:\\s+d[eu']?)?$`
+            `(${countTokenPattern}|\\d+(?:[.,]\\d+)?)?\\s*(bol|verre|tasse|poignee|tranche|tranches|tartine|tartines|rondelle|rondelles)(?:\\s+d[eu']?)?$`
           )
         );
         if (containerMatch) {
@@ -970,9 +1027,11 @@ export function analyzeMealDeterministically(params: {
                   ? 150
                   : unitKind === "poignee"
                     ? 30
-                    : candidate.entry.unitWeightG ??
-                      DEFAULT_UNIT_WEIGHT_BY_ID[candidate.entry.id] ??
-                      30;
+                    : unitKind === "tartine" || unitKind === "tartines"
+                      ? 35
+                      : candidate.entry.unitWeightG ??
+                        DEFAULT_UNIT_WEIGHT_BY_ID[candidate.entry.id] ??
+                        20;
           grams = count * unitBase;
         }
       }

@@ -1,4 +1,4 @@
-import { FastingConfig, FastingPhaseId, FastingProtocolId } from "@/types/vitalpulse";
+import { FastingConfig, FastingPhaseId, FastingProtocolId, MealType } from "@/types/vitalpulse";
 
 export interface FastingProtocolSpec {
   id: FastingProtocolId;
@@ -593,4 +593,193 @@ export function computeFastingLiveStatus(
     nextPhase: FASTING_PHASES[1],
     hoursUntilNextPhase: 4,
   };
+}
+
+export interface MealSlotFastingStatus {
+  mealType: MealType;
+  labelFr: string;
+  shortLabelFr: string;
+  isFastedSlot: boolean;
+  protocolBadge: string | null;
+  eatingWindowLabel: string | null;
+  pillBadgeFr: string | null;
+  reasonFr: string | null;
+}
+
+const MEAL_SLOT_WINDOWS: ReadonlyArray<{
+  mealType: MealType;
+  labelFr: string;
+  shortLabelFr: string;
+  startMin: number;
+  endMin: number;
+  midMin: number;
+}> = [
+  { mealType: "breakfast", labelFr: "Petit-déjeuner", shortLabelFr: "Petit-déj", startMin: 360, endMin: 645, midMin: 510 },
+  { mealType: "lunch", labelFr: "Déjeuner", shortLabelFr: "Déjeuner", startMin: 660, endMin: 885, midMin: 765 },
+  { mealType: "snack", labelFr: "Collation", shortLabelFr: "Collation", startMin: 900, endMin: 1065, midMin: 982 },
+  { mealType: "dinner", labelFr: "Dîner", shortLabelFr: "Dîner", startMin: 1080, endMin: 1350, midMin: 1200 },
+];
+
+function padTwoDigits(n: number): string {
+  return String(n).padStart(2, "0");
+}
+
+function intervalOverlapMinutes(aStart: number, aEnd: number, bStart: number, bEnd: number): number {
+  return Math.max(0, Math.min(aEnd, bEnd) - Math.max(aStart, bStart));
+}
+
+function circularMinuteDistance(a: number, b: number): number {
+  const diff = Math.abs(((a % 1440) + 1440) % 1440 - (((b % 1440) + 1440) % 1440));
+  return Math.min(diff, 1440 - diff);
+}
+
+/**
+ * Détermine quels créneaux repas (Petit-déj, Déjeuner, Collation, Dîner) sont
+ * automatiquement à "Néant (0 kcal)" en fonction du protocole de jeûne actif.
+ */
+export function getFastingMealSlotStatuses(
+  config?: FastingConfig,
+  preferredFasting?: FastingProtocolId
+): Record<MealType, MealSlotFastingStatus> {
+  const effectiveProtocolId: FastingProtocolId =
+    config?.protocolId && config.protocolId !== "none"
+      ? config.protocolId
+      : preferredFasting && preferredFasting !== "none"
+        ? preferredFasting
+        : "none";
+
+  const makeNeutral = (): Record<MealType, MealSlotFastingStatus> => ({
+    breakfast: {
+      mealType: "breakfast",
+      labelFr: "Petit-déjeuner",
+      shortLabelFr: "Petit-déj",
+      isFastedSlot: false,
+      protocolBadge: null,
+      eatingWindowLabel: null,
+      pillBadgeFr: null,
+      reasonFr: null,
+    },
+    lunch: {
+      mealType: "lunch",
+      labelFr: "Déjeuner",
+      shortLabelFr: "Déjeuner",
+      isFastedSlot: false,
+      protocolBadge: null,
+      eatingWindowLabel: null,
+      pillBadgeFr: null,
+      reasonFr: null,
+    },
+    snack: {
+      mealType: "snack",
+      labelFr: "Collation",
+      shortLabelFr: "Collation",
+      isFastedSlot: false,
+      protocolBadge: null,
+      eatingWindowLabel: null,
+      pillBadgeFr: null,
+      reasonFr: null,
+    },
+    dinner: {
+      mealType: "dinner",
+      labelFr: "Dîner",
+      shortLabelFr: "Dîner",
+      isFastedSlot: false,
+      protocolBadge: null,
+      eatingWindowLabel: null,
+      pillBadgeFr: null,
+      reasonFr: null,
+    },
+  });
+
+  if (effectiveProtocolId === "none" || effectiveProtocolId === "5_2") {
+    return makeNeutral();
+  }
+
+  const spec = getProtocolSpec(effectiveProtocolId);
+  const eatHours =
+    config?.eatHours !== undefined && config.eatHours > 0 ? config.eatHours : spec.eatHours;
+
+  if (eatHours <= 0 || eatHours >= 24) {
+    return makeNeutral();
+  }
+
+  const { hh, mm } = parseHmPair(config?.eatingWindowStartHm, effectiveProtocolId);
+  const eatStartMin = hh * 60 + mm;
+  const eatDurationMin = Math.round(eatHours * 60);
+  const eatEndMin = eatStartMin + eatDurationMin;
+  const endNormMin = ((eatEndMin % 1440) + 1440) % 1440;
+  const eatingWindowLabel = `${padTwoDigits(hh)}:${padTwoDigits(mm)}–${padTwoDigits(Math.floor(endNormMin / 60))}:${padTwoDigits(endNormMin % 60)}`;
+  const protocolBadge = spec.badge;
+
+  const out = {} as Record<MealType, MealSlotFastingStatus>;
+  let openCount = 0;
+
+  for (const slot of MEAL_SLOT_WINDOWS) {
+    const overlapToday = intervalOverlapMinutes(eatStartMin, eatEndMin, slot.startMin, slot.endMin);
+    const overlapNextDay = intervalOverlapMinutes(
+      eatStartMin,
+      eatEndMin,
+      slot.startMin + 1440,
+      slot.endMin + 1440
+    );
+    const isFastedSlot = Math.max(overlapToday, overlapNextDay) < 20;
+    if (!isFastedSlot) openCount += 1;
+
+    out[slot.mealType] = {
+      mealType: slot.mealType,
+      labelFr: slot.labelFr,
+      shortLabelFr: slot.shortLabelFr,
+      isFastedSlot,
+      protocolBadge,
+      eatingWindowLabel,
+      pillBadgeFr: isFastedSlot ? `Néant · ${protocolBadge}` : null,
+      reasonFr: isFastedSlot
+        ? `Jeûne ${protocolBadge} actif (fenêtre repas ${eatingWindowLabel}) — ${slot.labelFr} : Néant (0 kcal).`
+        : null,
+    };
+  }
+
+  // Sécurité pour fenêtres horaires très tardives ou atypiques : garder au moins 1 créneau ouvert
+  if (openCount === 0) {
+    const eatMidMin = eatStartMin + eatDurationMin / 2;
+    let closest = MEAL_SLOT_WINDOWS[MEAL_SLOT_WINDOWS.length - 1];
+    let bestDist = Infinity;
+    for (const slot of MEAL_SLOT_WINDOWS) {
+      const dist = circularMinuteDistance(eatMidMin, slot.midMin);
+      if (dist < bestDist) {
+        bestDist = dist;
+        closest = slot;
+      }
+    }
+    out[closest.mealType] = {
+      ...out[closest.mealType],
+      isFastedSlot: false,
+      pillBadgeFr: null,
+      reasonFr: null,
+    };
+  }
+
+  return out;
+}
+
+/**
+ * Sélectionne automatiquement le meilleur créneau repas par défaut à l'ouverture,
+ * en évitant les créneaux marqués "Néant" par le jeûne intermittent actif.
+ */
+export function getDefaultActiveMealSlot(
+  config?: FastingConfig,
+  preferredFasting?: FastingProtocolId,
+  nowMs: number = Date.now()
+): MealType {
+  const statuses = getFastingMealSlotStatuses(config, preferredFasting);
+  const hour = new Date(nowMs).getHours();
+  const natural: MealType =
+    hour < 11 ? "breakfast" : hour < 15 ? "lunch" : hour < 18 ? "snack" : "dinner";
+
+  if (!statuses[natural].isFastedSlot) {
+    return natural;
+  }
+
+  const fallbackOrder: MealType[] = ["lunch", "dinner", "snack", "breakfast"];
+  return fallbackOrder.find((slot) => !statuses[slot].isFastedSlot) ?? "lunch";
 }

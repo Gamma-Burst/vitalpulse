@@ -1199,6 +1199,13 @@ export default function VitalPulseApp() {
                 onSaveMeal={(meal: MealEntry) =>
                   commitState((prev) => ({ ...prev, meals: [meal, ...prev.meals] }))
                 }
+                todayMeals={state.meals.filter((m) => m.dateKey === todayKey)}
+                onDeleteMeal={(mealId: string) =>
+                  commitState((prev) => ({
+                    ...prev,
+                    meals: prev.meals.filter((m) => m.id !== mealId),
+                  }))
+                }
                 onOpenWrittenMeal={() => {
                   setScannerEntryMode("text");
                   setActiveTab("scanner");
@@ -1212,6 +1219,8 @@ export default function VitalPulseApp() {
                 todayDateKey={todayKey}
                 specialMode={state.profile.specialMode}
                 primaryGoal={state.profile.primaryGoal}
+                fasting={state.fasting}
+                preferredFasting={state.profile.preferredFasting}
                 highlightedMealId={highlightedMealId}
                 entryMode={scannerEntryMode}
                 bmrKcal={anthro.bmrKcal}
