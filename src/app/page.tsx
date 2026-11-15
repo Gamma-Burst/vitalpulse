@@ -53,8 +53,13 @@ import {
   scheduleServiceWorkerFastingAlert,
   sendFastingTransitionAlert,
   sendGoalCelebrationNotification,
+  syncPushScheduleEverywhere,
   triggerLightHaptic,
 } from "@/lib/native-bridge";
+import {
+  buildPushScheduleSpecFromState,
+  PushScheduleSpec,
+} from "@/lib/push-schedule-engine";
 import {
   GoalCelebrationEvent,
   reconcileGoalsAndCelebrations,
@@ -536,6 +541,29 @@ export default function VitalPulseApp() {
       return next;
     });
   }, [goalReconciliation]);
+
+  const pushScheduleSpec: PushScheduleSpec | null = useMemo(() => {
+    if (!state) return null;
+    return buildPushScheduleSpecFromState({
+      fasting: state.fasting,
+      profile: state.profile,
+      challenges: state.challenges,
+      goalEvaluations: goalReconciliation?.evaluationsById,
+      todayKey,
+    });
+  }, [state, goalReconciliation?.evaluationsById, todayKey]);
+
+  const lastSyncedSpecJsonRef = useRef<string>("");
+  useEffect(() => {
+    if (!pushScheduleSpec) return;
+    const serialized = JSON.stringify(pushScheduleSpec);
+    if (serialized === lastSyncedSpecJsonRef.current) return;
+    const timer = window.setTimeout(() => {
+      lastSyncedSpecJsonRef.current = serialized;
+      void syncPushScheduleEverywhere(pushScheduleSpec, { promptPermission: false });
+    }, 800);
+    return () => window.clearTimeout(timer);
+  }, [pushScheduleSpec]);
 
   if (!state || !anthro || !todayBalance) {
     return (
@@ -1296,6 +1324,7 @@ export default function VitalPulseApp() {
                 fasting={state.fasting}
                 profile={state.profile}
                 bmi={anthro.bmi}
+                pushScheduleSpec={pushScheduleSpec}
                 onUpdateFasting={(nextFasting: FastingConfig) =>
                   commitState((prev) => ({ ...prev, fasting: nextFasting }))
                 }
@@ -1336,6 +1365,7 @@ export default function VitalPulseApp() {
                 todayBalance={todayBalance}
                 challenges={state.challenges}
                 goalEvaluations={goalReconciliation?.evaluationsById}
+                pushScheduleSpec={pushScheduleSpec}
                 onOpenGoalsModal={() => setGoalsModalOpen(true)}
                 theme={theme}
                 onChangeTheme={setTheme}

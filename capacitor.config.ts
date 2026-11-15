@@ -11,6 +11,12 @@ const config: CapacitorConfig = {
     captureInput: true,
     webContentsDebuggingEnabled: false,
   },
+  plugins: {
+    LocalNotifications: {
+      smallIcon: "ic_launcher",
+      iconColor: "#10B981",
+    },
+  },
   ...(serverUrl && serverUrl.startsWith("https://")
     ? {
         server: {

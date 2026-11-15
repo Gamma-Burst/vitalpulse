@@ -17,6 +17,7 @@
     "@capacitor/cli": "^7.2.0",
     "@capacitor/core": "^7.2.0",
     "@capacitor/haptics": "^7.0.5",
+    "@capacitor/local-notifications": "^7.0.7",
     "@revenuecat/purchases-capacitor": "11.3.3",
     "@types/three": "^0.187.0",
     "@zxing/browser": "^0.2.1",

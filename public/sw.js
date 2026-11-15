@@ -1,4 +1,4 @@
-const CACHE_NAME = "followeight-pwa-v1";
+const CACHE_NAME = "followeight-pwa-v2";
 const STATIC_ASSETS = ["/", "/manifest.webmanifest", "/icons/icon.svg", "/icons/icon-192.png"];
 
 self.addEventListener("install", (event) => {
@@ -40,6 +40,7 @@ self.addEventListener("push", (event) => {
     title: "FolloWeight · Rappel Objectif",
     body: "Prenez 2 minutes pour votre santé aujourd'hui.",
     url: "/",
+    tag: "followeight-push",
   };
   if (event.data) {
     try {
@@ -48,12 +49,15 @@ self.addEventListener("push", (event) => {
       data.body = event.data.text();
     }
   }
+  const tag = typeof data.tag === "string" && data.tag ? data.tag : "followeight-push";
   event.waitUntil(
     self.registration.showNotification(data.title, {
       body: data.body,
       icon: "/icons/icon-192.png",
       badge: "/icons/icon-192.png",
-      vibrate: [120, 60, 120],
+      tag,
+      renotify: Boolean(data.tag && data.tag !== "followeight-push"),
+      vibrate: [180, 80, 180],
       data: { url: data.url || "/" },
     })
   );

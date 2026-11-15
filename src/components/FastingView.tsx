@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
+  BellRing,
   CalendarClock,
   CheckCircle2,
   ChevronDown,
@@ -35,15 +36,23 @@ import { DetailSheet } from "@/components/ui/DetailSheet";
 import { InfoTip } from "@/components/ui/InfoTip";
 import { resolveFastingPhaseGlossaryId } from "@/data/glossary-terms";
 import {
+  getNotificationPermissionState,
   requestFastingNotificationPermission,
   sendFastingTransitionAlert,
+  syncPushScheduleEverywhere,
   triggerLightHaptic,
 } from "@/lib/native-bridge";
+import {
+  buildPushScheduleSpecFromState,
+  PushScheduleSpec,
+} from "@/lib/push-schedule-engine";
+import { formatDateKey } from "@/lib/storage-db";
 
 export interface FastingViewProps {
   fasting: FastingConfig;
   profile: UserProfile;
   bmi: number;
+  pushScheduleSpec?: PushScheduleSpec | null;
   onUpdateFasting: (next: FastingConfig) => void;
 }
 
@@ -58,15 +67,38 @@ export function FastingView({
   fasting,
   profile,
   bmi,
+  pushScheduleSpec = null,
   onUpdateFasting,
 }: FastingViewProps) {
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [protocolSheetOpen, setProtocolSheetOpen] = useState(false);
   const [startSheetOpen, setStartSheetOpen] = useState(false);
   const [safetyOpen, setSafetyOpen] = useState(false);
+  const [notifPerm, setNotifPerm] = useState<
+    "granted" | "denied" | "default" | "unsupported"
+  >("default");
+  const [pushSyncMsg, setPushSyncMsg] = useState<string | null>(null);
   const [draftDateTime, setDraftDateTime] = useState(() =>
     toDatetimeLocalValue(fasting.activeStartIso || fasting.plannedStartIso)
   );
+
+  useEffect(() => {
+    setNotifPerm(getNotificationPermissionState());
+  }, []);
+
+  function resolveEffectiveSchedule(nextFasting: FastingConfig): PushScheduleSpec {
+    const built = buildPushScheduleSpecFromState({
+      fasting: nextFasting,
+      profile,
+      challenges: [],
+      todayKey: formatDateKey(new Date()),
+    });
+    if (!pushScheduleSpec) return built;
+    return {
+      ...pushScheduleSpec,
+      fasting: built.fasting,
+    };
+  }
 
   useEffect(() => {
     const id = window.setInterval(() => setNowMs(Date.now()), 1000);
@@ -426,44 +458,125 @@ export function FastingView({
               ))}
             </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-white/10 pt-2.5">
-              <label className="flex items-center gap-2 text-xs text-slate-200">
-                <input
-                  type="checkbox"
-                  checked={fasting.notificationsEnabled !== false}
-                  onChange={async (e) => {
-                    const enabled = e.target.checked;
-                    if (enabled) {
+            <div className="space-y-2 border-t border-white/10 pt-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <label className="flex items-center gap-2 text-xs text-slate-200">
+                  <input
+                    type="checkbox"
+                    checked={fasting.notificationsEnabled !== false}
+                    onChange={async (e) => {
+                      const enabled = e.target.checked;
+                      const nextFasting: FastingConfig = {
+                        ...fasting,
+                        notificationsEnabled: enabled,
+                      };
+                      onUpdateFasting(nextFasting);
+                      if (enabled) {
+                        const res = await syncPushScheduleEverywhere(
+                          resolveEffectiveSchedule(nextFasting),
+                          { promptPermission: true }
+                        );
+                        setNotifPerm(getNotificationPermissionState());
+                        const startHm =
+                          nextFasting.eatingWindowStartHm ||
+                          getDefaultEatingStartHm(nextFasting.protocolId);
+                        setPushSyncMsg(
+                          res.synced
+                            ? `Push écran verrouillé activé (repas à ${startHm} synchronisés dans le cloud) !`
+                            : res.reason ?? null
+                        );
+                      } else {
+                        void syncPushScheduleEverywhere(resolveEffectiveSchedule(nextFasting), {
+                          promptPermission: false,
+                        });
+                        setPushSyncMsg("Rappels de jeûne désactivés.");
+                      }
+                    }}
+                    className="h-4 w-4 accent-emerald-500"
+                  />
+                  Me notifier à l&apos;ouverture repas et reprise du jeûne
+                </label>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  {notifPerm !== "granted" ? (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        triggerLightHaptic();
+                        const nextFasting: FastingConfig = {
+                          ...fasting,
+                          notificationsEnabled: true,
+                        };
+                        if (fasting.notificationsEnabled === false) {
+                          onUpdateFasting(nextFasting);
+                        }
+                        const res = await syncPushScheduleEverywhere(
+                          resolveEffectiveSchedule(nextFasting),
+                          { promptPermission: true }
+                        );
+                        setNotifPerm(getNotificationPermissionState());
+                        const startHm =
+                          nextFasting.eatingWindowStartHm ||
+                          getDefaultEatingStartHm(nextFasting.protocolId);
+                        setPushSyncMsg(
+                          res.synced
+                            ? `Push écran verrouillé activé (repas à ${startHm} synchronisés dans le cloud) !`
+                            : res.reason ?? null
+                        );
+                      }}
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-400/45 bg-emerald-500/20 px-3 py-1.5 text-[11px] font-bold text-emerald-200 hover:bg-emerald-500/30"
+                    >
+                      <BellRing className="h-3.5 w-3.5" />
+                      Activer Push écran verrouillé
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        triggerLightHaptic();
+                        const res = await syncPushScheduleEverywhere(
+                          resolveEffectiveSchedule(fasting),
+                          { promptPermission: false }
+                        );
+                        setPushSyncMsg(
+                          res.synced
+                            ? "Rappels écran verrouillé re-synchronisés dans le cloud ✓"
+                            : res.reason ?? null
+                        );
+                      }}
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-400/35 bg-emerald-500/15 px-3 py-1.5 text-[11px] font-bold text-emerald-300 hover:bg-emerald-500/25"
+                    >
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                      Push écran verrouillé actif ✓
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      triggerLightHaptic();
                       await requestFastingNotificationPermission();
-                    }
-                    onUpdateFasting({
-                      ...fasting,
-                      notificationsEnabled: enabled,
-                    });
-                  }}
-                  className="h-4 w-4 accent-emerald-500"
-                />
-                Me notifier à l&apos;ouverture repas et reprise du jeûne
-              </label>
-              <button
-                type="button"
-                onClick={async () => {
-                  triggerLightHaptic();
-                  await requestFastingNotificationPermission();
-                  const startHm =
-                    fasting.eatingWindowStartHm || getDefaultEatingStartHm(fasting.protocolId);
-                  await sendFastingTransitionAlert({
-                    key: `test-${Date.now()}`,
-                    title: `FolloWeight · Fenêtre repas (${live.protocol.badge})`,
-                    body: `Vous êtes autorisé à manger pendant ${formatAllowedDurationFr(
-                      live.eatWindowHours
-                    )} (démarrage réglé à ${startHm}).`,
-                  });
-                }}
-                className="rounded-xl border border-amber-400/35 bg-amber-500/15 px-3 py-1.5 text-[11px] font-bold text-amber-200 hover:bg-amber-500/25"
-              >
-                Tester l&apos;alerte repas
-              </button>
+                      setNotifPerm(getNotificationPermissionState());
+                      const startHm =
+                        fasting.eatingWindowStartHm || getDefaultEatingStartHm(fasting.protocolId);
+                      await sendFastingTransitionAlert({
+                        key: `test-${Date.now()}`,
+                        title: `FolloWeight · Fenêtre repas (${live.protocol.badge})`,
+                        body: `Vous êtes autorisé à manger pendant ${formatAllowedDurationFr(
+                          live.eatWindowHours
+                        )} (démarrage réglé à ${startHm}).`,
+                      });
+                    }}
+                    className="rounded-xl border border-amber-400/35 bg-amber-500/15 px-3 py-1.5 text-[11px] font-bold text-amber-200 hover:bg-amber-500/25"
+                  >
+                    Tester l&apos;alerte repas
+                  </button>
+                </div>
+              </div>
+
+              {pushSyncMsg && (
+                <p className="text-[11px] font-medium text-emerald-300/90">{pushSyncMsg}</p>
+              )}
             </div>
           </div>
         )}

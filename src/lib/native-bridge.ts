@@ -1,5 +1,15 @@
 "use client";
 
+import type {
+  PushScheduleSpec,
+} from "@/lib/push-schedule-engine";
+import {
+  formatMinutesAsHm,
+  isMinuteInQuietHours,
+  parseHmToMinutes,
+} from "@/lib/push-schedule-engine";
+import { formatAllowedDurationFr } from "@/lib/fasting-engine";
+
 export interface PlatformCapabilities {
   isCapacitorNative: boolean;
   isAndroid: boolean;
@@ -147,7 +157,31 @@ export function urlBase64ToUint8Array(base64String: string): Uint8Array {
   return outputArray;
 }
 
-export async function subscribeBrowserToPush(publicKey: string): Promise<PushSubscription> {
+export function getBrowserTimezone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "Europe/Brussels";
+  } catch {
+    return "Europe/Brussels";
+  }
+}
+
+function areServerKeysEqual(
+  existingKey: ArrayBuffer | null | undefined,
+  expectedKey: Uint8Array
+): boolean {
+  if (!existingKey) return false;
+  const actual = new Uint8Array(existingKey);
+  if (actual.length !== expectedKey.length) return false;
+  for (let i = 0; i < actual.length; i += 1) {
+    if (actual[i] !== expectedKey[i]) return false;
+  }
+  return true;
+}
+
+export async function subscribeBrowserToPush(
+  publicKey: string,
+  scheduleSpec?: PushScheduleSpec
+): Promise<PushSubscription> {
   if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
     throw new Error("Notifications Push non supportées sur ce navigateur.");
   }
@@ -157,16 +191,28 @@ export async function subscribeBrowserToPush(publicKey: string): Promise<PushSub
   }
   const reg = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
   await navigator.serviceWorker.ready;
+  const appServerKey = urlBase64ToUint8Array(publicKey);
   const existing = await reg.pushManager.getSubscription();
-  if (existing) {
-    await fetch("/api/push/subscribe", {
+  const timezone = getBrowserTimezone();
+
+  if (existing && areServerKeysEqual(existing.options?.applicationServerKey, appServerKey)) {
+    const targetRoute = scheduleSpec ? "/api/push/sync-schedule" : "/api/push/subscribe";
+    await fetch(targetRoute, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(existing),
+      body: JSON.stringify({
+        subscription: existing.toJSON(),
+        timezone,
+        ...(scheduleSpec ? { scheduleSpec } : {}),
+      }),
     });
     return existing;
   }
-  const appServerKey = urlBase64ToUint8Array(publicKey);
+
+  if (existing) {
+    await existing.unsubscribe().catch(() => false);
+  }
+
   const sub = await reg.pushManager.subscribe({
     userVisibleOnly: true,
     applicationServerKey: appServerKey.buffer as ArrayBuffer,
@@ -174,7 +220,11 @@ export async function subscribeBrowserToPush(publicKey: string): Promise<PushSub
   await fetch("/api/push/subscribe", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(sub),
+    body: JSON.stringify({
+      subscription: sub.toJSON(),
+      timezone,
+      ...(scheduleSpec ? { scheduleSpec } : {}),
+    }),
   });
   return sub;
 }
@@ -254,7 +304,22 @@ export function pushBackIntercept(handler: BackInterceptHandler): () => void {
 }
 
 export async function requestFastingNotificationPermission(): Promise<boolean> {
-  if (typeof window === "undefined" || typeof Notification === "undefined") {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  const caps = detectPlatformCapabilities();
+  if (caps.isCapacitorNative) {
+    try {
+      const { LocalNotifications } = await import("@capacitor/local-notifications");
+      const curr = await LocalNotifications.checkPermissions();
+      if (curr.display === "granted") return true;
+      const req = await LocalNotifications.requestPermissions();
+      return req.display === "granted";
+    } catch {
+      return false;
+    }
+  }
+  if (typeof Notification === "undefined") {
     return false;
   }
   try {
@@ -270,12 +335,260 @@ export async function requestFastingNotificationPermission(): Promise<boolean> {
   }
 }
 
+export async function syncNativeAndroidScheduledNotifications(
+  spec: PushScheduleSpec
+): Promise<boolean> {
+  if (!detectPlatformCapabilities().isCapacitorNative) return false;
+  try {
+    const { LocalNotifications } = await import("@capacitor/local-notifications");
+    const perm = await LocalNotifications.checkPermissions();
+    if (perm.display !== "granted") return false;
+
+    const channelId = "followeight_reminders";
+    await LocalNotifications.createChannel({
+      id: channelId,
+      name: "Rappels Jeûne & Objectifs",
+      description: "Ouverture fenêtre repas, reprise du jeûne et rappels quotidiens d'objectifs",
+      importance: 5,
+      visibility: 1,
+      vibration: true,
+    }).catch(() => {});
+
+    const managedIds = Array.from({ length: 99 }, (_, i) => ({ id: 1001 + i }));
+    await LocalNotifications.cancel({ notifications: managedIds }).catch(() => {});
+
+    const notifications: Array<{
+      id: number;
+      title: string;
+      body: string;
+      channelId: string;
+      schedule: { on?: { hour: number; minute: number }; at?: Date; allowWhileIdle: boolean };
+    }> = [];
+
+    if (
+      spec.fasting.enabled &&
+      spec.fasting.dailyScheduleEnabled &&
+      spec.fasting.eatHours > 0 &&
+      spec.fasting.eatHours < 24
+    ) {
+      const openMin = parseHmToMinutes(spec.fasting.eatingWindowStartHm);
+      if (openMin !== null) {
+        const closeMin = (openMin + Math.round(spec.fasting.eatHours * 60)) % 1440;
+        const closeHm = formatMinutesAsHm(closeMin);
+        const eatDurationText = formatAllowedDurationFr(spec.fasting.eatHours);
+
+        notifications.push({
+          id: 1001,
+          title: `🍽️ Fenêtre repas ouverte · ${spec.fasting.protocolBadge}`,
+          body: `Vous pouvez manger pendant ${eatDurationText} (jusqu'à ${closeHm}).`,
+          channelId,
+          schedule: {
+            on: { hour: Math.floor(openMin / 60), minute: openMin % 60 },
+            allowWhileIdle: true,
+          },
+        });
+        notifications.push({
+          id: 1002,
+          title: `⏳ Reprise du jeûne · ${spec.fasting.protocolBadge}`,
+          body: `Votre fenêtre repas de ${eatDurationText} est terminée. Reprise du jeûne pour ${spec.fasting.fastHours} h.`,
+          channelId,
+          schedule: {
+            on: { hour: Math.floor(closeMin / 60), minute: closeMin % 60 },
+            allowWhileIdle: true,
+          },
+        });
+      }
+    } else if (spec.fasting.enabled && !spec.fasting.dailyScheduleEnabled) {
+      const nowMs = Date.now();
+      if (spec.fasting.activeEndIso) {
+        const endMs = Date.parse(spec.fasting.activeEndIso);
+        if (Number.isFinite(endMs) && endMs > nowMs + 5000) {
+          notifications.push({
+            id: 1003,
+            title: `🎉 Objectif de jeûne atteint · ${spec.fasting.protocolBadge}`,
+            body: `Votre session de ${spec.fasting.fastHours} h est terminée.`,
+            channelId,
+            schedule: { at: new Date(endMs), allowWhileIdle: true },
+          });
+        }
+      }
+      if (spec.fasting.plannedStartIso) {
+        const startMs = Date.parse(spec.fasting.plannedStartIso);
+        if (Number.isFinite(startMs) && startMs > nowMs + 5000) {
+          notifications.push({
+            id: 1004,
+            title: `⏳ Début de votre jeûne planifié · ${spec.fasting.protocolBadge}`,
+            body: `C'est l'heure de démarrer votre période de jeûne de ${spec.fasting.fastHours} h.`,
+            channelId,
+            schedule: { at: new Date(startMs), allowWhileIdle: true },
+          });
+        }
+      }
+    }
+
+    const activeReminders = spec.reminders.slice(0, 40);
+    for (let i = 0; i < activeReminders.length; i += 1) {
+      const rem = activeReminders[i];
+      const remMin = parseHmToMinutes(rem.reminderTime);
+      if (remMin === null) continue;
+      if (isMinuteInQuietHours(remMin, spec.quietHours.start, spec.quietHours.end)) {
+        continue;
+      }
+      notifications.push({
+        id: 1010 + i,
+        title: `🎯 Rappel objectif · ${rem.title}`,
+        body: `Cap du jour : ${rem.targetValue} ${rem.unit}.`.trim(),
+        channelId,
+        schedule: {
+          on: { hour: Math.floor(remMin / 60), minute: remMin % 60 },
+          allowWhileIdle: true,
+        },
+      });
+    }
+
+    if (notifications.length > 0) {
+      await LocalNotifications.schedule({ notifications });
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function syncPushScheduleEverywhere(
+  spec: PushScheduleSpec,
+  options?: { promptPermission?: boolean }
+): Promise<{
+  mode: "native-android" | "web-push" | "unavailable";
+  synced: boolean;
+  reason?: string;
+}> {
+  if (typeof window === "undefined") {
+    return { mode: "unavailable", synced: false };
+  }
+
+  if (detectPlatformCapabilities().isCapacitorNative) {
+    try {
+      const { LocalNotifications } = await import("@capacitor/local-notifications");
+      let perm = await LocalNotifications.checkPermissions();
+      if (perm.display !== "granted" && options?.promptPermission) {
+        perm = await LocalNotifications.requestPermissions();
+      }
+      if (perm.display !== "granted") {
+        return {
+          mode: "native-android",
+          synced: false,
+          reason: "Permission de notifications Android refusée.",
+        };
+      }
+      const ok = await syncNativeAndroidScheduledNotifications(spec);
+      return {
+        mode: "native-android",
+        synced: ok,
+        ...(ok ? {} : { reason: "Impossible de planifier les alarmes Android." }),
+      };
+    } catch (err) {
+      return {
+        mode: "native-android",
+        synced: false,
+        reason: err instanceof Error ? err.message : "Erreur notifications Android.",
+      };
+    }
+  }
+
+  if (
+    typeof Notification === "undefined" ||
+    !("serviceWorker" in navigator) ||
+    !("PushManager" in window)
+  ) {
+    return {
+      mode: "web-push",
+      synced: false,
+      reason: "Ouvrez FolloWeight dans Chrome ou Samsung Internet (hors mini-navigateur WhatsApp) pour activer les Push.",
+    };
+  }
+
+  if (Notification.permission === "denied") {
+    return {
+      mode: "web-push",
+      synced: false,
+      reason: "Notifications bloquées dans les réglages Chrome/Samsung du site.",
+    };
+  }
+
+  if (Notification.permission !== "granted" && !options?.promptPermission) {
+    return {
+      mode: "web-push",
+      synced: false,
+      reason: "Permission non encore accordée.",
+    };
+  }
+
+  try {
+    const pkRes = await fetch("/api/push/public-key");
+    const pkJson = (await pkRes.json()) as { publicKey?: string };
+    if (!pkJson?.publicKey) {
+      return {
+        mode: "web-push",
+        synced: false,
+        reason: "Clé VAPID publique absente.",
+      };
+    }
+    await subscribeBrowserToPush(pkJson.publicKey, spec);
+    return { mode: "web-push", synced: true };
+  } catch (err) {
+    return {
+      mode: "web-push",
+      synced: false,
+      reason: err instanceof Error ? err.message : "Activation Push impossible.",
+    };
+  }
+}
+
 export async function sendFastingTransitionAlert(payload: {
   key: string;
   title: string;
   body: string;
-}): Promise<{ deliveredVia: "service-worker" | "web-notification" | "push" | "in-app-only" }> {
+}): Promise<{
+  deliveredVia:
+    | "capacitor-local"
+    | "service-worker"
+    | "web-notification"
+    | "push"
+    | "in-app-only";
+}> {
   triggerLightHaptic();
+  if (typeof window !== "undefined" && detectPlatformCapabilities().isCapacitorNative) {
+    try {
+      const { LocalNotifications } = await import("@capacitor/local-notifications");
+      const perm = await LocalNotifications.checkPermissions();
+      if (perm.display === "granted") {
+        await LocalNotifications.createChannel({
+          id: "followeight_reminders",
+          name: "Rappels Jeûne & Objectifs FolloWeight",
+          description: "Ouverture repas, reprise du jeûne et rappels d'objectifs",
+          importance: 5,
+          visibility: 1,
+          vibration: true,
+        }).catch(() => {});
+        await LocalNotifications.schedule({
+          notifications: [
+            {
+              id: Math.floor((Date.now() / 1000) % 900000) + 2000,
+              title: payload.title,
+              body: payload.body,
+              channelId: "followeight_reminders",
+              schedule: { at: new Date(Date.now() + 400), allowWhileIdle: true },
+              extra: { url: "/", key: payload.key },
+            },
+          ],
+        });
+        return { deliveredVia: "capacitor-local" };
+      }
+    } catch {
+      // Fallback vers ServiceWorker / Notification web
+    }
+  }
   if (typeof window === "undefined" || typeof Notification === "undefined") {
     return { deliveredVia: "in-app-only" };
   }
@@ -283,7 +596,12 @@ export async function sendFastingTransitionAlert(payload: {
     return { deliveredVia: "in-app-only" };
   }
 
-  let deliveredVia: "service-worker" | "web-notification" | "push" | "in-app-only" = "in-app-only";
+  let deliveredVia:
+    | "capacitor-local"
+    | "service-worker"
+    | "web-notification"
+    | "push"
+    | "in-app-only" = "in-app-only";
 
   if ("serviceWorker" in navigator) {
     try {

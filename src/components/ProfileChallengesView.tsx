@@ -29,7 +29,12 @@ import {
   UserProfile,
 } from "@/types/vitalpulse";
 import { SPORT_DISCIPLINES_CATALOG } from "@/data/exercises-compendium";
-import { subscribeBrowserToPush, requestFastingNotificationPermission } from "@/lib/native-bridge";
+import {
+  subscribeBrowserToPush,
+  requestFastingNotificationPermission,
+  syncPushScheduleEverywhere,
+} from "@/lib/native-bridge";
+import { PushScheduleSpec } from "@/lib/push-schedule-engine";
 import { GOAL_METRIC_CATALOG, GoalEvaluationSnapshot } from "@/lib/goals-celebration-engine";
 import { DetailSheet } from "@/components/ui/DetailSheet";
 import { InfoTip } from "@/components/ui/InfoTip";
@@ -52,6 +57,7 @@ interface ProfileChallengesViewProps {
   todayBalance: DailyEnergyBalance;
   challenges: CustomChallenge[];
   goalEvaluations?: Record<string, GoalEvaluationSnapshot>;
+  pushScheduleSpec?: PushScheduleSpec | null;
   onOpenGoalsModal?: () => void;
   onSaveProfile: (next: UserProfile) => void;
   onAddChallenge: (c: CustomChallenge) => void;
@@ -71,6 +77,7 @@ export function ProfileChallengesView({
   todayBalance,
   challenges,
   goalEvaluations = {},
+  pushScheduleSpec = null,
   onOpenGoalsModal,
   onSaveProfile,
   onAddChallenge,
@@ -285,6 +292,28 @@ export function ProfileChallengesView({
 
   async function handleEnablePush() {
     try {
+      if (pushScheduleSpec) {
+        const res = await syncPushScheduleEverywhere(pushScheduleSpec, {
+          promptPermission: true,
+        });
+        if (res.synced) {
+          if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
+            navigator.serviceWorker.ready
+              .then((reg) => reg.pushManager?.getSubscription?.())
+              .then((sub) => {
+                if (sub) setPushSubscription(sub);
+              })
+              .catch(() => {});
+          }
+          setPushStatus(
+            "Notifications Push écran verrouillé activées et synchronisées (jeûne & objectifs) !"
+          );
+        } else {
+          setPushStatus(res.reason || "Activation Push impossible.");
+        }
+        return;
+      }
+
       const pkRes = await fetch("/api/push/public-key");
       const pkJson = await pkRes.json();
       if (!pkJson.publicKey) {
