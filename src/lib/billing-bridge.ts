@@ -30,7 +30,7 @@ export const FOLLOWEIGHT_PLANS: FolloWeightPlanSpec[] = [
     subPriceLabelFr: "Zéro publicité · Données privées locales",
     channelFr: "Web & Android inclus",
     highlightsFr: [
-      "Scan code-barres OpenFoodFacts illimité",
+      "Recherche manuelle par code EAN (OpenFoodFacts) gratuite",
       "Minuteur Jeûne & OMAD (23:1) + notifications fenêtre",
       "Courbe poids lissé EMA, mensurations US Navy & photos 100 % locales",
       "44 exercices & 10 sports + ravitaillement ISSN + montres connectées",
@@ -50,6 +50,7 @@ export const FOLLOWEIGHT_PLANS: FolloWeightPlanSpec[] = [
       "Coach FW AI illimité 24h/24 (usage personnel jusqu'à 80 req/j)",
       "Recherche Web scientifique & marques temps réel (usage raisonnable 5/j · 30/mois)",
       "Scans photo repas & frigo illimités avec historique comparatif",
+      "Scan code-barres caméra/photo instantané + détection du magasin / enseigne",
       "Tendances multi-bilans sanguins & périodisation sport avancée",
       "Essai transparent 7 jours · Résiliation en 2 clics",
     ],
@@ -62,7 +63,7 @@ export const FOLLOWEIGHT_PLANS: FolloWeightPlanSpec[] = [
     subPriceLabelFr: "Sans engagement · Résiliable à tout moment",
     channelFr: "Google Play / Web",
     highlightsFr: [
-      "Tout FolloWeight Plus (FW AI + Vision IA illimités, multi-bilans, sport)",
+      "Tout FolloWeight Plus (FW AI, photos & scan caméra EAN + magasin, multi-bilans)",
       "Idéal pour tester sur 1 à 2 mois avant de basculer sur l'annuel",
     ],
   },

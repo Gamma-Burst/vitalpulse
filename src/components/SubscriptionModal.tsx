@@ -529,7 +529,7 @@ export function SubscriptionModal({
           <div className="flex items-start gap-2">
             <ShieldCheck className="h-4 w-4 text-emerald-400 shrink-0 mt-0.5" />
             <span>
-              <strong>Transparence &amp; Confidentialité :</strong> Le scan code-barres, votre
+              <strong>Transparence &amp; Confidentialité :</strong> La recherche manuelle par code EAN, votre
               courbe de poids lissée EMA, vos mensurations, vos photos locales, le minuteur
               OMAD/Jeûne et les 44 activités restent 100 % gratuits et sans publicité.
               {isNativeAndroid

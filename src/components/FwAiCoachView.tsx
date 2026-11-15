@@ -186,7 +186,7 @@ export function FwAiCoachView({
       onOpenSubscriptionModal(
         quota.isPlus
           ? "Limite de sécurité personnelle quotidienne atteinte pour aujourd'hui."
-          : `Vos ${FREE_LIMIT_LABEL} questions gratuites FW AI d'aujourd'hui ont été utilisées (remise à zéro à minuit). Le scan code-barres, le jeûne et vos courbes restent illimités !`
+          : `Vos ${FREE_LIMIT_LABEL} questions gratuites FW AI d'aujourd'hui ont été utilisées (remise à zéro à minuit). La saisie code EAN, le jeûne et vos courbes restent illimités !`
       );
       return;
     }

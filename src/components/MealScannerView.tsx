@@ -198,7 +198,7 @@ export function MealScannerView({
       onOpenSubscriptionModal(
         visionQuota.isPlus
           ? "Limite quotidienne de sécurité atteinte pour aujourd'hui."
-          : "Vos 5 scans photo IA de découverte ont été utilisés ! Activez vos 7 jours d'essai gratuit FolloWeight Plus (FW+) pour scanner vos assiettes et votre frigo en illimité — le lecteur code-barres EAN et la saisie texte restent 100 % gratuits et sans pub."
+          : "Vos 5 scans photo IA de découverte ont été utilisés ! Activez vos 7 jours d'essai gratuit FolloWeight Plus (FW+) pour scanner vos assiettes, votre frigo et vos codes-barres en caméra (avec détection du magasin) en illimité — la saisie manuelle code EAN et la saisie texte restent 100 % gratuites et sans pub."
       );
       return;
     }
@@ -473,20 +473,20 @@ export function MealScannerView({
               <strong className="text-emerald-300">
                 Pack découverte épuisé ({visionQuota.limit}/{visionQuota.limit} scans photo IA) :
               </strong>{" "}
-              débloquez les scans photo illimités avec 7 jours gratuits, ou utilisez le scan code-barres EAN et la saisie texte gratuits sans pub.
+              débloquez les scans photo &amp; caméra code-barres (avec enseigne) illimités avec 7 jours gratuits, ou utilisez la saisie manuelle code EAN et la saisie texte gratuites sans pub.
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 onClick={() =>
                   onOpenSubscriptionModal(
-                    "Vos 5 scans photo IA de découverte ont été utilisés ! Activez vos 7 jours d'essai gratuit FolloWeight Plus (FW+) pour scanner vos assiettes et votre frigo en illimité — le lecteur code-barres EAN et la saisie texte restent 100 % gratuits et sans pub."
+                    "Vos 5 scans photo IA de découverte ont été utilisés ! Activez vos 7 jours d'essai gratuit FolloWeight Plus (FW+) pour scanner vos assiettes, votre frigo et vos codes-barres en caméra (avec détection du magasin) en illimité — la saisie manuelle code EAN et la saisie texte restent 100 % gratuites et sans pub."
                   )
                 }
                 className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-500 px-3 py-1.5 text-xs font-extrabold text-slate-950 hover:bg-emerald-400"
               >
                 <Sparkles className="w-3.5 h-3.5" />
-                Essayer FW+ 7 jours gratuits (Scans photo illimités)
+                Essayer FW+ 7 jours gratuits (Scans &amp; Caméra EAN)
               </button>
               {onOpenBarcode && (
                 <button
@@ -494,7 +494,7 @@ export function MealScannerView({
                   onClick={onOpenBarcode}
                   className="rounded-xl border border-amber-400/40 bg-amber-500/15 px-3 py-1.5 text-xs font-bold text-amber-200 hover:bg-amber-500/25"
                 >
-                  Code-barres EAN gratuit illimité
+                  Saisie code EAN gratuite
                 </button>
               )}
             </div>

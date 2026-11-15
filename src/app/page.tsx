@@ -1390,6 +1390,11 @@ export default function VitalPulseApp() {
           open={barcodeOpen}
           onClose={() => setBarcodeOpen(false)}
           dateKey={todayKey}
+          subscription={state.subscription}
+          onOpenSubscriptionModal={(reason) => {
+            setSubscriptionReasonFr(reason ?? null);
+            setSubscriptionOpen(true);
+          }}
           onAddMeal={(meal) =>
             commitState((prev) => ({ ...prev, meals: [meal, ...prev.meals] }))
           }

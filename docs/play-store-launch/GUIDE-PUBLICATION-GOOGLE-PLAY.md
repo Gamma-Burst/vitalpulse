@@ -28,7 +28,7 @@
 
 | Formule | Prix TTC | Canal | Marge / Rôle |
 |---|---|---|---|
-| **FolloWeight Essentiel** | **0 € à vie** | Web & Android | Gratuit sans pub (poids EMA, code-barres, OMAD, 44 exos, 5 msg FW AI/j, Pack découverte 5 scans photo IA offerts, 1 recherche Web/j) |
+| **FolloWeight Essentiel** | **0 € à vie** | Web & Android | Gratuit sans pub (poids EMA, saisie manuelle EAN, OMAD, 44 exos, 5 msg FW AI/j, Pack découverte 5 scans photo IA offerts, 1 recherche Web/j) |
 | **FW+ Annuel (Recommandé)** | **29,99 € / an** (soit **2,49 € / mois**) · **7 j d'essai gratuit** | Google Play & Stripe Web | Formule phare (< 30 €/an vs 60–80 €/an concurrents) |
 | **FW+ Mensuel** | **4,99 € / mois** | Google Play & Stripe Web | Sans engagement, point d'entrée flexible |
 | **Pass Fondateur 5 ans** | **69,90 € une fois** (~1,17 €/mois) | `followeight.com` (Web uniquement) | Trésorerie directe sans commission store 15–30 % |
@@ -55,7 +55,7 @@ Reprenez le contrôle de votre poids, de vos repas et de votre énergie avec Fol
 
 POURQUOI CHOISIR FOLLOWEIGHT ?
 • Poids lissé scientifique (EMA) & Mensurations US Navy : fini la panique des variations d'eau sur la balance. Visualisez votre vraie tendance en 14 jours.
-• Scanner Plat & Frigo IA (Photo) + Code-Barres illimité : photographiez votre assiette ou scannez un code-barres OpenFoodFacts (Nutri-Score & classification NOVA) pour estimer calories, protéines, fibres et sodium.
+• Scanner Plat & Frigo IA (Photo) + Code-Barres & Enseigne : photographiez votre assiette, scannez un code-barres par caméra/photo (FW+, avec détection du magasin/enseigne) ou recherchez manuellement un code EAN OpenFoodFacts (Nutri-Score & classification NOVA).
 • Jeûne Intermittent & OMAD (23:1, 16:8, 20:4, 5:2) : minuteur métabolique en direct avec alertes ouverture/fermeture de fenêtre et suivi d'hydratation.
 • 44 Exercices avec Coach 3D Articulé & 10 Disciplines : exécutez vos mouvements correctement grâce au mannequin 3D interactif et au ravitaillement sport automatique (ISSN).
 • Bilans Sanguins Éducatifs & Coach FW AI Connecté : importez vos marqueurs (HOMA-IR, TG/HDL, DFG, FIB-4) et posez vos questions à FW AI, connecté à vos chiffres du jour et à la recherche Web scientifique.
@@ -65,8 +65,8 @@ CONFIDENTIALITÉ & SÉCURITÉ CLINIQUE
 • Garde-fous santé intégrés : planchers caloriques protégés, blocage automatique du jeûne et du déficit chez les mineurs (< 18 ans) et durant la grossesse.
 
 VERSION GRATUITE À VIE & ABONNEMENT FW+
-La quasi-totalité de l'app (code-barres, courbe EMA, jeûne OMAD, 44 exercices, bilan sanguin local) reste gratuite à vie.
-Passez à FolloWeight Plus (FW+) pour débloquer le Coach FW AI et les scans photo illimités : 7 jours d'essai gratuit puis 29,99 €/an (soit 2,49 €/mois) ou 4,99 €/mois, résiliable en 2 clics depuis Google Play.
+La quasi-totalité de l'app (saisie manuelle code EAN, courbe EMA, jeûne OMAD, 44 exercices, bilan sanguin local) reste gratuite à vie.
+Passez à FolloWeight Plus (FW+) pour débloquer le Coach FW AI, les scans photo illimités et le scan code-barres caméra/photo avec détection du magasin/enseigne : 7 jours d'essai gratuit puis 29,99 €/an (soit 2,49 €/mois) ou 4,99 €/mois, résiliable en 2 clics depuis Google Play.
 
 FolloWeight est un outil d'éducation bien-être et ne remplace pas un avis médical.
 ```

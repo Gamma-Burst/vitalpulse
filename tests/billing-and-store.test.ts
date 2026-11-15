@@ -20,6 +20,10 @@ import {
   buildDeterministicFwAiReply,
   shouldEnableLiveWebSearch,
 } from "../src/lib/fw-ai-engine";
+import {
+  resolveGs1PrefixOriginFr,
+  resolveProductStoreOrigin,
+} from "../src/lib/barcode-store-origin";
 import { createHmac } from "crypto";
 
 describe("FolloWeight Play Store & Web Billing", () => {
@@ -188,5 +192,89 @@ describe("Routage sélectif AI Cost & Garde-fou Grossesse", () => {
     });
     expect(reply.safetyGuardTriggered).toBe(true);
     expect(reply.replyFr.toLowerCase()).toContain("grossesse");
+  });
+});
+
+describe("Détection Magasin / Enseigne & Préfixe GS1 (FW+)", () => {
+  it("identifie les marques distributeurs belges et françaises exclusives", () => {
+    const colruyt = resolveProductStoreOrigin({
+      code: "5400141059755",
+      brands: "Boni Selection",
+      countriesTags: ["en:belgium"],
+    });
+    expect(colruyt.source).toBe("private_label");
+    expect(colruyt.isExclusivePrivateLabel).toBe(true);
+    expect(colruyt.storesLabelFr).toContain("Colruyt");
+    expect(colruyt.countriesLabelFr).toBe("Belgique");
+
+    const delhaize = resolveProductStoreOrigin({
+      code: "5400112233445",
+      brands: "365 Delhaize",
+    });
+    expect(delhaize.storesList).toContain("Delhaize");
+
+    const lidl = resolveProductStoreOrigin({
+      code: "20724696",
+      brands: "Alesto",
+      stores: "Lidl",
+      countriesTags: ["en:belgium", "en:france"],
+    });
+    expect(lidl.source).toBe("private_label");
+    expect(lidl.storesLabelFr).toContain("Lidl");
+    expect(lidl.gs1OriginFr).toContain("EAN-8");
+
+    const aldi = resolveProductStoreOrigin({
+      code: "29012345",
+      brands: "Milsani",
+    });
+    expect(aldi.storesLabelFr).toContain("Aldi");
+
+    const leclerc = resolveProductStoreOrigin({
+      code: "3564700001234",
+      brands: "Marque Repère",
+    });
+    expect(leclerc.storesLabelFr).toContain("E.Leclerc");
+
+    const carrefour = resolveProductStoreOrigin({
+      code: "3560070472840",
+      brands: "Simpl",
+    });
+    expect(carrefour.storesLabelFr).toContain("Carrefour");
+
+    const intermarche = resolveProductStoreOrigin({
+      code: "3250390001234",
+      brands: "Chabrior",
+    });
+    expect(intermarche.storesLabelFr).toContain("Intermarché");
+  });
+
+  it("gère les produits multi-enseignes OpenFoodFacts et évite les faux exclusifs de grandes marques", () => {
+    const nutella = resolveProductStoreOrigin({
+      code: "3017620422003",
+      brands: "Ferrero, Nutella",
+      stores: "Aldi, Auchan, Carrefour, Casino, Intermarché, Leclerc, Lidl, Super U",
+      countriesTags: ["en:belgium", "en:france"],
+    });
+    expect(nutella.source).toBe("openfoodfacts");
+    expect(nutella.isExclusivePrivateLabel).toBe(false);
+    expect(nutella.storesLabelFr).toContain("E.Leclerc");
+    expect(nutella.storesLabelFr).toContain("Carrefour");
+
+    const danoneSingleStore = resolveProductStoreOrigin({
+      code: "3033490004743",
+      brands: "Danone",
+      stores: "Bi1",
+      countriesTags: ["en:france"],
+    });
+    expect(danoneSingleStore.source).toBe("multi_retailer");
+    expect(danoneSingleStore.isExclusivePrivateLabel).toBe(false);
+    expect(danoneSingleStore.storesLabelFr).toContain("supermarchés");
+    expect(danoneSingleStore.storesLabelFr).toContain("Bi1");
+  });
+
+  it("décode correctement les préfixes pays & enseignes GS1", () => {
+    expect(resolveGs1PrefixOriginFr("5400141059755")).toContain("Belgique");
+    expect(resolveGs1PrefixOriginFr("3017620422003")).toContain("France");
+    expect(resolveGs1PrefixOriginFr("20724696")).toContain("EAN-8");
   });
 });
