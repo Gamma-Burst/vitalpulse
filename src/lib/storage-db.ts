@@ -113,6 +113,9 @@ export function sanitizeUserProfile(raw?: Partial<UserProfile>): UserProfile {
     age: clampNum(computedBirthAge ?? raw?.age, 12, 105, 34),
     ...(validBirthDate ? { birthDate: validBirthDate } : {}),
     sex: raw?.sex === "female" ? "female" : "male",
+    ...(raw?.sex === "female" && typeof raw?.pregnant === "boolean"
+      ? { pregnant: raw.pregnant }
+      : {}),
     heightCm: clampNum(raw?.heightCm, 120, 230, 175),
     weightKg: clampNum(raw?.weightKg, 30, 250, 78, 1),
     targetWeightKg: clampNum(raw?.targetWeightKg, 35, 250, 72, 1),

@@ -3,9 +3,14 @@ import {
   buildDeterministicFwAiReply,
   cleanFwAiInlineCitations,
   extractOpenAiResponsesWebData,
+  shouldEnableLiveWebSearch,
   type FwAiContextPayload,
   type FwAiReplyResult,
 } from "@/lib/fw-ai-engine";
+import {
+  isTierEntitledToPaidQuota,
+  verifyEntitlementToken,
+} from "@/lib/billing-server";
 import type { FwAiWebSource } from "@/types/vitalpulse";
 
 export const runtime = "nodejs";
@@ -84,14 +89,27 @@ export async function POST(req: NextRequest) {
     const model =
       process.env.OPENAI_COACH_MODEL || process.env.OPENAI_VISION_MODEL || "gpt-4o-mini";
 
+    const rawLicenseToken =
+      typeof body.licenseToken === "string" ? body.licenseToken.trim() : "";
+    const verifiedToken = rawLicenseToken
+      ? verifyEntitlementToken(rawLicenseToken)
+      : { valid: false };
+    const hasVerifiedPlusToken =
+      verifiedToken.valid &&
+      isTierEntitledToPaidQuota(verifiedToken.payload?.tier);
+    const allowWebByClient = body.allowWebSearch !== false;
+    const useWebSearch =
+      (allowWebByClient || hasVerifiedPlusToken) &&
+      shouldEnableLiveWebSearch(question);
+
     if (apiKey) {
       const systemPrompt = [
         "IDENTITÉ : Tu es FW AI, le coach intelligent connecté de FolloWeight (followeight.com), propulsé par IA cloud avec recherche Web en temps réel ET branché en direct sur les métriques FolloWeight de l'utilisateur.",
         "Tu es une IA d'éducation et de bien-être : tu n'es ni médecin ni diététicien et tu ne poses jamais de diagnostic médical.",
         "RÈGLES STRICTES :",
         "- N'invente JAMAIS les données personnelles de l'utilisateur (utilise strictement DONNÉES TEMPS RÉEL UTILISATEUR ci-dessous).",
-        "- Utilise librement la recherche Web temps réel dès qu'une question porte sur un aliment précis, une enseigne ou un restaurant, une étude scientifique (PubMed, ANSES, HAS, OMS), l'actualité nutrition/sport ou la connexion Internet.",
-        "- Si l'utilisateur demande s'il parle à une vraie IA ou si tu es connecté à Internet, confirme clairement que oui : tu es une IA cloud connectée en temps réel au Web et synchronisée à ses vraies données FolloWeight.",
+        "- Utilise librement les données Web temps réel lorsqu'elles sont fournies pour un aliment précis, une enseigne ou une étude scientifique (PubMed, ANSES, HAS, OMS).",
+        "- Si l'utilisateur demande s'il parle à une vraie IA ou si tu es connecté à Internet, confirme clairement que oui : tu es une IA cloud connectée en temps réel au Web (lorsque la recherche externe est requise) et synchronisée à ses vraies données FolloWeight.",
         "- Ton chaleureux, direct, zéro culpabilisation. N'emploie jamais « tricher », « craquer » ou « mauvais aliment ».",
         "- Donne 3 à 6 phrases claires en français et termine toujours par UNE action concrète réalisable tout de suite.",
         "- GARDE-FOUS ABSOLUS : Aucune restriction < plancher clinique, aucun encouragement au jeûne/déficit chez un mineur (< 18 ans) ou une femme enceinte, aucune modification de traitement (GLP-1, insuline), urgence médicale -> 15/112.",
@@ -109,61 +127,62 @@ export async function POST(req: NextRequest) {
         { role: "user" as const, content: question },
       ];
 
-      // 1. Appel principal : OpenAI Responses API avec recherche Web temps réel
-      try {
-        const respRes = await fetch("https://api.openai.com/v1/responses", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${apiKey}`,
-          },
-          body: JSON.stringify({
-            model,
-            tools: [{ type: "web_search_preview", search_context_size: "low" }],
-            text: {
-              format: {
-                type: "json_schema",
-                name: "fw_ai_reply",
-                strict: true,
-                schema: {
-                  type: "object",
-                  additionalProperties: false,
-                  required: ["replyFr", "quickActions"],
-                  properties: {
-                    replyFr: { type: "string" },
-                    quickActions: {
-                      type: "array",
-                      items: { type: "string" },
+      // 1. Recherche Web temps réel sélective (uniquement quand une donnée externe est utile : -60 % coût avec web_search)
+      if (useWebSearch) {
+        try {
+          const respRes = await fetch("https://api.openai.com/v1/responses", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify({
+              model,
+              tools: [{ type: "web_search", search_context_size: "low" }],
+              text: {
+                format: {
+                  type: "json_schema",
+                  name: "fw_ai_reply",
+                  strict: true,
+                  schema: {
+                    type: "object",
+                    additionalProperties: false,
+                    required: ["replyFr", "quickActions"],
+                    properties: {
+                      replyFr: { type: "string" },
+                      quickActions: {
+                        type: "array",
+                        items: { type: "string" },
+                      },
                     },
                   },
                 },
               },
-            },
-            input: inputMessages,
-          }),
-          signal: AbortSignal.timeout(22000),
-        });
+              input: inputMessages,
+            }),
+            signal: AbortSignal.timeout(16000),
+          });
 
-        if (respRes.ok) {
-          const respJson = (await respRes.json()) as { output?: unknown };
-          const { rawJsonText, webSearchUsed, sources } = extractOpenAiResponsesWebData(
-            respJson.output
-          );
-          const built = parseAiReplyPayload(
-            rawJsonText,
-            deterministic,
-            webSearchUsed,
-            sources
-          );
-          if (built) {
-            return NextResponse.json(built);
+          if (respRes.ok) {
+            const respJson = (await respRes.json()) as { output?: unknown };
+            const { rawJsonText, webSearchUsed, sources } =
+              extractOpenAiResponsesWebData(respJson.output);
+            const built = parseAiReplyPayload(
+              rawJsonText,
+              deterministic,
+              webSearchUsed,
+              sources
+            );
+            if (built) {
+              return NextResponse.json(built);
+            }
           }
+        } catch (err) {
+          console.warn("FW AI Responses web_search fallback triggered:", err);
         }
-      } catch (err) {
-        console.warn("FW AI Responses web_search fallback triggered:", err);
       }
 
-      // 2. Repli secondaire : Chat Completions JSON
+      // 2. Appel standard haute marge / Repli : Chat Completions JSON
       try {
         const oaRes = await fetch("https://api.openai.com/v1/chat/completions", {
           method: "POST",

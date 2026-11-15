@@ -21,7 +21,7 @@ jobs:
       - run: npm run build
 
   android-apk-build:
-    name: Build Android Debug APK (Capacitor)
+    name: Build Android APK & Play Store AAB (Capacitor API 36)
     needs: web-test-and-build
     runs-on: ubuntu-latest
     steps:
@@ -38,9 +38,25 @@ jobs:
       - name: Sync Capacitor Android with Vercel Production URL
         env:
           NEXT_PUBLIC_APP_URL: ${{ vars.NEXT_PUBLIC_APP_URL || 'https://followeight.com' }}
+          NEXT_PUBLIC_REVENUECAT_ANDROID_KEY: ${{ secrets.NEXT_PUBLIC_REVENUECAT_ANDROID_KEY || vars.NEXT_PUBLIC_REVENUECAT_ANDROID_KEY || '' }}
         run: npx cap sync android
+      - name: Configure Release Signing if Keystore Secret Present
+        id: signing
+        shell: bash
+        run: |
+          if [ -n "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ]; then
+            echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > "${{ runner.temp }}/followeight-upload.jks"
+            echo "ANDROID_KEYSTORE_PATH=${{ runner.temp }}/followeight-upload.jks" >> "$GITHUB_ENV"
+            echo "ANDROID_KEY_ALIAS=${{ secrets.ANDROID_KEY_ALIAS || 'followeight-upload' }}" >> "$GITHUB_ENV"
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+          fi
       - name: Build Debug APK & Release AAB with Gradle
         working-directory: android
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           chmod +x gradlew
           ./gradlew assembleDebug bundleRelease --no-daemon

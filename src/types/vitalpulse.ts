@@ -116,6 +116,7 @@ export interface UserProfile {
   age: number;
   birthDate?: string; // ISO YYYY-MM-DD — calcule l'âge automatiquement
   sex: Sex;
+  pregnant?: boolean;
   heightCm: number;
   weightKg: number;
   targetWeightKg: number;
@@ -590,6 +591,11 @@ export interface SubscriptionState {
   dailyAiDateKey: string;
   fwAiMessagesUsedToday: number;
   visionScansUsedToday: number;
+  dailyWebSearchDateKey?: string;
+  dailyWebSearchCount?: number;
+  licenseToken?: string;
+  customerEmail?: string;
+  stripeCustomerId?: string;
 }
 
 export interface FwAiWebSource {

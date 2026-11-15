@@ -1,0 +1,14 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.followeight.app",
+      "sha256_cert_fingerprints": [
+        "AC:7D:AD:6C:C8:DA:84:C4:86:5C:90:93:87:E1:B3:4E:2B:94:FA:D6:7A:B3:B5:14:C5:05:1B:29:E2:54:F4:96"
+      ]
+    }
+  }
+]

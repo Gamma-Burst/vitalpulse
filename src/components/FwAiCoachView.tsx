@@ -22,7 +22,10 @@ import {
   UserProfile,
   WeightTrendPoint,
 } from "@/types/vitalpulse";
-import { canSendFwAiMessage } from "@/lib/billing-bridge";
+import {
+  canSendFwAiMessage,
+  canUseLiveWebSearch,
+} from "@/lib/billing-bridge";
 import { computeFastingLiveStatus } from "@/lib/fasting-engine";
 import { FolloWeightLogo } from "@/components/ui/FolloWeightLogo";
 import type { FwAiContextPayload } from "@/lib/fw-ai-engine";
@@ -41,7 +44,8 @@ interface FwAiCoachViewProps {
   onAppendMessages: (
     userMsg: FwAiMessage,
     assistantMsg: FwAiMessage,
-    incrementQuota: boolean
+    incrementQuota: boolean,
+    webSearchUsed?: boolean
   ) => void;
   onClearConversation: () => void;
   onOpenSubscriptionModal: (reason?: string) => void;
@@ -65,10 +69,15 @@ export function FwAiCoachView({
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [reportedIds, setReportedIds] = useState<string[]>([]);
+  const [reportNotice, setReportNotice] = useState<string | null>(null);
   const listBottomRef = useRef<HTMLDivElement | null>(null);
 
   const quota = useMemo(
     () => canSendFwAiMessage(subscription, todayKey),
+    [subscription, todayKey]
+  );
+  const webQuota = useMemo(
+    () => canUseLiveWebSearch(subscription, todayKey),
     [subscription, todayKey]
   );
 
@@ -89,6 +98,7 @@ export function FwAiCoachView({
         specialMode: profile.specialMode,
         athleticLevel: profile.athleticLevel,
         favoriteSports: profile.favoriteSports,
+        pregnant: profile.pregnant,
       },
       anthro: {
         bmi: anthro.bmi,
@@ -199,6 +209,8 @@ export function FwAiCoachView({
         body: JSON.stringify({
           question,
           context: contextPayload,
+          licenseToken: subscription.licenseToken,
+          allowWebSearch: webQuota.allowed,
           history: messages.slice(-6).map((m) => ({
             role: m.role,
             content: m.content,
@@ -209,6 +221,7 @@ export function FwAiCoachView({
         throw new Error("FW AI n'a pas pu répondre (votre question gratuite n'a pas été décomptée).");
       }
       const data = await res.json();
+      const usedWeb = Boolean(data.webSearchUsed);
       const assistantMsg: FwAiMessage = {
         id: `fw-a-${Date.now()}`,
         role: "assistant",
@@ -216,10 +229,10 @@ export function FwAiCoachView({
         createdAt: new Date().toISOString(),
         provider: data.provider || "clinical-deterministic",
         quickActions: Array.isArray(data.quickActions) ? data.quickActions : [],
-        webSearchUsed: Boolean(data.webSearchUsed),
+        webSearchUsed: usedWeb,
         sources: Array.isArray(data.sources) ? data.sources : [],
       };
-      onAppendMessages(userMsg, assistantMsg, !data.safetyGuardTriggered);
+      onAppendMessages(userMsg, assistantMsg, !data.safetyGuardTriggered, usedWeb);
       setTimeout(() => listBottomRef.current?.scrollIntoView({ behavior: "smooth" }), 80);
     } catch (err) {
       setErrorMsg(
@@ -381,12 +394,26 @@ export function FwAiCoachView({
 
                     <button
                       type="button"
-                      onClick={() =>
+                      disabled={reported}
+                      onClick={() => {
                         setReportedIds((prev) =>
                           prev.includes(m.id) ? prev : [...prev, m.id]
-                        )
-                      }
-                      className="inline-flex items-center gap-1 text-[10px] text-slate-500 hover:text-amber-300"
+                        );
+                        setReportNotice(
+                          "Signalement transmis à l'équipe FolloWeight — merci."
+                        );
+                        void fetch("/api/ai-reports", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            messageId: m.id,
+                            excerpt: m.content.slice(0, 500),
+                            reason: "user_flag_in_chat",
+                            provider: m.provider,
+                          }),
+                        }).catch(() => {});
+                      }}
+                      className="inline-flex items-center gap-1 text-[10px] text-slate-500 hover:text-amber-300 disabled:text-amber-300"
                     >
                       <Flag className="h-3 w-3" />
                       {reported ? "Signalé" : "Signaler"}
@@ -408,6 +435,19 @@ export function FwAiCoachView({
 
         <div ref={listBottomRef} />
       </div>
+
+      {reportNotice && (
+        <div className="rounded-xl border border-emerald-400/35 bg-emerald-500/15 p-2.5 text-xs text-emerald-200 flex items-center justify-between gap-2">
+          <span>{reportNotice}</span>
+          <button
+            type="button"
+            onClick={() => setReportNotice(null)}
+            className="text-[11px] underline"
+          >
+            Fermer
+          </button>
+        </div>
+      )}
 
       {errorMsg && (
         <div className="rounded-xl border border-amber-400/35 bg-amber-500/15 p-3 text-xs text-amber-100 flex items-center gap-2">

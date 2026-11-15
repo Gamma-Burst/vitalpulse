@@ -69,7 +69,9 @@ import {
   activatePlanTier,
   isFwPlusActive,
   recordFwAiMessageUsage,
+  recordWebSearchUsage,
   startSevenDayFreeTrial,
+  verifyWebCheckoutSession,
 } from "@/lib/billing-bridge";
 import { GlossaryPortalHost, openGlossaryCatalog } from "@/components/ui/InfoTip";
 import { parseAppleWatchSyncParams } from "@/lib/wearables-bridge";
@@ -253,6 +255,53 @@ export default function VitalPulseApp() {
             `Apple Watch synchronisée (${msgParts.join(" · ") || "données du jour"}) !`
           );
           return;
+        }
+
+        try {
+          const urlObj = new URL(window.location.href);
+          const tabParam = urlObj.searchParams.get("tab") as TabId | null;
+          if (tabParam && TABS.some((t) => t.id === tabParam)) {
+            setActiveTab(tabParam);
+          }
+          const sessionId = urlObj.searchParams.get("billing_session_id");
+          if (sessionId && sessionId.startsWith("cs_")) {
+            setState(loaded);
+            void verifyWebCheckoutSession(sessionId).then((verified) => {
+              if (!mounted) return;
+              if (verified.ok && verified.tier) {
+                commitState((prev) => ({
+                  ...prev,
+                  subscription: {
+                    ...prev.subscription,
+                    tier: verified.tier!,
+                    source: "web_followeight",
+                    trialEndsAtIso: verified.trialEndsAtIso ?? null,
+                    renewsAtIso: verified.renewsAtIso ?? null,
+                    licenseToken:
+                      verified.licenseToken ?? prev.subscription.licenseToken,
+                    customerEmail:
+                      verified.customerEmail ?? prev.subscription.customerEmail,
+                    stripeCustomerId:
+                      verified.stripeCustomerId ??
+                      prev.subscription.stripeCustomerId,
+                  },
+                }));
+                notifySavedAndScrollHome(
+                  "Abonnement FolloWeight Plus (FW+) activé et synchronisé !"
+                );
+              }
+            });
+            urlObj.searchParams.delete("billing_session_id");
+            urlObj.searchParams.delete("billing_cancel");
+            window.history.replaceState(
+              null,
+              "",
+              `${urlObj.pathname}${urlObj.search}${urlObj.hash}`
+            );
+            return;
+          }
+        } catch {
+          // ignore URL parsing errors
         }
       }
       setState(loaded);
@@ -1188,14 +1237,25 @@ export default function VitalPulseApp() {
                 messages={state.fwAiMessages}
                 subscription={state.subscription}
                 todayKey={todayKey}
-                onAppendMessages={(userMsg, assistantMsg, incrementQuota) =>
-                  commitState((prev) => ({
-                    ...prev,
-                    fwAiMessages: [...prev.fwAiMessages, userMsg, assistantMsg].slice(-60),
-                    subscription: incrementQuota
+                onAppendMessages={(
+                  userMsg,
+                  assistantMsg,
+                  incrementQuota,
+                  webSearchUsed
+                ) =>
+                  commitState((prev) => {
+                    let nextSub = incrementQuota
                       ? recordFwAiMessageUsage(prev.subscription, todayKey)
-                      : prev.subscription,
-                  }))
+                      : prev.subscription;
+                    if (webSearchUsed) {
+                      nextSub = recordWebSearchUsage(nextSub, todayKey);
+                    }
+                    return {
+                      ...prev,
+                      fwAiMessages: [...prev.fwAiMessages, userMsg, assistantMsg].slice(-60),
+                      subscription: nextSub,
+                    };
+                  })
                 }
                 onClearConversation={() =>
                   commitState((prev) => ({
@@ -1383,6 +1443,12 @@ export default function VitalPulseApp() {
             commitState((prev) => ({
               ...prev,
               subscription: activatePlanTier(prev.subscription, tier, todayKey),
+            }))
+          }
+          onUpdateSubscription={(nextSub) =>
+            commitState((prev) => ({
+              ...prev,
+              subscription: nextSub,
             }))
           }
         />

@@ -83,6 +83,37 @@ const ED_DANGER_PATTERN =
   /(anorex|boulim|me faire vomir|vomir expr[eè]s|laxatif|ne rien manger|je[ûu]ner 5 jours|je[ûu]ner une semaine|moins de 800 kcal|régime 600 kcal|regime 600 kcal)/i;
 
 /**
+ * Détermine si la question requiert une recherche Web temps réel externe
+ * (marque, fast-food, étude scientifique, supplément, actualité) plutôt que
+ * la seule exploitation des métriques personnelles FolloWeight (~20x moins coûteux).
+ */
+export function shouldEnableLiveWebSearch(question: string): boolean {
+  const norm = String(question || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+  if (!norm) return false;
+
+  // Question méta sur le statut IA/Web sans recherche factuelle externe :
+  // le system prompt connaît déjà l'architecture connectée sans payer d'appel web_search.
+  if (
+    /(connecte a internet|vraie? ia|intelligence artificielle|es[- ]tu un robot)/i.test(
+      norm
+    ) &&
+    !/(etude|pubmed|anses|efsa|restaurant|big mac|mcdo|burger|prix|actualite|marque|recherche sur)/i.test(
+      norm
+    )
+  ) {
+    return false;
+  }
+
+  return /(big mac|mcdo|mcdonald|burger king|kfc|quick|starbucks|subway|chipotle|dominos|pizza hut|poke|tacos|lidl|aldi|carrefour|leclerc|auchan|intermarche|picard|danone|yopro|hipro|hi pro|lindahl|myprotein|optimum nutrition|decathlon|marque|restaurant|enseigne|supermarche|etude|pubmed|anses|efsa|inserm|has|oms|meta-analyse|publication|scientifique|202[4-9]|recent|actualite|nouveaute|prix|tarif|creatine|berberine|ashwagandha|magnesium|ozempic|wegovy|mounjaro|cherche|recherche|sur internet|sur le web|source officielle)/i.test(
+    norm
+  );
+}
+
+/**
  * Génère une réponse déterministe FW AI ancrée sur les garde-fous cliniques
  * et les métriques réelles du jour lorsque le mode hors-ligne / secours s'applique.
  */

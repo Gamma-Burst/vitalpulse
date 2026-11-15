@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import Link from "next/link";
 import {
   Award,
   Bell,
@@ -931,6 +932,21 @@ export function ProfileChallengesView({
           </div>
         </div>
 
+        {/* Sécurité femme enceinte */}
+        {form.sex === "female" && (
+          <label className="flex items-start gap-2.5 rounded-2xl border border-sky-400/30 bg-sky-500/10 p-3 text-xs text-slate-200 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={Boolean(form.pregnant)}
+              onChange={(e) => setForm({ ...form, pregnant: e.target.checked })}
+              className="mt-0.5 accent-emerald-400"
+            />
+            <span>
+              <strong className="text-sky-200">Grossesse en cours</strong> — FolloWeight désactive par sécurité tout objectif de déficit calorique, le jeûne strict et le régime cétogène.
+            </span>
+          </label>
+        )}
+
         <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
           <div className="text-xs text-slate-400 flex items-center gap-2">
             Heures silencieuses Push :
@@ -1211,6 +1227,36 @@ export function ProfileChallengesView({
           </div>
         </form>
         </DetailSheet>
+      </div>
+
+      {/* Informations légales & RGPD Play Store */}
+      <div className="vp-card p-4 sm:p-5 flex flex-wrap items-center justify-between gap-3 text-xs">
+        <div className="space-y-0.5">
+          <h4 className="font-bold text-white">Confidentialité, Conditions &amp; Données RGPD</h4>
+          <p className="text-[11px] text-slate-400">
+            Vos mesures, pesées et photos restent stockées localement sur votre appareil.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href="/privacy"
+            className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-1.5 font-semibold text-slate-200 hover:border-emerald-400"
+          >
+            Confidentialité
+          </Link>
+          <Link
+            href="/terms"
+            className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-1.5 font-semibold text-slate-200 hover:border-emerald-400"
+          >
+            Conditions (CGU/CGV)
+          </Link>
+          <Link
+            href="/delete-account"
+            className="rounded-xl border border-rose-400/35 bg-rose-500/15 px-3 py-1.5 font-semibold text-rose-200 hover:bg-rose-500/25"
+          >
+            Effacer mes données
+          </Link>
+        </div>
       </div>
     </div>
   );
