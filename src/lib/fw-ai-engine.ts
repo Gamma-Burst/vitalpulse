@@ -1,4 +1,5 @@
 import { resolveEffectiveAge } from "@/lib/metabolic-engine";
+import type { FwAiWebSource } from "@/types/vitalpulse";
 
 export interface FwAiContextPayload {
   profile: {
@@ -71,6 +72,8 @@ export interface FwAiReplyResult {
   quickActions: string[];
   provider: "openai-fw-ai" | "clinical-deterministic";
   safetyGuardTriggered: boolean;
+  webSearchUsed?: boolean;
+  sources?: FwAiWebSource[];
 }
 
 const EMERGENCY_PATTERN =
@@ -257,4 +260,80 @@ export function buildDeterministicFwAiReply(params: {
     provider: "clinical-deterministic",
     safetyGuardTriggered: false,
   };
+}
+
+/**
+ * Supprime les citations Markdown injectées en ligne par OpenAI Web Search
+ * (les sources cliquables étant rendues séparément sous le message).
+ */
+export function cleanFwAiInlineCitations(text: string): string {
+  return String(text || "")
+    .replace(/\s*\(\[[^\]]+\]\(https?:\/\/[^)]+\)\)/g, "")
+    .replace(/\[([^\]]+)\]\(https?:\/\/[^)]+\)/g, "$1")
+    .replace(/\s+([.,;:!?])/g, "$1")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/ +\n/g, "\n")
+    .trim();
+}
+
+/**
+ * Extrait le JSON de réponse, l'indicateur web_search_call et jusqu'à 4 sources
+ * nettoyées depuis la réponse structurée OpenAI `/v1/responses`.
+ */
+export function extractOpenAiResponsesWebData(output: unknown): {
+  rawJsonText: string;
+  webSearchUsed: boolean;
+  sources: FwAiWebSource[];
+} {
+  let rawJsonText = "";
+  let webSearchUsed = false;
+  const sources: FwAiWebSource[] = [];
+  const seenUrls = new Set<string>();
+
+  if (!Array.isArray(output)) {
+    return { rawJsonText, webSearchUsed, sources };
+  }
+
+  for (const item of output) {
+    if (!item || typeof item !== "object") continue;
+    const obj = item as Record<string, unknown>;
+    if (obj.type === "web_search_call") {
+      webSearchUsed = true;
+      continue;
+    }
+    if (obj.type === "message" && Array.isArray(obj.content)) {
+      for (const block of obj.content) {
+        if (!block || typeof block !== "object") continue;
+        const b = block as Record<string, unknown>;
+        if (b.type === "output_text" && typeof b.text === "string") {
+          rawJsonText += b.text;
+          if (Array.isArray(b.annotations)) {
+            for (const ann of b.annotations) {
+              if (sources.length >= 4) continue;
+              if (!ann || typeof ann !== "object") continue;
+              const a = ann as Record<string, unknown>;
+              if (a.type !== "url_citation" || typeof a.url !== "string") continue;
+              try {
+                const urlObj = new URL(a.url);
+                urlObj.searchParams.delete("utm_source");
+                const cleanUrl = urlObj.toString();
+                if (seenUrls.has(cleanUrl)) continue;
+                seenUrls.add(cleanUrl);
+                const domain = urlObj.hostname.replace(/^www\./i, "");
+                const title =
+                  typeof a.title === "string" && a.title.trim()
+                    ? a.title.trim()
+                    : domain;
+                sources.push({ title, url: cleanUrl, domain });
+              } catch {
+                // Ignore les URL malformées
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return { rawJsonText, webSearchUsed, sources };
 }

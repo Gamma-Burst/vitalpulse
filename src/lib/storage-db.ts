@@ -283,7 +283,7 @@ export function migrateVitalPulseState(raw: Partial<VitalPulseState>): VitalPuls
   const defaultFwAiWelcome: FwAiMessage = {
     id: "fw-ai-welcome",
     role: "assistant",
-    content: `Bonjour ${profile.name} ! Je suis FW AI, votre coach FolloWeight. Je lis vos vrais chiffres du jour (calories, protéines, pas, jeûne et sport) pour vous proposer le prochain bon choix sans calcul compliqué. Vous disposez de 5 questions gratuites chaque jour !`,
+    content: `Bonjour ${profile.name} ! Je suis FW AI, votre coach connecté FolloWeight. Je suis branché en direct sur vos vrais chiffres du jour (calories, protéines, pas, jeûne et sport) ET sur la recherche Web en temps réel pour vérifier n'importe quel aliment, enseigne ou étude scientifique. Vous disposez de 5 questions gratuites chaque jour !`,
     createdAt: new Date().toISOString(),
     provider: "clinical-deterministic",
     quickActions: [

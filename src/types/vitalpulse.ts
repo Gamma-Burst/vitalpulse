@@ -592,6 +592,12 @@ export interface SubscriptionState {
   visionScansUsedToday: number;
 }
 
+export interface FwAiWebSource {
+  title: string;
+  url: string;
+  domain: string;
+}
+
 export interface FwAiMessage {
   id: string;
   role: "user" | "assistant";
@@ -599,6 +605,8 @@ export interface FwAiMessage {
   createdAt: string;
   provider?: "openai-fw-ai" | "clinical-deterministic";
   quickActions?: string[];
+  webSearchUsed?: boolean;
+  sources?: FwAiWebSource[];
 }
 
 export type MuscleGroupId =

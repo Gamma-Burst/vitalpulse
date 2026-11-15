@@ -4,7 +4,9 @@ import React, { useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   Crown,
+  ExternalLink,
   Flag,
+  Globe,
   Send,
   ShieldAlert,
   Sparkles,
@@ -214,6 +216,8 @@ export function FwAiCoachView({
         createdAt: new Date().toISOString(),
         provider: data.provider || "clinical-deterministic",
         quickActions: Array.isArray(data.quickActions) ? data.quickActions : [],
+        webSearchUsed: Boolean(data.webSearchUsed),
+        sources: Array.isArray(data.sources) ? data.sources : [],
       };
       onAppendMessages(userMsg, assistantMsg, !data.safetyGuardTriggered);
       setTimeout(() => listBottomRef.current?.scrollIntoView({ behavior: "smooth" }), 80);
@@ -235,10 +239,11 @@ export function FwAiCoachView({
         <div className="flex items-center gap-3">
           <FolloWeightLogo size={42} showWordmark={false} />
           <div>
-            <h2 className="text-base sm:text-lg font-extrabold text-white flex items-center gap-2">
+            <h2 className="text-base sm:text-lg font-extrabold text-white flex flex-wrap items-center gap-2">
               Coach FW AI
-              <span className="rounded-full border border-emerald-400/35 bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-200">
-                IA Éducative · Temps Réel
+              <span className="inline-flex items-center gap-1 rounded-full border border-emerald-400/35 bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-200">
+                <Globe className="h-3 w-3 shrink-0" />
+                IA Connectée · Web & Temps Réel
               </span>
             </h2>
             <p className="text-xs text-slate-300">
@@ -288,8 +293,8 @@ export function FwAiCoachView({
       <div className="rounded-2xl border border-slate-800 bg-slate-950/75 px-3.5 py-2 text-[11px] text-slate-400 flex items-center gap-2">
         <ShieldAlert className="h-4 w-4 text-sky-400 shrink-0" />
         <span>
-          Vous échangez avec <strong>FW AI</strong> (intelligence artificielle FolloWeight). Aucun
-          diagnostic ni prescription médicale ; tous vos calculs restent déterministes côté appareil.
+          Vous échangez avec <strong>FW AI</strong> (IA FolloWeight connectée au Web en temps réel). Aucun
+          diagnostic ni prescription médicale ; tous vos calculs corporels restent déterministes sur votre appareil.
         </span>
       </div>
 
@@ -326,6 +331,37 @@ export function FwAiCoachView({
                 }`}
               >
                 <p className="whitespace-pre-line">{m.content}</p>
+
+                {!isUser && (m.webSearchUsed || (m.sources?.length ?? 0) > 0 || m.provider === "openai-fw-ai") && (
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                    {m.webSearchUsed || (m.sources?.length ?? 0) > 0 ? (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-sky-400/35 bg-sky-500/10 px-2 py-0.5 text-[10px] font-semibold text-sky-300">
+                        🌐 Recherche Web temps réel
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-emerald-400/35 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
+                        ⚡ IA Cloud FolloWeight
+                      </span>
+                    )}
+                    {m.sources && m.sources.length > 0 && (
+                      <>
+                        {m.sources.map((s) => (
+                          <a
+                            key={s.url}
+                            href={s.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title={s.title}
+                            className="inline-flex items-center gap-1 rounded-full border border-sky-400/35 bg-sky-500/10 px-2 py-0.5 text-[10px] font-medium text-sky-300 hover:border-sky-400 transition max-w-full"
+                          >
+                            <span className="truncate max-w-[180px]">{s.domain}</span>
+                            <ExternalLink className="h-2.5 w-2.5 shrink-0" />
+                          </a>
+                        ))}
+                      </>
+                    )}
+                  </div>
+                )}
 
                 {!isUser && (
                   <div className="mt-2 pt-2 border-t border-slate-800 flex flex-wrap items-center justify-between gap-2">
@@ -392,7 +428,7 @@ export function FwAiCoachView({
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Ex: Que manger après ma séance pour atteindre mes protéines ?"
+          placeholder="Ex: Calories d'un Big Mac, étude créatine, ou analyse ma journée…"
           className="flex-1 rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-xs sm:text-sm text-white placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none"
         />
         <button
