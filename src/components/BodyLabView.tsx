@@ -32,6 +32,11 @@ import {
   MeasurementSiteKey,
 } from "@/lib/body-composition";
 import { resolveEffectiveAge } from "@/lib/metabolic-engine";
+import {
+  formatDecimalFr,
+  parseDecimalInput,
+  sanitizeDecimalDraft,
+} from "@/lib/decimal-utils";
 import { processBodyProgressPhoto } from "@/lib/native-bridge";
 import {
   deleteBodyPhotoDataUrl,
@@ -185,8 +190,14 @@ export function BodyLabView({
   const firstMeas = sortedMeas[0];
 
   const [mDate, setMDate] = useState(todayDateKey);
-  const [mWeight, setMWeight] = useState(String(latestMeas?.weightKg ?? profile.weightKg));
-  const [mWaist, setMWaist] = useState(String(latestMeas?.waistCm ?? profile.waistCm ?? ""));
+  const [mWeight, setMWeight] = useState(
+    formatDecimalFr(latestMeas?.weightKg ?? profile.weightKg)
+  );
+  const [mWaist, setMWaist] = useState(
+    latestMeas?.waistCm ?? profile.waistCm
+      ? formatDecimalFr((latestMeas?.waistCm ?? profile.waistCm) as number)
+      : ""
+  );
   const [mHips, setMHips] = useState(String(latestMeas?.hipsCm ?? ""));
   const [mChest, setMChest] = useState(String(latestMeas?.chestCm ?? ""));
   const [mShoulders, setMShoulders] = useState(String(latestMeas?.shouldersCm ?? ""));
@@ -222,13 +233,13 @@ export function BodyLabView({
       min: number,
       max: number
     ): { val?: number; err?: string } => {
-      const cleaned = raw.trim().replace(",", ".");
-      if (!cleaned) return { val: undefined };
-      const parsed = Number(cleaned);
-      if (!Number.isFinite(parsed) || parsed < min || parsed > max) {
+      const trimmed = raw.trim();
+      if (!trimmed) return { val: undefined };
+      const parsed = parseDecimalInput(trimmed, 2);
+      if (parsed === undefined || parsed < min || parsed > max) {
         return { err: `${label} doit être compris entre ${min} et ${max}.` };
       }
-      return { val: +parsed.toFixed(1) };
+      return { val: parsed };
     };
 
     const checks = [
@@ -622,7 +633,7 @@ export function BodyLabView({
                     inputMode="decimal"
                     placeholder="30–250"
                     value={mWeight}
-                    onChange={(e) => setMWeight(e.target.value.replace(/[^\d.,]/g, ""))}
+                    onChange={(e) => setMWeight(sanitizeDecimalDraft(e.target.value))}
                     className="w-full rounded-lg bg-slate-900 border border-slate-700 px-2.5 py-2 text-white tabular-nums"
                   />
                 </label>
@@ -633,7 +644,7 @@ export function BodyLabView({
                     inputMode="decimal"
                     placeholder="88.0"
                     value={mWaist}
-                    onChange={(e) => setMWaist(e.target.value.replace(/[^\d.,]/g, ""))}
+                    onChange={(e) => setMWaist(sanitizeDecimalDraft(e.target.value))}
                     className="w-full rounded-lg bg-slate-900 border border-emerald-500/40 px-2.5 py-2 text-white tabular-nums"
                   />
                 </label>
@@ -644,7 +655,7 @@ export function BodyLabView({
                     inputMode="decimal"
                     placeholder="99.5"
                     value={mHips}
-                    onChange={(e) => setMHips(e.target.value.replace(/[^\d.,]/g, ""))}
+                    onChange={(e) => setMHips(sanitizeDecimalDraft(e.target.value))}
                     className="w-full rounded-lg bg-slate-900 border border-slate-700 px-2.5 py-2 text-white tabular-nums"
                   />
                 </label>
@@ -655,7 +666,7 @@ export function BodyLabView({
                     inputMode="decimal"
                     placeholder="101.5"
                     value={mChest}
-                    onChange={(e) => setMChest(e.target.value.replace(/[^\d.,]/g, ""))}
+                    onChange={(e) => setMChest(sanitizeDecimalDraft(e.target.value))}
                     className="w-full rounded-lg bg-slate-900 border border-slate-700 px-2.5 py-2 text-white tabular-nums"
                   />
                 </label>
@@ -666,7 +677,7 @@ export function BodyLabView({
                     inputMode="decimal"
                     placeholder="38.8"
                     value={mNeck}
-                    onChange={(e) => setMNeck(e.target.value.replace(/[^\d.,]/g, ""))}
+                    onChange={(e) => setMNeck(sanitizeDecimalDraft(e.target.value))}
                     className="w-full rounded-lg bg-slate-900 border border-slate-700 px-2.5 py-2 text-white tabular-nums"
                   />
                 </label>
@@ -677,7 +688,7 @@ export function BodyLabView({
                     inputMode="decimal"
                     placeholder="117.5"
                     value={mShoulders}
-                    onChange={(e) => setMShoulders(e.target.value.replace(/[^\d.,]/g, ""))}
+                    onChange={(e) => setMShoulders(sanitizeDecimalDraft(e.target.value))}
                     className="w-full rounded-lg bg-slate-900 border border-slate-700 px-2.5 py-2 text-white tabular-nums"
                   />
                 </label>
@@ -688,7 +699,7 @@ export function BodyLabView({
                     inputMode="decimal"
                     placeholder="58.0"
                     value={mThigh}
-                    onChange={(e) => setMThigh(e.target.value.replace(/[^\d.,]/g, ""))}
+                    onChange={(e) => setMThigh(sanitizeDecimalDraft(e.target.value))}
                     className="w-full rounded-lg bg-slate-900 border border-slate-700 px-2.5 py-2 text-white tabular-nums"
                   />
                 </label>
@@ -699,7 +710,7 @@ export function BodyLabView({
                     inputMode="decimal"
                     placeholder="35.0"
                     value={mArm}
-                    onChange={(e) => setMArm(e.target.value.replace(/[^\d.,]/g, ""))}
+                    onChange={(e) => setMArm(sanitizeDecimalDraft(e.target.value))}
                     className="w-full rounded-lg bg-slate-900 border border-slate-700 px-2.5 py-2 text-white tabular-nums"
                   />
                 </label>
@@ -710,7 +721,7 @@ export function BodyLabView({
                     inputMode="decimal"
                     placeholder="38.2"
                     value={mCalf}
-                    onChange={(e) => setMCalf(e.target.value.replace(/[^\d.,]/g, ""))}
+                    onChange={(e) => setMCalf(sanitizeDecimalDraft(e.target.value))}
                     className="w-full rounded-lg bg-slate-900 border border-slate-700 px-2.5 py-2 text-white tabular-nums"
                   />
                 </label>
@@ -1060,8 +1071,8 @@ export function BodyLabView({
                     >
                       <span className="font-semibold text-white">{row.dateKey}</span>
                       <span className="text-slate-400">
-                        {row.weightKg ? `${row.weightKg} kg · ` : ""}
-                        {row.waistCm ? `Taille ${row.waistCm} cm` : ""}
+                        {row.weightKg ? `${formatDecimalFr(row.weightKg)} kg · ` : ""}
+                        {row.waistCm ? `Taille ${formatDecimalFr(row.waistCm)} cm` : ""}
                       </span>
                       <button
                         type="button"
@@ -1744,10 +1755,10 @@ export function BodyLabView({
                       <div className="text-center text-xs text-slate-300">
                         Écart entre les deux photos :{" "}
                         <strong className="text-emerald-300">
-                          {(afterMeta.weightKg - beforeMeta.weightKg).toFixed(1)} kg
+                          {formatDecimalFr(afterMeta.weightKg - beforeMeta.weightKg, 2)} kg
                         </strong>
                         {beforeMeta.waistCm && afterMeta.waistCm
-                          ? ` · ${(afterMeta.waistCm - beforeMeta.waistCm).toFixed(1)} cm de taille`
+                          ? ` · ${formatDecimalFr(afterMeta.waistCm - beforeMeta.waistCm, 2)} cm de taille`
                           : ""}
                       </div>
                     )}

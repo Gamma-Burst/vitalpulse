@@ -39,6 +39,7 @@ import { EnergyActivityChart } from "@/components/EnergyActivityChart";
 import { DetailSheet } from "@/components/ui/DetailSheet";
 import { InfoTip } from "@/components/ui/InfoTip";
 import { HeroEnergyOrb, LiveTileIcon } from "@/components/ui/LiveMetricVisuals";
+import { formatDecimalFr } from "@/lib/decimal-utils";
 import {
   computeFastingLiveStatus,
   formatAllowedDurationFr,
@@ -953,7 +954,7 @@ export function DashboardView({
             <div className="flex w-full items-start justify-between gap-2">
               <LiveTileIcon kind="weight_ema" />
               <span className="text-[11px] font-bold text-cyan-300 tabular-nums">
-                Cible {profile.targetWeightKg} kg
+                Cible {formatDecimalFr(profile.targetWeightKg)} kg
               </span>
             </div>
             <div>
@@ -961,7 +962,7 @@ export function DashboardView({
                 Poids lissé EMA <InfoTip term="weight_ema" />
               </p>
               <p className="font-display text-lg font-extrabold text-white tabular-nums">
-                {profile.weightKg} kg
+                {formatDecimalFr(profile.weightKg)} kg
               </p>
               <p className="mt-0.5 truncate text-[11px] text-slate-400">
                 {scaleDecoder?.triggered ? scaleDecoder.headlineFr : "Courbe anti-yo-yo"}
@@ -1010,7 +1011,7 @@ export function DashboardView({
               <p className="text-[11px] font-semibold text-slate-400">Corps &amp; Sang</p>
               <p className="font-display text-lg font-extrabold text-white tabular-nums">
                 {latestMeasurement?.waistCm
-                  ? `${latestMeasurement.waistCm} cm`
+                  ? `${formatDecimalFr(latestMeasurement.waistCm)} cm`
                   : `IMC ${anthro.bmi}`}
               </p>
               <p className="mt-0.5 truncate text-[11px] text-slate-400">
@@ -1673,8 +1674,8 @@ export function DashboardView({
             onQuickLogWeight(kg, waistCm);
             finishSaveAndReturnHome(
               waistCm
-                ? `Pesée enregistrée : ${kg.toFixed(1)} kg · Taille ${waistCm.toFixed(1)} cm.`
-                : `Pesée enregistrée : ${kg.toFixed(1)} kg.`
+                ? `Pesée enregistrée : ${formatDecimalFr(kg)} kg · Taille ${formatDecimalFr(waistCm)} cm.`
+                : `Pesée enregistrée : ${formatDecimalFr(kg)} kg.`
             );
           }}
         />
@@ -1775,7 +1776,7 @@ export function DashboardView({
               </p>
               <p className="mt-0.5 text-xs text-slate-300">
                 {latestMeasurement?.waistCm
-                  ? `Dernier tour de taille : ${latestMeasurement.waistCm} cm`
+                  ? `Dernier tour de taille : ${formatDecimalFr(latestMeasurement.waistCm)} cm`
                   : "Enregistrer vos mensurations (cm)"}
               </p>
             </div>

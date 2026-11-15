@@ -31,6 +31,12 @@ import {
   triggerLightHaptic,
 } from "@/lib/native-bridge";
 import { DetailSheet } from "@/components/ui/DetailSheet";
+import {
+  formatDecimalFr,
+  parseDecimalInput,
+  roundToDecimals,
+  sanitizeDecimalDraft,
+} from "@/lib/decimal-utils";
 
 export interface GoalsManagerModalProps {
   open: boolean;
@@ -179,7 +185,7 @@ export function GoalsManagerModal({
       nextDir = "at_most";
     }
 
-    setTargetDraft(String(defaultVal));
+    setTargetDraft(spec.decimal ? formatDecimalFr(defaultVal) : String(defaultVal));
     setUnit(spec.defaultUnit);
     setDirection(nextDir);
   }
@@ -187,9 +193,10 @@ export function GoalsManagerModal({
   function applyPreset(preset: PresetGoalTemplate) {
     triggerLightHaptic();
     const val = preset.getTarget(profile, anthro);
+    const spec = GOAL_METRIC_CATALOG[preset.metric];
     setTitle(preset.title);
     setMetric(preset.metric);
-    setTargetDraft(String(val));
+    setTargetDraft(spec?.decimal ? formatDecimalFr(val) : String(val));
     setUnit(preset.unit);
     setDurationDays(preset.durationDays);
     setPersonalWhy(preset.why);
@@ -255,16 +262,19 @@ export function GoalsManagerModal({
     if (!cleanTitle) return;
 
     const spec = GOAL_METRIC_CATALOG[metric];
-    const parsedTarget = Number(targetDraft.replace(",", "."));
-    const clampedTarget = Number.isFinite(parsedTarget)
-      ? Math.min(
-          spec.max,
-          Math.max(
-            spec.min,
-            spec.decimal ? Math.round(parsedTarget * 10) / 10 : Math.round(parsedTarget)
+    const parsedTarget = spec.decimal
+      ? parseDecimalInput(targetDraft, 2)
+      : Number(targetDraft.replace(",", "."));
+    const clampedTarget =
+      parsedTarget !== undefined && Number.isFinite(parsedTarget)
+        ? Math.min(
+            spec.max,
+            Math.max(
+              spec.min,
+              spec.decimal ? roundToDecimals(parsedTarget, 2) : Math.round(parsedTarget)
+            )
           )
-        )
-      : spec.defaultTarget;
+        : spec.defaultTarget;
 
     if (celebrateEnabled && getNotificationPermissionState() === "default") {
       await requestFastingNotificationPermission();
@@ -459,7 +469,13 @@ export function GoalsManagerModal({
                 type="text"
                 inputMode={currentSpec.decimal ? "decimal" : "numeric"}
                 value={targetDraft}
-                onChange={(e) => setTargetDraft(e.target.value)}
+                onChange={(e) =>
+                  setTargetDraft(
+                    currentSpec.decimal
+                      ? sanitizeDecimalDraft(e.target.value)
+                      : e.target.value.replace(/[^\d]/g, "")
+                  )
+                }
                 disabled={metric === "no_nova4"}
                 className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-white disabled:opacity-50"
               />

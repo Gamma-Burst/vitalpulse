@@ -185,7 +185,7 @@ function toBoundedMetric(raw: string | null | undefined, min: number, max: numbe
   if (!cleaned || /^\[.*\]$/.test(cleaned)) return undefined;
   const n = Number(cleaned);
   if (!Number.isFinite(n) || n < min || n > max) return undefined;
-  return allowFloat ? +n.toFixed(1) : Math.round(n);
+  return allowFloat ? +n.toFixed(2) : Math.round(n);
 }
 
 /**
@@ -591,7 +591,7 @@ export function parseWearableExportText(
       } else if (recType === "HKQuantityTypeIdentifierBodyMass") {
         const v = toBoundedPositive(valMatch[1], 30, 250);
         if (v !== undefined && (dateKey === "undated" || dateKey >= lastWeightDate)) {
-          lastValidWeight = +v.toFixed(1);
+          lastValidWeight = +v.toFixed(2);
           if (dateKey !== "undated") lastWeightDate = dateKey;
         }
       } else if (recType === "HKQuantityTypeIdentifierHeartRate") {
@@ -635,7 +635,7 @@ export function parseWearableExportText(
       const weightMatches = [...trimmed.matchAll(/HKQuantityTypeIdentifierBodyMass"[^>]*value="(\d+(?:\.\d+)?)"/g)];
       for (const wm of weightMatches) {
         const v = toBoundedPositive(wm[1], 30, 250);
-        if (v !== undefined) lastValidWeight = +v.toFixed(1);
+        if (v !== undefined) lastValidWeight = +v.toFixed(2);
       }
       const hrMatches = [...trimmed.matchAll(/HKQuantityTypeIdentifierHeartRate"[^>]*value="(\d+(?:\.\d+)?)"/g)];
       for (const hm of hrMatches) {
@@ -678,7 +678,7 @@ export function parseWearableExportText(
       return {
         steps: stepsVal !== undefined ? Math.round(stepsVal) : undefined,
         activeKcal: kcalVal !== undefined ? Math.round(kcalVal) : undefined,
-        weightKg: weightVal !== undefined ? +weightVal.toFixed(1) : undefined,
+        weightKg: weightVal !== undefined ? +weightVal.toFixed(2) : undefined,
         heartRateBpm: hrVal !== undefined ? Math.round(hrVal) : undefined,
         sourceLabel: lower.includes("garmin")
           ? "Import Garmin JSON"
@@ -709,7 +709,7 @@ export function parseWearableExportText(
       return {
         steps: steps !== undefined ? Math.round(steps) : undefined,
         activeKcal: activeKcal !== undefined ? Math.round(activeKcal) : undefined,
-        weightKg: weightKg !== undefined ? +weightKg.toFixed(1) : undefined,
+        weightKg: weightKg !== undefined ? +weightKg.toFixed(2) : undefined,
         heartRateBpm: heartRateBpm !== undefined ? Math.round(heartRateBpm) : undefined,
         sourceLabel: "Import Samsung / CSV",
       };
@@ -719,14 +719,14 @@ export function parseWearableExportText(
   // 4. Fallback regex libre
   const stepsM = trimmed.match(/(\d{3,6})\s*(?:pas|steps)/i);
   const bpmM = trimmed.match(/(\d{2,3})\s*(?:bpm)/i);
-  const weightM = trimmed.match(/(\d{2,3}(?:[.,]\d)?)\s*(?:kg)/i);
+  const weightM = trimmed.match(/(\d{2,3}(?:[.,]\d{1,2})?)\s*(?:kg)/i);
   const stepsParsed = stepsM ? toBoundedPositive(stepsM[1], 100, 100000) : undefined;
   const bpmParsed = bpmM ? toBoundedPositive(bpmM[1], 30, 240) : undefined;
   const weightParsed = weightM ? toBoundedPositive(weightM[1], 30, 250) : undefined;
   return {
     steps: stepsParsed !== undefined ? Math.round(stepsParsed) : undefined,
     heartRateBpm: bpmParsed !== undefined ? Math.round(bpmParsed) : undefined,
-    weightKg: weightParsed !== undefined ? +weightParsed.toFixed(1) : undefined,
+    weightKg: weightParsed !== undefined ? +weightParsed.toFixed(2) : undefined,
     sourceLabel: "Import texte montre",
   };
 }

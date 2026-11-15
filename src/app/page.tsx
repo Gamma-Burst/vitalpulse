@@ -28,6 +28,7 @@ import {
   computeDailyEnergyBalance,
   computeWeightTrendAndScaleDecoder,
 } from "@/lib/metabolic-engine";
+import { roundToDecimals } from "@/lib/decimal-utils";
 import {
   buildFreshUserState,
   deleteBodyPhotoDataUrl,
@@ -1106,12 +1107,15 @@ export default function VitalPulseApp() {
                 onRangeChange={setRangeDays}
                 onAddWater={addWaterMl}
                 onQuickLogWeight={(weightKg, waistCm) => {
+                  const safeKg = roundToDecimals(weightKg, 2);
+                  const safeWaist =
+                    waistCm !== undefined ? roundToDecimals(waistCm, 2) : undefined;
                   commitState((prev) => ({
                     ...prev,
                     profile: {
                       ...prev.profile,
-                      weightKg,
-                      waistCm: waistCm ?? prev.profile.waistCm,
+                      weightKg: safeKg,
+                      waistCm: safeWaist ?? prev.profile.waistCm,
                     },
                     weights: [
                       ...prev.weights,
@@ -1119,8 +1123,8 @@ export default function VitalPulseApp() {
                         id: `wt-${Date.now()}`,
                         dateKey: todayKey,
                         timestamp: new Date().toISOString(),
-                        weightKg,
-                        waistCm,
+                        weightKg: safeKg,
+                        waistCm: safeWaist,
                       },
                     ],
                   }));
@@ -1633,7 +1637,7 @@ export default function VitalPulseApp() {
                 Number.isFinite(patch.weightKg) &&
                 patch.weightKg >= 30 &&
                 patch.weightKg <= 250
-                  ? +patch.weightKg.toFixed(1)
+                  ? +patch.weightKg.toFixed(2)
                   : undefined;
               return {
                 ...prev,

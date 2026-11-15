@@ -9,6 +9,7 @@ import {
   WeightEntry,
   WorkoutSession,
 } from "@/types/vitalpulse";
+import { formatDecimalFr } from "@/lib/decimal-utils";
 
 export interface GoalMetricSpec {
   metric: ChallengeMetric;
@@ -419,7 +420,7 @@ export function evaluateGoalProgress(
         const ratio = Math.min(latestKg, target) / Math.max(latestKg, target);
         progressPct = Math.min(95, Math.max(5, Math.round(ratio * 100)));
       }
-      currentLabelFr = `${latestKg.toFixed(1)} kg → cible ${target.toFixed(1)} kg`;
+      currentLabelFr = `${formatDecimalFr(latestKg)} kg → cible ${formatDecimalFr(target)} kg`;
       break;
     }
     case "waist_target": {
@@ -447,7 +448,7 @@ export function evaluateGoalProgress(
       }
       currentLabelFr =
         latestWaist !== null
-          ? `${latestWaist.toFixed(1)} cm → cible ≤ ${target.toFixed(1)} cm`
+          ? `${formatDecimalFr(latestWaist)} cm → cible ≤ ${formatDecimalFr(target)} cm`
           : `Ajoutez votre tour de taille dans Corps (cible ≤ ${target.toFixed(1)} cm)`;
       break;
     }

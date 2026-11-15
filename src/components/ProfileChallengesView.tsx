@@ -39,6 +39,12 @@ import {
   isValidBirthDateIso,
   resolveEffectiveAge,
 } from "@/lib/metabolic-engine";
+import {
+  formatDecimalFr,
+  parseDecimalInput,
+  roundToDecimals,
+  sanitizeDecimalDraft,
+} from "@/lib/decimal-utils";
 
 interface ProfileChallengesViewProps {
   profile: UserProfile;
@@ -79,12 +85,12 @@ export function ProfileChallengesView({
 }: ProfileChallengesViewProps) {
   const [form, setForm] = useState<UserProfile>(profile);
   const [heightDraft, setHeightDraft] = useState<string>(String(profile.heightCm));
-  const [weightDraft, setWeightDraft] = useState<string>(String(profile.weightKg));
+  const [weightDraft, setWeightDraft] = useState<string>(formatDecimalFr(profile.weightKg));
   const [targetWeightDraft, setTargetWeightDraft] = useState<string>(
-    String(profile.targetWeightKg)
+    formatDecimalFr(profile.targetWeightKg)
   );
   const [waistDraft, setWaistDraft] = useState<string>(
-    profile.waistCm ? String(profile.waistCm) : ""
+    profile.waistCm ? formatDecimalFr(profile.waistCm) : ""
   );
   const [stepGoalDraft, setStepGoalDraft] = useState<string>(String(profile.dailyStepGoal));
   const [waterGoalDraft, setWaterGoalDraft] = useState<string>(
@@ -106,9 +112,9 @@ export function ProfileChallengesView({
   const syncDraftsFromProfile = (source: UserProfile) => {
     setForm(source);
     setHeightDraft(String(source.heightCm));
-    setWeightDraft(String(source.weightKg));
-    setTargetWeightDraft(String(source.targetWeightKg));
-    setWaistDraft(source.waistCm ? String(source.waistCm) : "");
+    setWeightDraft(formatDecimalFr(source.weightKg));
+    setTargetWeightDraft(formatDecimalFr(source.targetWeightKg));
+    setWaistDraft(source.waistCm ? formatDecimalFr(source.waistCm) : "");
     setStepGoalDraft(String(source.dailyStepGoal));
     setWaterGoalDraft(String(source.dailyWaterGoalMl ?? anthro.autoWaterMl));
     setCalorieOverrideDraft(
@@ -125,12 +131,11 @@ export function ProfileChallengesView({
     decimal: boolean,
     fallback: number
   ) => {
-    const cleaned = raw.trim().replace(",", ".");
-    if (!cleaned || cleaned === ".") return fallback;
-    const parsed = Number(cleaned);
-    if (!Number.isFinite(parsed)) return fallback;
+    const trimmed = raw.trim();
+    const parsed = decimal ? parseDecimalInput(trimmed, 2) : Number(trimmed);
+    if (trimmed === "" || parsed === undefined || !Number.isFinite(parsed)) return fallback;
     const bounded = Math.max(min, Math.min(max, parsed));
-    return decimal ? Math.round(bounded * 10) / 10 : Math.round(bounded);
+    return decimal ? roundToDecimals(bounded, 2) : Math.round(bounded);
   };
 
   const handleSubmitProfile = (e: React.FormEvent) => {
@@ -189,9 +194,9 @@ export function ProfileChallengesView({
     if (profileSheetOpen) return;
     setForm(profile);
     setHeightDraft(String(profile.heightCm));
-    setWeightDraft(String(profile.weightKg));
-    setTargetWeightDraft(String(profile.targetWeightKg));
-    setWaistDraft(profile.waistCm ? String(profile.waistCm) : "");
+    setWeightDraft(formatDecimalFr(profile.weightKg));
+    setTargetWeightDraft(formatDecimalFr(profile.targetWeightKg));
+    setWaistDraft(profile.waistCm ? formatDecimalFr(profile.waistCm) : "");
     setStepGoalDraft(String(profile.dailyStepGoal));
     setWaterGoalDraft(String(profile.dailyWaterGoalMl ?? anthro.autoWaterMl));
     setCalorieOverrideDraft(
@@ -246,29 +251,33 @@ export function ProfileChallengesView({
     return {
       onChange: (e: React.ChangeEvent<HTMLInputElement>) => {
         onDirty?.();
-        const raw = decimal ? e.target.value.replace(",", ".") : e.target.value;
         const filtered = decimal
-          ? raw.replace(/[^\d.]/g, "").replace(/(\..*)\./g, "$1")
-          : raw.replace(/[^\d]/g, "");
+          ? sanitizeDecimalDraft(e.target.value)
+          : e.target.value.replace(/[^\d]/g, "");
         setDraft(filtered);
-        if (!filtered || filtered === ".") return;
-        const parsed = Number(filtered);
-        if (Number.isFinite(parsed) && parsed >= min && parsed <= max) {
-          onValid(decimal ? Math.round(parsed * 10) / 10 : Math.round(parsed));
+        if (!filtered || filtered === "." || filtered === ",") return;
+        const parsed = decimal ? parseDecimalInput(filtered, 2) : Number(filtered);
+        if (
+          parsed !== undefined &&
+          Number.isFinite(parsed) &&
+          parsed >= min &&
+          parsed <= max
+        ) {
+          onValid(decimal ? roundToDecimals(parsed, 2) : Math.round(parsed));
         }
       },
       onBlur: (e: React.FocusEvent<HTMLInputElement>) => {
         const trimmed = e.target.value.trim();
-        const parsed = Number(trimmed.replace(",", "."));
+        const parsed = decimal ? parseDecimalInput(trimmed, 2) : Number(trimmed);
         const clamped =
-          trimmed !== "" && Number.isFinite(parsed)
+          trimmed !== "" && parsed !== undefined && Number.isFinite(parsed)
             ? Math.min(
                 max,
-                Math.max(min, decimal ? Math.round(parsed * 10) / 10 : Math.round(parsed))
+                Math.max(min, decimal ? roundToDecimals(parsed, 2) : Math.round(parsed))
               )
             : fallback;
         onValid(clamped);
-        setDraft(String(clamped));
+        setDraft(decimal ? formatDecimalFr(clamped) : String(clamped));
       },
     };
   }
@@ -532,13 +541,13 @@ export function ProfileChallengesView({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h3 className="text-base sm:text-lg font-bold text-white">
-              Profil : {profile.name} ({resolveEffectiveAge(profile)} ans · {profile.heightCm} cm · {profile.weightKg} kg)
+              Profil : {profile.name} ({resolveEffectiveAge(profile)} ans · {profile.heightCm} cm · {formatDecimalFr(profile.weightKg)} kg)
             </h3>
             <p className="text-xs text-slate-400">
               {formatBirthDateFr(profile.birthDate)
                 ? `Né(e) le ${formatBirthDateFr(profile.birthDate)} · `
                 : ""}
-              Cible {profile.targetWeightKg} kg · {profile.dailyStepGoal} pas/j
+              Cible {formatDecimalFr(profile.targetWeightKg)} kg · {profile.dailyStepGoal} pas/j
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -681,15 +690,15 @@ export function ProfileChallengesView({
               inputMode="decimal"
               value={waistDraft}
               onChange={(e) => {
-                const clean = e.target.value.replace(/[^\d.,]/g, "");
+                const clean = sanitizeDecimalDraft(e.target.value);
                 setWaistDraft(clean);
                 if (clean.trim() === "") {
                   setForm((prev) => ({ ...prev, waistCm: undefined }));
                   return;
                 }
-                const n = Number(clean.replace(",", "."));
-                if (Number.isFinite(n) && n >= 42 && n <= 190) {
-                  setForm((prev) => ({ ...prev, waistCm: +n.toFixed(1) }));
+                const n = parseDecimalInput(clean, 2);
+                if (n !== undefined && n >= 42 && n <= 190) {
+                  setForm((prev) => ({ ...prev, waistCm: n }));
                 }
               }}
               onBlur={() => {
@@ -698,12 +707,13 @@ export function ProfileChallengesView({
                   setForm((prev) => ({ ...prev, waistCm: undefined }));
                   return;
                 }
-                const n = Number(waistDraft.replace(",", "."));
+                const n = parseDecimalInput(waistDraft, 2);
                 const fallback = form.waistCm ?? 82;
-                const clamped = Number.isFinite(n)
-                  ? +Math.max(42, Math.min(190, n)).toFixed(1)
-                  : fallback;
-                setWaistDraft(String(clamped));
+                const clamped =
+                  n !== undefined
+                    ? roundToDecimals(Math.max(42, Math.min(190, n)), 2)
+                    : fallback;
+                setWaistDraft(formatDecimalFr(clamped));
                 setForm((prev) => ({ ...prev, waistCm: clamped }));
               }}
               placeholder="Optionnel (42–190 cm)"

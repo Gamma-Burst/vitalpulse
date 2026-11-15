@@ -11,6 +11,7 @@ import {
   WeightTrendPoint,
   WorkoutSession,
 } from "@/types/vitalpulse";
+import { formatDecimalFr } from "@/lib/decimal-utils";
 
 const ACTIVITY_NEAT_FACTORS: Record<ActivityProfile, number> = {
   sedentary: 0.12,
@@ -633,8 +634,8 @@ export function computeWeightTrendAndScaleDecoder(
           triggered: true,
           likelyCause: "sodium_water",
           deltaKg,
-          headlineFr: `Décodeur de Balance : +${deltaKg.toFixed(2)} kg = rétention d'eau probable, PAS de graisse`,
-          explanationFr: `Hier vous avez consommé ${prevDayBalance.macros.sodiumMg} mg de sodium (au-dessus du seuil de 2 000 mg) avec un bilan de ${prevDayBalance.netBalanceKcal} kcal. Il est physiquement impossible de stocker ${deltaKg.toFixed(2)} kg de graisse en 24 h : votre tendance lissée reste fiable.`,
+          headlineFr: `Décodeur de Balance : +${formatDecimalFr(deltaKg, 2)} kg = rétention d'eau probable, PAS de graisse`,
+          explanationFr: `Hier vous avez consommé ${prevDayBalance.macros.sodiumMg} mg de sodium (au-dessus du seuil de 2 000 mg) avec un bilan de ${prevDayBalance.netBalanceKcal} kcal. Il est physiquement impossible de stocker ${formatDecimalFr(deltaKg, 2)} kg de graisse en 24 h : votre tendance lissée reste fiable.`,
         },
       };
     }
@@ -645,8 +646,8 @@ export function computeWeightTrendAndScaleDecoder(
           triggered: true,
           likelyCause: "glycogen_water",
           deltaKg,
-          headlineFr: `Décodeur de Balance : rebond hydrique de +${deltaKg.toFixed(2)} kg expliqué`,
-          explanationFr: `Chaque gramme de glycogène musculaire stocké après un repas glucidique (${Math.round(prevDayBalance.macros.carbsG)} g hier) lie ~3 g d'eau. Votre tendance de fond (EMA 7j) est à ${last.emaWeightKg.toFixed(1)} kg — continuez sereinement.`,
+          headlineFr: `Décodeur de Balance : rebond hydrique de +${formatDecimalFr(deltaKg, 2)} kg expliqué`,
+          explanationFr: `Chaque gramme de glycogène musculaire stocké après un repas glucidique (${Math.round(prevDayBalance.macros.carbsG)} g hier) lie ~3 g d'eau. Votre tendance de fond (EMA 7j) est à ${formatDecimalFr(last.emaWeightKg, 2)} kg — continuez sereinement.`,
         },
       };
     }
@@ -660,8 +661,8 @@ export function computeWeightTrendAndScaleDecoder(
         triggered: false,
         likelyCause: "steady_fat_loss",
         deltaKg: totalDelta,
-        headlineFr: `Tendance de fond solide : ${totalDelta.toFixed(2)} kg sur la courbe lissée`,
-        explanationFr: `Votre courbe lissée (EMA 7j : ${last.emaWeightKg.toFixed(1)} kg) confirme une perte réelle au-delà des fluctuations quotidiennes d'hydratation.`,
+        headlineFr: `Tendance de fond solide : ${formatDecimalFr(totalDelta, 2)} kg sur la courbe lissée`,
+        explanationFr: `Votre courbe lissée (EMA 7j : ${formatDecimalFr(last.emaWeightKg, 2)} kg) confirme une perte réelle au-delà des fluctuations quotidiennes d'hydratation.`,
       },
     };
   }
@@ -672,7 +673,7 @@ export function computeWeightTrendAndScaleDecoder(
       triggered: false,
       likelyCause: "surplus_trend",
       deltaKg: totalDelta,
-      headlineFr: `Courbe lissée stable (${last.emaWeightKg.toFixed(1)} kg)`,
+      headlineFr: `Courbe lissée stable (${formatDecimalFr(last.emaWeightKg, 2)} kg)`,
       explanationFr: "Comparez toujours la courbe lissée (EMA) sur 7 à 14 jours plutôt qu'une pesée isolée.",
     },
   };

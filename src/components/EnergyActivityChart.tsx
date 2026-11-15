@@ -16,6 +16,11 @@ import {
   WeightTrendPoint,
 } from "@/types/vitalpulse";
 import { InfoTip } from "@/components/ui/InfoTip";
+import {
+  formatDecimalFr,
+  parseDecimalInput,
+  sanitizeDecimalDraft,
+} from "@/lib/decimal-utils";
 
 interface EnergyActivityChartProps {
   balances: DailyEnergyBalance[];
@@ -41,22 +46,22 @@ export function EnergyActivityChart({
   const [selectedIndex, setSelectedIndex] = useState<number>(
     Math.max(0, balances.length - 1)
   );
-  const [weightInput, setWeightInput] = useState(String(currentWeightKg));
+  const [weightInput, setWeightInput] = useState(formatDecimalFr(currentWeightKg));
   const [waistInput, setWaistInput] = useState(
-    currentWaistCm ? String(currentWaistCm) : ""
+    currentWaistCm ? formatDecimalFr(currentWaistCm) : ""
   );
   const weightFocusedRef = useRef(false);
   const waistFocusedRef = useRef(false);
 
   useEffect(() => {
     if (!weightFocusedRef.current) {
-      setWeightInput(String(currentWeightKg));
+      setWeightInput(formatDecimalFr(currentWeightKg));
     }
   }, [currentWeightKg]);
 
   useEffect(() => {
     if (!waistFocusedRef.current) {
-      setWaistInput(currentWaistCm ? String(currentWaistCm) : "");
+      setWaistInput(currentWaistCm ? formatDecimalFr(currentWaistCm) : "");
     }
   }, [currentWaistCm]);
 
@@ -94,15 +99,17 @@ export function EnergyActivityChart({
 
   // Poids SVG
   const wPoints = weightTrend.slice(-rangeDays);
+  const latestWeightPoint = wPoints[wPoints.length - 1] ?? null;
+  const allW = wPoints.flatMap((p) => [p.rawWeightKg, p.emaWeightKg]);
   const minW =
-    wPoints.length > 0
-      ? Math.floor(Math.min(...wPoints.flatMap((p) => [p.rawWeightKg, p.emaWeightKg])) - 1)
+    allW.length > 0
+      ? Math.floor((Math.min(...allW) - 0.5) * 10) / 10
       : 60;
   const maxW =
-    wPoints.length > 0
-      ? Math.ceil(Math.max(...wPoints.flatMap((p) => [p.rawWeightKg, p.emaWeightKg])) + 1)
+    allW.length > 0
+      ? Math.ceil((Math.max(...allW) + 0.5) * 10) / 10
       : 90;
-  const spanW = Math.max(2, maxW - minW);
+  const spanW = Math.max(0.8, +(maxW - minW).toFixed(2));
 
   const wSvgW = 680;
   const wSvgH = 155;
@@ -366,14 +373,16 @@ export function EnergyActivityChart({
               }
               weightFocusedRef.current = false;
               waistFocusedRef.current = false;
-              const kg = parseFloat(weightInput.replace(",", "."));
-              const waist = waistInput ? parseFloat(waistInput.replace(",", ".")) : undefined;
-              if (!isNaN(kg) && kg >= 30 && kg <= 250) {
+              const kg = parseDecimalInput(weightInput, 2);
+              const waist = waistInput.trim() ? parseDecimalInput(waistInput, 2) : undefined;
+              if (kg !== undefined && kg >= 30 && kg <= 250) {
                 const validWaist =
-                  waist !== undefined && !isNaN(waist) && waist >= 42 && waist <= 190
-                    ? +waist.toFixed(1)
-                    : undefined;
-                onQuickLogWeight(+kg.toFixed(1), validWaist);
+                  waist !== undefined && waist >= 42 && waist <= 190 ? waist : undefined;
+                onQuickLogWeight(kg, validWaist);
+                setWeightInput(formatDecimalFr(kg));
+                if (validWaist !== undefined) {
+                  setWaistInput(formatDecimalFr(validWaist));
+                }
               }
             }}
           >
@@ -388,7 +397,7 @@ export function EnergyActivityChart({
                 onBlur={() => {
                   weightFocusedRef.current = false;
                 }}
-                onChange={(e) => setWeightInput(e.target.value.replace(/[^\d.,]/g, ""))}
+                onChange={(e) => setWeightInput(sanitizeDecimalDraft(e.target.value))}
                 placeholder="Poids kg"
                 aria-label="Nouveau poids en kg"
                 className="w-full sm:w-28 rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-xs text-white tabular-nums"
@@ -403,7 +412,7 @@ export function EnergyActivityChart({
                 onBlur={() => {
                   waistFocusedRef.current = false;
                 }}
-                onChange={(e) => setWaistInput(e.target.value.replace(/[^\d.,]/g, ""))}
+                onChange={(e) => setWaistInput(sanitizeDecimalDraft(e.target.value))}
                 placeholder="Taille cm"
                 aria-label="Tour de taille en cm"
                 className="w-full sm:w-28 rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-xs text-white tabular-nums"
@@ -418,6 +427,28 @@ export function EnergyActivityChart({
           </form>
         </div>
 
+        <div className="mb-3 grid grid-cols-3 gap-2 rounded-xl border border-slate-800 bg-slate-900/75 p-2.5 text-xs">
+          <div>
+            <span className="block text-[10px] text-slate-400">Dernière pesée</span>
+            <strong className="text-sm text-white tabular-nums">
+              {formatDecimalFr(latestWeightPoint?.rawWeightKg ?? currentWeightKg)} kg
+            </strong>
+          </div>
+          <div>
+            <span className="block text-[10px] text-slate-400">Tendance EMA (7j)</span>
+            <strong className="text-sm text-emerald-300 tabular-nums">
+              {formatDecimalFr(latestWeightPoint?.emaWeightKg ?? currentWeightKg)} kg
+            </strong>
+          </div>
+          <div>
+            <span className="block text-[10px] text-slate-400">Écart départ</span>
+            <strong className="text-sm text-cyan-300 tabular-nums">
+              {(latestWeightPoint?.deltaFromStartKg ?? 0) > 0 ? "+" : ""}
+              {formatDecimalFr(latestWeightPoint?.deltaFromStartKg ?? 0)} kg
+            </strong>
+          </div>
+        </div>
+
         {wPoints.length > 0 && (
           <div className="w-full overflow-x-auto">
             <svg
@@ -428,7 +459,7 @@ export function EnergyActivityChart({
             >
               {[0, 0.5, 1].map((t) => {
                 const y = 14 + wPlotH * (1 - t);
-                const labelKg = (minW + spanW * t).toFixed(1);
+                const labelKg = formatDecimalFr(minW + spanW * t, 2);
                 return (
                   <g key={t}>
                     <line
@@ -468,6 +499,7 @@ export function EnergyActivityChart({
                 const yEma = 14 + wPlotH - ((p.emaWeightKg - minW) / spanW) * wPlotH;
                 return (
                   <g key={p.dateKey}>
+                    <title>{`${p.dateKey} · Brut : ${formatDecimalFr(p.rawWeightKg)} kg · EMA : ${formatDecimalFr(p.emaWeightKg)} kg`}</title>
                     <circle cx={x} cy={yRaw} r={4} fill="#0284c7" opacity={0.85} />
                     <circle
                       cx={x}

@@ -117,8 +117,8 @@ export function sanitizeUserProfile(raw?: Partial<UserProfile>): UserProfile {
       ? { pregnant: raw.pregnant }
       : {}),
     heightCm: clampNum(raw?.heightCm, 120, 230, 175),
-    weightKg: clampNum(raw?.weightKg, 30, 250, 78, 1),
-    targetWeightKg: clampNum(raw?.targetWeightKg, 35, 250, 72, 1),
+    weightKg: clampNum(raw?.weightKg, 30, 250, 78, 2),
+    targetWeightKg: clampNum(raw?.targetWeightKg, 35, 250, 72, 2),
     activityProfile,
     ...(athleticLevel ? { athleticLevel } : {}),
     ...(favoriteSports && favoriteSports.length > 0 ? { favoriteSports } : {}),
@@ -140,7 +140,7 @@ export function sanitizeUserProfile(raw?: Partial<UserProfile>): UserProfile {
   if (raw?.waistCm !== undefined && Number.isFinite(Number(raw.waistCm))) {
     const w = Number(raw.waistCm);
     if (w >= 42 && w <= 190) {
-      base.waistCm = +w.toFixed(1);
+      base.waistCm = +w.toFixed(2);
     }
   }
 

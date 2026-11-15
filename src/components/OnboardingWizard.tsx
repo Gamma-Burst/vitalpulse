@@ -41,6 +41,12 @@ import {
   triggerLightHaptic,
 } from "@/lib/native-bridge";
 import { blurActiveEditableElement, scrollViewportToTop } from "@/lib/scroll-utils";
+import {
+  formatDecimalFr,
+  parseDecimalInput,
+  roundToDecimals,
+  sanitizeDecimalDraft,
+} from "@/lib/decimal-utils";
 import type { GlossaryTermId } from "@/data/glossary-terms";
 
 export interface OnboardingWizardProps {
@@ -124,9 +130,7 @@ function sanitizeIntInput(raw: string): string {
 }
 
 function sanitizeDecimalInput(raw: string): string {
-  const cleaned = raw.replace(",", ".").replace(/[^0-9.]/g, "");
-  const parts = cleaned.split(".");
-  return parts.length <= 2 ? cleaned : `${parts[0]}.${parts.slice(1).join("")}`;
+  return sanitizeDecimalDraft(raw);
 }
 
 function parseBoundedNumber(
@@ -135,11 +139,9 @@ function parseBoundedNumber(
   min: number,
   max: number
 ): number {
-  const trimmed = raw.trim();
-  if (!trimmed) return fallback;
-  const parsed = Number(trimmed);
-  if (!Number.isFinite(parsed)) return fallback;
-  return Math.max(min, Math.min(max, parsed));
+  const parsed = parseDecimalInput(raw, 2);
+  if (parsed === undefined) return fallback;
+  return roundToDecimals(Math.max(min, Math.min(max, parsed)), 2);
 }
 
 function computeWindowEndHm(startHm: string, durationHours: number): string {
@@ -182,12 +184,14 @@ export function OnboardingWizard({
   );
   const [ageNumber, setAgeNumber] = useState<number>(() => resolveEffectiveAge(initialProfile));
   const [heightInput, setHeightInput] = useState<string>(String(initialProfile.heightCm || 175));
-  const [weightInput, setWeightInput] = useState<string>(String(initialProfile.weightKg || 78));
+  const [weightInput, setWeightInput] = useState<string>(
+    formatDecimalFr(initialProfile.weightKg || 78)
+  );
   const [targetWeightInput, setTargetWeightInput] = useState<string>(
-    String(initialProfile.targetWeightKg || 72)
+    formatDecimalFr(initialProfile.targetWeightKg || 72)
   );
   const [waistCm, setWaistCm] = useState<string>(
-    initialProfile.waistCm ? String(initialProfile.waistCm) : ""
+    initialProfile.waistCm ? formatDecimalFr(initialProfile.waistCm) : ""
   );
   const [primaryGoal, setPrimaryGoal] = useState<PrimaryGoal>(
     initialProfile.primaryGoal || "fat_loss"
@@ -250,7 +254,7 @@ export function OnboardingWizard({
 
   const previewProfile: UserProfile = useMemo(
     () => {
-      const parsedWaist = Number(waistCm.replace(",", "."));
+      const parsedWaist = parseDecimalInput(waistCm, 2);
       return {
         ...initialProfile,
         name: name.trim() || "Mon profil",
@@ -266,8 +270,8 @@ export function OnboardingWizard({
           250
         ),
         waistCm:
-          Number.isFinite(parsedWaist) && parsedWaist >= 42 && parsedWaist <= 190
-            ? +parsedWaist.toFixed(1)
+          parsedWaist !== undefined && parsedWaist >= 42 && parsedWaist <= 190
+            ? roundToDecimals(parsedWaist, 2)
             : undefined,
         primaryGoal,
         specialMode,
@@ -646,7 +650,7 @@ export function OnboardingWizard({
                     onChange={(e) => setWeightInput(sanitizeDecimalInput(e.target.value))}
                     onBlur={() => {
                       if (weightInput.trim()) {
-                        setWeightInput(String(parseBoundedNumber(weightInput, 78, 35, 250)));
+                        setWeightInput(formatDecimalFr(parseBoundedNumber(weightInput, 78, 35, 250)));
                       }
                     }}
                     placeholder="78"
@@ -664,7 +668,7 @@ export function OnboardingWizard({
                     onBlur={() => {
                       if (targetWeightInput.trim()) {
                         setTargetWeightInput(
-                          String(parseBoundedNumber(targetWeightInput, 72, 35, 250))
+                          formatDecimalFr(parseBoundedNumber(targetWeightInput, 72, 35, 250))
                         );
                       }
                     }}
@@ -683,9 +687,9 @@ export function OnboardingWizard({
                     onChange={(e) => setWaistCm(sanitizeDecimalInput(e.target.value))}
                     onBlur={() => {
                       if (!waistCm.trim()) return;
-                      const parsed = Number(waistCm.replace(",", "."));
-                      if (Number.isFinite(parsed)) {
-                        setWaistCm(String(+Math.max(42, Math.min(190, parsed)).toFixed(1)));
+                      const parsed = parseDecimalInput(waistCm, 2);
+                      if (parsed !== undefined) {
+                        setWaistCm(formatDecimalFr(Math.max(42, Math.min(190, parsed))));
                       } else {
                         setWaistCm("");
                       }
