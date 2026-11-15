@@ -180,7 +180,10 @@ export function ActivityCoachView({
     profile.athleticLevel === "athlete" ||
     (profile.favoriteSports?.length ?? 0) > 0;
 
-  const favoriteSportIds = profile.favoriteSports ?? [];
+  const favoriteSportIds = useMemo(
+    () => profile.favoriteSports ?? [],
+    [profile.favoriteSports]
+  );
 
   const filteredExercises = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
