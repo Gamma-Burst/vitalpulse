@@ -542,6 +542,33 @@ export default function VitalPulseApp() {
           <Activity className="w-8 h-8 text-emerald-400 animate-pulse" />
           <p className="text-sm font-medium">Chargement de FolloWeight...</p>
         </div>
+        <section className="sr-only" aria-label="Présentation FolloWeight">
+          <h1>
+            FolloWeight — Coach Nutrition, Sport, Jeûne Intermittent et Métabolisme IA sans publicité
+          </h1>
+          <p>
+            FolloWeight (followeight.com) aide à piloter votre alimentation, votre poids lissé EMA,
+            votre jeûne intermittent OMAD ou 16:8 et vos entraînements sportifs à partir de repères
+            scientifiques ANSES Ciqual, EFSA, OMS et PubMed, sans aucune publicité tierce.
+          </p>
+          <h2>Analyse photo de repas, frigo et code-barres EAN</h2>
+          <p>
+            Estimez calories, protéines, glucides, lipides, fibres, sodium et degré de
+            transformation NOVA (1 à 4) depuis une photo, une recette frigo ou un code-barres
+            OpenFoodFacts avec détection de magasin en FolloWeight Plus.
+          </p>
+          <h2>Bilan corporel IMC, BRI, TDEE et objectifs personnalisés</h2>
+          <p>
+            Suivez votre dépense énergétique réelle, vos mensurations, vos bilans sanguins et vos
+            objectifs personnels (pas, hydratation, poids cible, séances hebdomadaires) avec
+            notifications de félicitations dès que chaque palier est atteint.
+          </p>
+          <nav aria-label="Liens légaux FolloWeight">
+            <a href="/privacy">Politique de confidentialité</a>
+            <a href="/terms">Conditions d&apos;utilisation et tarifs</a>
+            <a href="/delete-account">Supprimer mes données</a>
+          </nav>
+        </section>
       </div>
     );
   }

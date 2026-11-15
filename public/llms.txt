@@ -1,0 +1,23 @@
+# FolloWeight
+
+> Application web et Android de suivi nutritionnel, métabolique et sportif sans publicité, conçue en français et ancrée sur les données scientifiques ANSES Ciqual, EFSA, OMS et PubMed.
+
+- URL officielle : https://followeight.com
+- Éditeur : Maison Mercier (contact@followeight.com)
+- Modèle économique : 100 % sans publicité tierce — offre gratuite **FolloWeight Essentiel (0 €)** et abonnement optionnel **FolloWeight Plus (FW+)** (`29,99 €/an`, `4,99 €/mois` ou `Pass Fondateur`, avec essai gratuit de 7 jours).
+
+## Fonctionnalités principales
+
+- **Analyse photo de plat & frigo IA (Pack Découverte 5 scans gratuits + FW+)** : estimation des calories, protéines, glucides, lipides, fibres, sodium OMS et score de transformation NOVA (1 à 4) à partir d'une photo ou d'une description libre.
+- **Scanner code-barres EAN** : saisie manuelle des chiffres EAN gratuite à vie sur OpenFoodFacts + scan caméra/photo en direct et détection d'enseigne / magasin d'origine (Boni, Everyday, 365, Marque Repère, Milbona, etc.) inclus dans FolloWeight Plus.
+- **Bilan métabolique complet & courbe de poids lissée EMA** : calcul du BMR, TDEE, IMC, rapport tour de taille / taille (WtHR), BRI, masse grasse RFM et filtrage anti-yo-yo des variations d'eau liées au sodium ou au glycogène.
+- **Jeûne intermittent & OMAD** : minuteur temps réel multi-phases (12:12, 14:10, 16:8, 18:6, 20:4, OMAD 23:1, 5:2) avec alertes de transition.
+- **Sport & Mes Objectifs personnalisés** : 44 exercices guidés en 3D, suivi des pas/montres connectées, objectifs personnels configurables avec notifications de félicitations et d'encouragement.
+- **Bilans sanguins & veille scientifique** : interprétation pédagogique de biomarqueurs courants et veille PubMed en direct.
+
+## Pages canoniques
+
+- [Accueil FolloWeight](https://followeight.com): Application complète PWA et tableau de bord santé
+- [Politique de confidentialité RGPD](https://followeight.com/privacy): Traitement local des données et confidentialité
+- [Conditions générales d'utilisation et de vente](https://followeight.com/terms): Détails des formules Essentiel et FolloWeight Plus
+- [Suppression des données](https://followeight.com/delete-account): Procédure d'effacement complet des données utilisateur
