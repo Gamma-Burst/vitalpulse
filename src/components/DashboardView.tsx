@@ -41,6 +41,7 @@ import type { BodyLabSubTab } from "@/components/BodyLabView";
 import { EnergyActivityChart } from "@/components/EnergyActivityChart";
 import { DetailSheet } from "@/components/ui/DetailSheet";
 import { InfoTip } from "@/components/ui/InfoTip";
+import { resolveFastingProtocolGlossaryId } from "@/data/glossary-terms";
 import { HeroEnergyOrb, LiveTileIcon } from "@/components/ui/LiveMetricVisuals";
 import { formatDecimalFr } from "@/lib/decimal-utils";
 import {
@@ -708,7 +709,7 @@ export function DashboardView({
                       ? `Jeûne planifié · ${fastingLive.protocol.badge}`
                       : `${fastingLive.protocol.badge} prêt`}
               </span>
-              <InfoTip term="fasting_omad" />
+              <InfoTip term={resolveFastingProtocolGlossaryId(fasting.protocolId)} />
               {fasting.dailyScheduleEnabled && fasting.eatingWindowStartHm && (
                 <span className="text-[11px] font-medium text-slate-300">
                   Cycle quotidien · repas à {fasting.eatingWindowStartHm}
@@ -1171,8 +1172,8 @@ export function DashboardView({
                   ? "Fenêtre repas ouverte"
                   : fastingLive?.mode === "fasting"
                     ? "Jeûne en cours"
-                    : "Jeûne & OMAD"}
-                <InfoTip term="fasting_omad" />
+                    : `Jeûne ${fastingLive?.protocol.badge || "16:8"}`}
+                <InfoTip term={resolveFastingProtocolGlossaryId(fasting?.protocolId)} />
               </p>
               <p className="font-display text-lg font-extrabold text-white tabular-nums">
                 {fastingLive?.mode === "fasting" || fastingLive?.mode === "eating_window"

@@ -1,4 +1,8 @@
-import type { BloodBiomarkerKey, FastingPhaseId } from "@/types/vitalpulse";
+import type {
+  BloodBiomarkerKey,
+  FastingPhaseId,
+  FastingProtocolId,
+} from "@/types/vitalpulse";
 
 export type GlossaryCategory =
   | "poids_corps"
@@ -70,7 +74,15 @@ export type GlossaryTermId =
   | "diet_glycemic_shield"
   | "diet_glp1"
   // Jeûne, Phases & Montres
+  | "fasting_12_12"
+  | "fasting_14_10"
+  | "fasting_16_8"
+  | "fasting_18_6"
+  | "fasting_20_4"
   | "fasting_omad"
+  | "fasting_5_2"
+  | "fasting_custom"
+  | "fasting_daily_cycle"
   | "phase_digestion"
   | "phase_glycemic_calm"
   | "phase_metabolic_switch"
@@ -533,6 +545,71 @@ export const GLOSSARY_TERMS: Record<GlossaryTermId, GlossaryEntry> = {
       "Viser au moins 1,4 à 1,6 g de protéines par kilo de poids cible et 2 petites séances de renforcement doux par semaine.",
     keywords: ["glp1", "glp-1", "sarcopenie", "protection musculaire", "petit appetit"],
   },
+  fasting_12_12: {
+    id: "fasting_12_12",
+    titleFr: "Jeûne Circadien 12:12 (Repos digestif naturel)",
+    shortTagFr: "12 h repos · 12 h repas",
+    category: "jeune_metabolisme",
+    simpleFr:
+      "Le format le plus doux : 12 heures sans manger (principalement pendant votre nuit de sommeil) et 12 heures normales pour vos repas de la journée, aligné sur l'horloge biologique.",
+    exampleFr:
+      "Vous terminez le dîner à 20 h et prenez votre petit-déjeuner à partir de 8 h le lendemain matin : zéro repas sauté, simplement l'arrêt des grignotages du soir.",
+    benchmarkFr:
+      "Idéal pour débuter sans frustration, améliorer le sommeil et calmer le reflux ou les envies sucrées devant la télévision.",
+    keywords: ["12:12", "12_12", "circadien", "debutant", "doux", "repos digestif"],
+  },
+  fasting_14_10: {
+    id: "fasting_14_10",
+    titleFr: "Jeûne Doux 14:10",
+    shortTagFr: "14 h jeûne · 10 h repas",
+    category: "jeune_metabolisme",
+    simpleFr:
+      "Une pause digestive de 14 heures suivie d'une fenêtre confortable de 10 heures permettant de conserver trois vrais repas ou deux repas et une collation.",
+    exampleFr:
+      "Petit-déjeuner décalé à 10 h, déjeuner à midi et dîner terminé à 20 h (eau, café noir ou thé sans sucre autorisés avant 10 h).",
+    benchmarkFr:
+      "Souvent recommandé comme palier progressif vers le 16:8 et très apprécié pour le confort hormonal et énergétique au quotidien.",
+    keywords: ["14:10", "14_10", "doux", "progressif", "10 heures"],
+  },
+  fasting_16_8: {
+    id: "fasting_16_8",
+    titleFr: "Jeûne Classique 16:8",
+    shortTagFr: "16 h jeûne · 8 h repas",
+    category: "jeune_metabolisme",
+    simpleFr:
+      "Le protocole de jeûne intermittent le plus pratiqué : 16 heures de repos digestif (nuit + matinée) et une fenêtre de 8 heures pour prendre 2 repas complets et éventuellement une collation.",
+    exampleFr:
+      "Vous dînez jusqu'à 20 h, buvez eau, thé ou café sans sucre le matin, puis mangez normalement entre 12 h 00 et 20 h 00 (le petit-déjeuner passe automatiquement en « Néant »).",
+    benchmarkFr:
+      "Atteint chaque jour la zone de lipolyse (12–16 h) tout en restant facile à tenir en famille ou au bureau.",
+    keywords: ["16:8", "16_8", "classique", "leangains", "midi 20h", "lipolyse"],
+  },
+  fasting_18_6: {
+    id: "fasting_18_6",
+    titleFr: "Jeûne Intermédiaire 18:6",
+    shortTagFr: "18 h jeûne · 6 h repas",
+    category: "jeune_metabolisme",
+    simpleFr:
+      "Une version un peu plus poussée du 16:8 : 18 heures de jeûne et 6 heures pour réunir deux repas rassasiants riches en protéines, fibres et bons lipides.",
+    exampleFr:
+      "Premier repas à 13 h 30 ou 14 h 00 et dîner terminé à 19 h 30 ou 20 h 00, ce qui laisse deux belles heures supplémentaires en déstockage lipidique.",
+    benchmarkFr:
+      "À adopter seulement si le 16:8 vous semble déjà naturel sans fringale ni baisse d'énergie.",
+    keywords: ["18:6", "18_6", "intermediaire", "6 heures", "deux repas"],
+  },
+  fasting_20_4: {
+    id: "fasting_20_4",
+    titleFr: "Jeûne Warrior 20:4",
+    shortTagFr: "20 h jeûne · 4 h repas",
+    category: "jeune_metabolisme",
+    simpleFr:
+      "Un format avancé comprenant 20 heures de jeûne et une fenêtre resserrée de 4 heures (souvent en fin d'après-midi / soirée) avec une entrée légère puis un repas complet.",
+    exampleFr:
+      "Ouverture à 16 h avec légumes croquants et protéines, suivie d'un dîner équilibré avant 20 h, puis 20 h d'hydratation non sucrée.",
+    benchmarkFr:
+      "Veillez impérativement à couvrir votre quota quotidien de protéines et d'eau pendant ces 4 h pour protéger vos muscles. Déconseillé aux profils fragiles.",
+    keywords: ["20:4", "20_4", "warrior", "4 heures", "avance"],
+  },
   fasting_omad: {
     id: "fasting_omad",
     titleFr: "Jeûne intermittent & OMAD (23:1)",
@@ -545,6 +622,45 @@ export const GLOSSARY_TERMS: Record<GlossaryTermId, GlossaryEntry> = {
     benchmarkFr:
       "En fenêtre courte (20:4 ou OMAD), soignez les protéines, les légumes et l'hydratation sur le repas unique ; déconseillé en cas de grossesse, < 18 ans ou antécédents de TCA.",
     keywords: ["omad", "23:1", "16:8", "18:6", "20:4", "jeune intermittent", "fenetre repas", "autorise a manger"],
+  },
+  fasting_5_2: {
+    id: "fasting_5_2",
+    titleFr: "Jeûne Alterné 5:2 (5 jours normaux · 2 jours allégés)",
+    shortTagFr: "5 j libres · 2 j à 500–600 kcal",
+    category: "jeune_metabolisme",
+    simpleFr:
+      "Contrairement au 16:8 qui découpe chaque journée en heures, le 5:2 fonctionne à la semaine (méthode du Dr Michael Mosley) : vous mangez normalement 5 jours sur 7 à vos horaires habituels, et vous réduisez vos apports autour de 500 kcal (femme) à 600 kcal (homme) sur seulement 2 jours non consécutifs.",
+    exampleFr:
+      "Repas tout à fait classiques du mardi au mercredi et tout le week-end (petit-déjeuner et sorties compris), et deux journées légères le lundi et le jeudi composées de légumes verts, œufs ou poisson maigre et boissons non sucrées.",
+    benchmarkFr:
+      "Espacez toujours les 2 jours allégés (jamais 2 jours d'affilée), privilégiez la marche plutôt que le sport intense ces jours-là. Contre-indiqué si grossesse, < 18 ans, diabète traité ou antécédents de TCA.",
+    keywords: ["5:2", "5_2", "cinq deux", "alterne", "mosley", "500 kcal", "600 kcal", "hebdomadaire", "2 jours"],
+  },
+  fasting_custom: {
+    id: "fasting_custom",
+    titleFr: "Jeûne Libre (Durée sur mesure 12 h à 36 h)",
+    shortTagFr: "Curseur horaire personnalisé",
+    category: "jeune_metabolisme",
+    simpleFr:
+      "Permet de régler manuellement au curseur le nombre exact d'heures de votre session de jeûne (entre 12 h et 36 h) selon vos contraintes d'emploi du temps ou d'horaires décalés.",
+    exampleFr:
+      "Vous travaillez de nuit ou finissez un dîner tardif à 22 h 30 : réglez 15 h de jeûne ponctuel et FolloWeight calcule automatiquement votre heure exacte de reprise.",
+    benchmarkFr:
+      "Au-delà de 20–24 h, hydratez-vous régulièrement avec un peu d'eau minérale et demandez un avis médical préalable.",
+    keywords: ["libre", "custom", "personnalise", "curseur", "sur mesure", "horaires decales"],
+  },
+  fasting_daily_cycle: {
+    id: "fasting_daily_cycle",
+    titleFr: "Cycle quotidien & Rappels écran verrouillé",
+    shortTagFr: "Ouverture repas & reprise jeûne",
+    category: "jeune_metabolisme",
+    simpleFr:
+      "Quand le cycle quotidien est actif, FolloWeight répète automatiquement votre horaire choisi chaque jour, marque en « Néant » les repas hors fenêtre et vous envoie un rappel Push à l'ouverture des repas puis à la reprise du jeûne.",
+    exampleFr:
+      "En 16:8 réglé à 12:00, vous recevez une alerte à 12:00 (« Fenêtre repas ouverte jusqu'à 20:00 ») puis une seconde à 20:00 (« Reprise du jeûne »), même écran verrouillé.",
+    benchmarkFr:
+      "Modifiable à tout moment en 1 clic si vous décalez exceptionnellement un déjeuner ou un dîner.",
+    keywords: ["cycle quotidien", "alertes repas", "ouverture fenetre", "push jeune", "12:00", "20:00"],
   },
   phase_digestion: {
     id: "phase_digestion",
@@ -1062,4 +1178,23 @@ const FASTING_PHASE_TO_GLOSSARY: Record<FastingPhaseId, GlossaryTermId> = {
 
 export function resolveFastingPhaseGlossaryId(phaseId: FastingPhaseId): GlossaryTermId {
   return FASTING_PHASE_TO_GLOSSARY[phaseId] ?? "fasting_omad";
+}
+
+const FASTING_PROTOCOL_TO_GLOSSARY: Record<FastingProtocolId, GlossaryTermId> = {
+  none: "fasting_16_8",
+  "12_12": "fasting_12_12",
+  "14_10": "fasting_14_10",
+  "16_8": "fasting_16_8",
+  "18_6": "fasting_18_6",
+  "20_4": "fasting_20_4",
+  omad_23_1: "fasting_omad",
+  "5_2": "fasting_5_2",
+  custom: "fasting_custom",
+};
+
+export function resolveFastingProtocolGlossaryId(
+  protocolId?: FastingProtocolId | null
+): GlossaryTermId {
+  if (!protocolId) return "fasting_16_8";
+  return FASTING_PROTOCOL_TO_GLOSSARY[protocolId] ?? "fasting_16_8";
 }

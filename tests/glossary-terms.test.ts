@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { BIOMARKER_CATALOG } from "@/lib/blood-panel-engine";
-import { FASTING_PHASES } from "@/lib/fasting-engine";
+import { FASTING_PHASES, FASTING_PROTOCOLS } from "@/lib/fasting-engine";
 import {
   GLOSSARY_TERMS,
   getGlossaryEntry,
   resolveBloodGlossaryId,
   resolveFastingPhaseGlossaryId,
+  resolveFastingProtocolGlossaryId,
   searchGlossaryTerms,
 } from "@/data/glossary-terms";
 
@@ -69,5 +70,23 @@ describe("Lexique Santé VitalPulse (v3.2 — Bulles ? sans jargon)", () => {
       const id = resolveFastingPhaseGlossaryId(phase.id);
       expect(GLOSSARY_TERMS[id]).toBeDefined();
     }
+  });
+
+  it("couvre 100 % des protocoles de jeûne (dont 5:2, 16:8, OMAD et Libre) avec recherche directe sur '5:2'", () => {
+    const resolvedIds = new Set<string>();
+    for (const protocol of FASTING_PROTOCOLS) {
+      const id = resolveFastingProtocolGlossaryId(protocol.id);
+      expect(GLOSSARY_TERMS[id]).toBeDefined();
+      resolvedIds.add(id);
+    }
+    expect(resolvedIds.size).toBe(FASTING_PROTOCOLS.length);
+
+    const fiveTwo = getGlossaryEntry("fasting_5_2");
+    expect(fiveTwo.simpleFr).toContain("5 jours");
+    expect(fiveTwo.simpleFr).toContain("500");
+    expect(fiveTwo.simpleFr).toContain("600");
+
+    const found52 = searchGlossaryTerms("5:2");
+    expect(found52[0]?.id).toBe("fasting_5_2");
   });
 });

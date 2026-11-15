@@ -34,7 +34,10 @@ import { resolveEffectiveAge } from "@/lib/metabolic-engine";
 import { FastingHorseshoeArc } from "@/components/ui/LiveMetricVisuals";
 import { DetailSheet } from "@/components/ui/DetailSheet";
 import { InfoTip } from "@/components/ui/InfoTip";
-import { resolveFastingPhaseGlossaryId } from "@/data/glossary-terms";
+import {
+  resolveFastingPhaseGlossaryId,
+  resolveFastingProtocolGlossaryId,
+} from "@/data/glossary-terms";
 import {
   getNotificationPermissionState,
   requestFastingNotificationPermission,
@@ -252,6 +255,7 @@ export function FastingView({
               : live.mode === "scheduled"
                 ? "Votre fenêtre de jeûne démarrera automatiquement à l'heure planifiée"
                 : `${live.protocol.title} · ${live.protocol.subtitle}`}
+          <InfoTip term={resolveFastingProtocolGlossaryId(fasting.protocolId)} />
         </p>
 
         <div className="mt-4">
@@ -376,7 +380,7 @@ export function FastingView({
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <p className="text-xs font-extrabold text-white">
-                  Cycle quotidien &amp; Alertes Repas / Jeûne <InfoTip term="fasting_omad" />
+                  Cycle quotidien &amp; Alertes Repas / Jeûne <InfoTip term="fasting_daily_cycle" />
                 </p>
                 <p className="text-[11px] text-slate-400">
                   Vous êtes autorisé à manger pendant{" "}
@@ -581,6 +585,19 @@ export function FastingView({
           </div>
         )}
 
+        {fasting.protocolId === "5_2" && (
+          <div className="mx-auto mt-5 max-w-xl rounded-2xl border border-cyan-400/30 bg-slate-950/65 p-4 text-left space-y-1.5">
+            <p className="flex items-center gap-1.5 text-xs font-extrabold text-white">
+              Fonctionnement du 5:2 hebdomadaire <InfoTip term="fasting_5_2" />
+            </p>
+            <p className="text-xs leading-relaxed text-slate-300">
+              <strong className="text-emerald-300">5 jours normaux par semaine</strong> (aucun créneau bloqué, repas habituels libres) et{" "}
+              <strong className="text-amber-300">2 jours allégés non consécutifs</strong> autour de{" "}
+              <strong>500 kcal (femme) à 600 kcal (homme)</strong> — par ex. lundi &amp; jeudi — ou lancez le chrono ci-dessus lors de vos 2 journées choisies.
+            </p>
+          </div>
+        )}
+
         {/* Sélecteur rapide des protocoles populaires */}
         <div className="mt-5 flex flex-wrap items-center justify-center gap-1.5">
           {FASTING_PROTOCOLS.map((p) => {
@@ -590,14 +607,14 @@ export function FastingView({
                 key={p.id}
                 type="button"
                 onClick={() => selectProtocol(p.id)}
-                className={`rounded-full border px-3 py-1 text-xs font-bold transition ${
+                className={`inline-flex items-center gap-0.5 rounded-full border px-3 py-1 text-xs font-bold transition ${
                   active
                     ? "border-amber-400 bg-amber-500/20 text-amber-300"
                     : "border-slate-500/25 bg-slate-500/5 text-slate-300 hover:border-slate-400/50"
                 }`}
               >
-                {p.badge}
-                {p.id === "omad_23_1" && <InfoTip term="fasting_omad" />}
+                <span>{p.badge}</span>
+                <InfoTip term={resolveFastingProtocolGlossaryId(p.id)} />
               </button>
             );
           })}
@@ -781,7 +798,10 @@ export function FastingView({
                 }`}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm font-bold text-white">{p.title}</span>
+                  <span className="text-sm font-bold text-white">
+                    {p.title}
+                    <InfoTip term={resolveFastingProtocolGlossaryId(p.id)} />
+                  </span>
                   <span className="rounded-full bg-slate-500/20 px-2.5 py-0.5 text-[11px] font-bold text-slate-200">
                     {p.levelFr}
                   </span>

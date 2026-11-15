@@ -47,7 +47,10 @@ import {
   roundToDecimals,
   sanitizeDecimalDraft,
 } from "@/lib/decimal-utils";
-import type { GlossaryTermId } from "@/data/glossary-terms";
+import {
+  resolveFastingProtocolGlossaryId,
+  type GlossaryTermId,
+} from "@/data/glossary-terms";
 
 export interface OnboardingWizardProps {
   initialProfile: UserProfile;
@@ -991,7 +994,7 @@ export function OnboardingWizard({
                       <p className="text-[11px] text-slate-400">Repas classiques</p>
                     </button>
                     {FASTING_PROTOCOLS.filter((p) =>
-                      ["12_12", "14_10", "16_8", "18_6", "20_4", "omad_23_1"].includes(p.id)
+                      ["12_12", "14_10", "16_8", "18_6", "20_4", "omad_23_1", "5_2"].includes(p.id)
                     ).map((p) => (
                       <button
                         key={p.id}
@@ -1009,7 +1012,7 @@ export function OnboardingWizard({
                       >
                         <p className="font-bold text-white">
                           {p.title}
-                          {p.id === "omad_23_1" && <InfoTip term="fasting_omad" />}
+                          <InfoTip term={resolveFastingProtocolGlossaryId(p.id)} />
                         </p>
                         <p className="text-[11px] text-slate-400">{p.levelFr}</p>
                       </button>
@@ -1017,7 +1020,20 @@ export function OnboardingWizard({
                   </div>
                 )}
 
-                {!fastingBlockedByClinical && fastingProtocol !== "none" && (() => {
+                {!fastingBlockedByClinical && fastingProtocol === "5_2" && (
+                  <div className="mt-3 space-y-1.5 rounded-2xl border border-emerald-400/35 bg-emerald-500/10 p-3.5 text-xs">
+                    <p className="flex items-center gap-1 font-bold text-white">
+                      Protocole Alterné 5:2 sélectionné <InfoTip term="fasting_5_2" />
+                    </p>
+                    <p className="leading-relaxed text-slate-200">
+                      <strong className="text-emerald-300">5 jours normaux libres</strong> (sans créneau horaire bloqué) +{" "}
+                      <strong className="text-amber-300">2 jours allégés non consécutifs</strong> autour de{" "}
+                      <strong>500–600 kcal</strong> à choisir librement chaque semaine.
+                    </p>
+                  </div>
+                )}
+
+                {!fastingBlockedByClinical && fastingProtocol !== "none" && fastingProtocol !== "5_2" && (() => {
                   const selectedSpec = getProtocolSpec(fastingProtocol);
                   const endHm = computeWindowEndHm(eatingWindowStartHm, selectedSpec.eatHours);
                   return (
