@@ -343,10 +343,67 @@ body {
   background-color: #020617;
 }
 
+[data-theme="light"] .vp-keep-dark .bg-slate-950\/80 {
+  background-color: rgba(2, 6, 23, 0.82);
+}
+
+[data-theme="light"] .vp-keep-dark .bg-slate-950\/75 {
+  background-color: rgba(2, 6, 23, 0.76);
+}
+
+[data-theme="light"] .vp-keep-dark .bg-slate-950\/70 {
+  background-color: rgba(2, 6, 23, 0.72);
+}
+
 [data-theme="light"] .vp-keep-dark .bg-slate-900,
 [data-theme="light"] .vp-keep-dark .bg-slate-900\/90,
 [data-theme="light"] .vp-keep-dark .bg-slate-900\/80 {
   background-color: #0f172a;
+}
+
+[data-theme="light"] .vp-keep-dark .bg-slate-900\/95 {
+  background-color: rgba(15, 23, 42, 0.95);
+}
+
+[data-theme="light"] .vp-keep-dark .bg-slate-900\/85 {
+  background-color: rgba(15, 23, 42, 0.85);
+}
+
+[data-theme="light"] .vp-keep-dark .bg-slate-800 {
+  background-color: #1e293b;
+}
+
+[data-theme="light"] .vp-keep-dark .bg-slate-800\/90 {
+  background-color: rgba(30, 41, 59, 0.9);
+}
+
+[data-theme="light"] .vp-keep-dark .bg-slate-700,
+[data-theme="light"] .vp-keep-dark .hover\:bg-slate-700:hover {
+  background-color: #334155;
+}
+
+[data-theme="light"] .vp-keep-dark .bg-black {
+  background-color: #000000;
+}
+
+[data-theme="light"] .vp-keep-dark .bg-black\/70 {
+  background-color: rgba(0, 0, 0, 0.7);
+}
+
+[data-theme="light"] .vp-keep-dark .border-slate-800 {
+  border-color: #1e293b;
+}
+
+[data-theme="light"] .vp-keep-dark .border-slate-800\/90 {
+  border-color: rgba(30, 41, 59, 0.9);
+}
+
+[data-theme="light"] .vp-keep-dark .border-slate-700 {
+  border-color: #334155;
+}
+
+[data-theme="light"] .vp-keep-dark .border-slate-700\/80 {
+  border-color: rgba(51, 65, 85, 0.8);
 }
 
 [data-theme="light"] .vp-keep-dark .text-white,
@@ -363,6 +420,10 @@ body {
   color: #94a3b8;
 }
 
+[data-theme="light"] .vp-keep-dark .text-emerald-200 {
+  color: #a7f3d0;
+}
+
 [data-theme="light"] .vp-keep-dark .text-emerald-300,
 [data-theme="light"] .vp-keep-dark .text-emerald-400 {
   color: #6ee7b7;
@@ -372,8 +433,24 @@ body {
   color: #7dd3fc;
 }
 
+[data-theme="light"] .vp-keep-dark .text-cyan-200 {
+  color: #a5f3fc;
+}
+
+[data-theme="light"] .vp-keep-dark .text-cyan-300 {
+  color: #67e8f9;
+}
+
+[data-theme="light"] .vp-keep-dark .text-amber-200 {
+  color: #fde68a;
+}
+
 [data-theme="light"] .vp-keep-dark .text-amber-300 {
   color: #fcd34d;
+}
+
+[data-theme="light"] .vp-keep-dark .text-rose-200 {
+  color: #fecdd3;
 }
 
 [data-theme="light"] .vp-keep-dark .text-slate-950 {
