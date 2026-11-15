@@ -249,16 +249,16 @@ export const GLOSSARY_TERMS: Record<GlossaryTermId, GlossaryEntry> = {
   },
   bmr: {
     id: "bmr",
-    titleFr: "BMR (Métabolisme de base au repos)",
-    shortTagFr: "Énergie pour vivre allongé",
+    titleFr: "BMR / MB (Métabolisme de base au repos)",
+    shortTagFr: "Énergie vitale au repos · Mifflin-St Jeor & EFSA",
     category: "energie_sport",
     simpleFr:
-      "Le nombre de calories que votre corps brûle automatiquement en 24 heures juste pour faire battre votre cœur, respirer, maintenir votre température à 37 °C et réparer vos cellules, même sans bouger du lit.",
+      "Le nombre de calories que votre corps brûle automatiquement en 24 heures juste pour faire battre votre cœur, respirer, alimenter le cerveau et maintenir votre température à 37 °C au repos complet. Calculé via Mifflin-St Jeor (validé par l'Academy of Nutrition & Dietetics) et recoupé par l'équation d'Oxford / Henry (adoptée par l'EFSA 2013).",
     exampleFr:
-      "C'est la consommation d'une voiture au point mort moteur allumé. Elle représente souvent 60 à 70 % de toute l'énergie dépensée dans la journée.",
+      "C'est la consommation d'une voiture au point mort moteur allumé. Selon l'EFSA et l'OMS, le métabolisme de base représente 60 à 75 % de toute l'énergie dépensée dans la journée ; le reste vient des pas, du NEAT, de la digestion et du sport (facteur PAL 1,4 à 2,0).",
     benchmarkFr:
-      "Ne mangez jamais durablement en dessous de votre BMR (sauf avis médical), sinon votre corps ralentit et devient fatigué.",
-    keywords: ["bmr", "metabolisme de base", "repos", "mifflin", "calories minimum"],
+      "Selon le NIH (NIDDK) et l'ANSES, un déficit sain (-300 à -600 kcal sur la dépense totale) doit idéalement garder vos apports quotidiens au-dessus du MB afin de préserver la masse musculaire et éviter la fatigue métabolique.",
+    keywords: ["bmr", "mb", "metabolisme de base", "repos", "mifflin", "efsa", "henry", "calories minimum"],
   },
   tdee: {
     id: "tdee",
@@ -275,16 +275,16 @@ export const GLOSSARY_TERMS: Record<GlossaryTermId, GlossaryEntry> = {
   },
   net_balance: {
     id: "net_balance",
-    titleFr: "Bilan calorique net (Déficit vs Surplus)",
-    shortTagFr: "Mangé − Dépensé",
+    titleFr: "Bilan calorique net (Déficit vs Métabolisme de base)",
+    shortTagFr: "Mangé − (MB + Activité)",
     category: "energie_sport",
     simpleFr:
-      "La différence entre les calories que vous avez mangées aujourd'hui et celles que votre corps a déjà brûlées (repos + pas + sport + digestion). Un chiffre négatif signifie que le corps puise dans ses réserves.",
+      "La différence entre les calories que vous avez mangées aujourd'hui et votre dépense totale réelle (Métabolisme de base MB + pas + NEAT + sport + digestion). Le déficit lié au métabolisme de base montre si vos apports couvrent d'abord l'énergie vitale (MB) tout en restant en dessous de la dépense totale.",
     exampleFr:
-      "Vous avez mangé 1 700 kcal et dépensé 2 150 kcal = bilan net de -450 kcal (déficit idéal pour maigrir sans faim ni fatigue).",
+      "Exemple NIH / ANSES : MB = 1 650 kcal, activité + pas = +550 kcal → Dépense totale = 2 200 kcal. Si vous mangez 1 750 kcal, vous couvrez votre MB (+100 kcal au-dessus du MB) tout en créant un déficit réel de -450 kcal.",
     benchmarkFr:
-      "Pour perdre du gras durablement sans perdre de muscle, visez un déficit moyen entre -300 et -600 kcal par jour, pas de régime famine.",
-    keywords: ["bilan net", "deficit", "surplus", "calorique", "mange depense"],
+      "Visez un déficit entre -300 et -600 kcal sur la dépense totale (10 à 25 % sous la maintenance EFSA/ANSES), sans descendre durablement sous le MB.",
+    keywords: ["bilan net", "deficit", "surplus", "metabolisme de base", "calorique", "mange depense", "nih", "anses"],
   },
   tef: {
     id: "tef",

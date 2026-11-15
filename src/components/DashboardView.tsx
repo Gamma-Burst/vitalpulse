@@ -11,6 +11,7 @@ import {
   Droplets,
   FlaskConical,
   Image as ImageIcon,
+  PenLine,
   Plus,
   Ruler,
   ScanBarcode,
@@ -28,6 +29,7 @@ import {
   DashboardWidgetId,
   FastingConfig,
   MealEntry,
+  MealType,
   ScaleDecoderInsight,
   UserProfile,
   WearableSyncState,
@@ -51,6 +53,8 @@ import {
   computeWeeklyCalorieBank,
   evaluateSodiumCeilingStatus,
 } from "@/lib/ui-progressive";
+import { computeBmrDeficitBreakdown } from "@/lib/metabolic-engine";
+import { analyzeMealDeterministically } from "@/data/ciqual-reference";
 import { getTodayMindsetLesson } from "@/data/mindset-lessons";
 import { triggerLightHaptic } from "@/lib/native-bridge";
 
@@ -100,6 +104,8 @@ export interface DashboardViewProps {
   goalEvaluations?: Record<string, GoalEvaluationSnapshot>;
   onOpenGoalsModal?: () => void;
   onToggleChallengeToday?: (id: string) => void;
+  onSaveMeal?: (meal: MealEntry) => void;
+  onOpenWrittenMeal?: () => void;
 }
 
 type ActiveSheetKind =
@@ -175,9 +181,20 @@ export function DashboardView({
   goalEvaluations = {},
   onOpenGoalsModal,
   onToggleChallengeToday,
+  onSaveMeal,
+  onOpenWrittenMeal,
 }: DashboardViewProps) {
   const shouldReduceMotion = useReducedMotion();
   const [sheet, setSheet] = useState<ActiveSheetKind>(null);
+  const [assietteModalTab, setAssietteModalTab] = useState<"text" | "photo" | "barcode">("text");
+  const [writtenNotesDraft, setWrittenNotesDraft] = useState("");
+  const [writtenMealType, setWrittenMealType] = useState<MealType>("breakfast");
+  const [writtenLoading, setWrittenLoading] = useState(false);
+  const [writtenEstimate, setWrittenEstimate] = useState<Omit<
+    MealEntry,
+    "id" | "createdAt" | "dateKey" | "mealType" | "userNotes" | "plateDiameterCm" | "portionEatenPct" | "revisions"
+  > | null>(null);
+  const [writtenError, setWrittenError] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
   const [waterGoalDraft, setWaterGoalDraft] = useState<string>(
     String(profile.dailyWaterGoalMl ?? anthro.targets.waterMl)
@@ -214,8 +231,53 @@ export function DashboardView({
   }, [profile.dailyCalorieGoalOverride, anthro.targetIntakeKcal, sheet]);
 
   useEffect(() => {
-    if (!sheet) setSheetFeedback(null);
+    if (!sheet) {
+      setSheetFeedback(null);
+      setWrittenError(null);
+    } else if (sheet === "barcode_meals") {
+      setAssietteModalTab("text");
+    }
   }, [sheet]);
+
+  async function runQuickWrittenEstimate(customText?: string) {
+    const notes = (customText ?? writtenNotesDraft).trim();
+    if (!notes) {
+      setWrittenError("Écrivez ce que vous avez mangé (ex : deux œufs durs et du bacon en morceaux).");
+      return;
+    }
+    setWrittenLoading(true);
+    setWrittenError(null);
+    const payload = {
+      entryMode: "text",
+      userNotes: notes,
+      mealType: writtenMealType,
+      plateDiameterCm: 26,
+      portionEatenPct: 100,
+      specialMode: profile.specialMode,
+      primaryGoal: profile.primaryGoal,
+      allowVisionAi: false,
+    };
+    try {
+      const res = await fetch("/api/analyze-meal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setWrittenEstimate(data);
+    } catch {
+      const local = analyzeMealDeterministically({
+        userNotes: notes,
+        mealType: writtenMealType,
+        plateDiameterCm: 26,
+        portionEatenPct: 100,
+      });
+      setWrittenEstimate(local);
+    } finally {
+      setWrittenLoading(false);
+    }
+  }
 
   function finishSaveAndReturnHome(messageFr: string) {
     if (typeof document !== "undefined" && document.activeElement instanceof HTMLElement) {
@@ -284,6 +346,31 @@ export function DashboardView({
   );
 
   const activeBurnedKcal = todayBalance.netStepsKcal + todayBalance.netWorkoutsKcal;
+  const bmrBreakdown = useMemo(
+    () =>
+      computeBmrDeficitBreakdown({
+        bmrKcal: anthro.bmrKcal,
+        totalExpenditureKcal: todayBalance.totalExpenditureKcal,
+        intakeKcal: todayBalance.intakeKcal,
+      }),
+    [anthro.bmrKcal, todayBalance.intakeKcal, todayBalance.totalExpenditureKcal]
+  );
+  const heroGaugeMaxKcal = Math.max(
+    todayBalance.totalExpenditureKcal,
+    todayBalance.intakeKcal,
+    anthro.bmrKcal + 400,
+    1800
+  );
+  const bmrWidthPct = Math.min(100, Math.round((anthro.bmrKcal / heroGaugeMaxKcal) * 100));
+  const totalExpWidthPct = Math.min(
+    100,
+    Math.round((todayBalance.totalExpenditureKcal / heroGaugeMaxKcal) * 100)
+  );
+  const actWidthPct = Math.max(0, totalExpWidthPct - bmrWidthPct);
+  const intakeWidthPct = Math.min(
+    100,
+    Math.round((todayBalance.intakeKcal / heroGaugeMaxKcal) * 100)
+  );
   const visibleWidgets =
     enabledWidgets.length > 0 ? enabledWidgets : DEFAULT_FALLBACK_WIDGETS;
 
@@ -544,7 +631,7 @@ export function DashboardView({
             />
 
             <div className="w-full flex-1 space-y-4">
-              <div className="grid grid-cols-3 gap-2 text-center sm:text-left">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-center sm:text-left">
                 <div>
                   <p className="text-[11px] text-slate-400">Mangé</p>
                   <p className="font-display text-lg font-extrabold text-white tabular-nums">
@@ -553,15 +640,30 @@ export function DashboardView({
                   </p>
                 </div>
                 <div>
-                  <p className="text-[11px] text-slate-400">Bougé</p>
-                  <p className="font-display text-lg font-extrabold text-emerald-300 tabular-nums">
-                    +{activeBurnedKcal}{" "}
+                  <p className="text-[11px] text-slate-400">
+                    Métab. base (MB) <InfoTip term="bmr" />
+                  </p>
+                  <p className="font-display text-lg font-extrabold text-violet-300 tabular-nums">
+                    {anthro.bmrKcal.toLocaleString("fr-FR")}{" "}
                     <span className="text-[11px] font-normal text-slate-400">kcal</span>
+                  </p>
+                  <p className="text-[10px] text-slate-400 tabular-nums">
+                    {bmrBreakdown.bmrSharePct}% de la dépense
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[11px] text-slate-400">Dépense totale (DET)</p>
+                  <p className="font-display text-lg font-extrabold text-emerald-300 tabular-nums">
+                    {todayBalance.totalExpenditureKcal.toLocaleString("fr-FR")}{" "}
+                    <span className="text-[11px] font-normal text-slate-400">kcal</span>
+                  </p>
+                  <p className="text-[10px] text-emerald-300/80 tabular-nums">
+                    dont +{activeBurnedKcal} act. · PAL {bmrBreakdown.palObserved.toFixed(2)}
                   </p>
                 </div>
                 <div>
                   <p className="text-[11px] text-slate-400">
-                    Bilan net <InfoTip term="net_balance" />
+                    Déficit / Bilan <InfoTip term="net_balance" />
                   </p>
                   <p
                     className={`font-display text-lg font-extrabold tabular-nums ${
@@ -570,8 +672,77 @@ export function DashboardView({
                   >
                     {todayBalance.netBalanceKcal > 0
                       ? `+${todayBalance.netBalanceKcal}`
-                      : todayBalance.netBalanceKcal}
+                      : todayBalance.netBalanceKcal}{" "}
+                    <span className="text-[11px] font-normal text-slate-400">kcal</span>
                   </p>
+                  <p className="text-[10px] text-slate-400 tabular-nums">
+                    {todayBalance.intakeKcal > 0
+                      ? `vs MB : ${bmrBreakdown.balanceVsBmrKcal >= 0 ? "+" : ""}${bmrBreakdown.balanceVsBmrKcal} kcal`
+                      : `MB seul : −${anthro.bmrKcal} kcal`}
+                  </p>
+                </div>
+              </div>
+
+              {/* Barre scientifique du début : Métabolisme de base (MB) + Activité vs Mangé & Déficit */}
+              <div className="rounded-2xl border border-violet-400/20 bg-slate-950/55 p-3 space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                  <span className="font-bold text-violet-200">
+                    Repère scientifique · {bmrBreakdown.zoneLabelFr}
+                  </span>
+                  <span className="text-[10px] text-slate-400">
+                    Mifflin-St Jeor · EFSA 2013 (Henry {anthro.bmrHenryKcal ?? anthro.bmrKcal} kcal) · ANSES · NIH
+                  </span>
+                </div>
+
+                {/* Bande 1 : MB (violet) + Activité/TEF (émeraude) */}
+                <div className="relative h-3 w-full overflow-hidden rounded-full bg-slate-800/90">
+                  <div
+                    className="absolute inset-y-0 left-0 bg-violet-500/85"
+                    style={{ width: `${bmrWidthPct}%` }}
+                  />
+                  <div
+                    className="absolute inset-y-0 bg-emerald-500/85"
+                    style={{ left: `${bmrWidthPct}%`, width: `${actWidthPct}%` }}
+                  />
+                  <div
+                    className="absolute inset-y-0 w-0.5 bg-white/90"
+                    style={{ left: `${bmrWidthPct}%` }}
+                    title={`Métabolisme de base : ${anthro.bmrKcal} kcal`}
+                  />
+                </div>
+
+                {/* Bande 2 : Apports mangés vs Seuil MB */}
+                <div className="relative h-2.5 w-full overflow-hidden rounded-full bg-slate-800/75">
+                  <div
+                    className={`absolute inset-y-0 left-0 rounded-full ${
+                      todayBalance.intakeKcal === 0
+                        ? "bg-slate-600"
+                        : todayBalance.intakeKcal < anthro.bmrKcal
+                          ? "bg-amber-400"
+                          : todayBalance.netBalanceKcal <= 0
+                            ? "bg-cyan-400"
+                            : "bg-rose-400"
+                    }`}
+                    style={{ width: `${Math.max(todayBalance.intakeKcal > 0 ? 2 : 0, intakeWidthPct)}%` }}
+                  />
+                  <div
+                    className="absolute inset-y-0 w-0.5 bg-violet-300"
+                    style={{ left: `${bmrWidthPct}%` }}
+                  />
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] text-slate-300">
+                  <span>
+                    <span className="inline-block h-2 w-2 rounded-xs bg-violet-400 mr-1" />
+                    MB repos {anthro.bmrKcal} +{" "}
+                    <span className="inline-block h-2 w-2 rounded-xs bg-emerald-400 mx-1" />
+                    Activité/TEF {bmrBreakdown.activityAboveBmrKcal} ={" "}
+                    <strong className="text-white">{todayBalance.totalExpenditureKcal} kcal</strong>
+                  </span>
+                  <span>
+                    <span className="inline-block h-2 w-2 rounded-xs bg-cyan-400 mr-1" />
+                    {bmrBreakdown.scientificNoteFr}
+                  </span>
                 </div>
               </div>
 
@@ -637,8 +808,23 @@ export function DashboardView({
         </button>
       </motion.section>
 
-      {/* Raccourcis rapides Photo / Code-barres / Frigo (1 ligne compacte) */}
-      <div className="grid grid-cols-3 gap-2.5">
+      {/* Raccourcis rapides Écrit (Gratuit) / Photo / Code-barres / Frigo */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+        <button
+          type="button"
+          onClick={() => {
+            triggerLightHaptic();
+            openSheet("barcode_meals");
+          }}
+          className="vp-card flex items-center justify-center gap-2 rounded-2xl border-emerald-400/30 px-3 py-2.5 text-xs font-bold text-white hover:border-emerald-400/60"
+        >
+          <PenLine className="h-4 w-4 text-emerald-300" />
+          <span className="truncate">Repas écrit</span>
+          <span className="rounded-full bg-emerald-500/20 px-1.5 py-0.5 text-[9px] font-extrabold text-emerald-300">
+            GRATUIT
+          </span>
+        </button>
+
         <button
           type="button"
           onClick={() => {
@@ -989,7 +1175,7 @@ export function DashboardView({
                 {todayBalance.mealsCount} repas
               </p>
               <p className="mt-0.5 truncate text-[11px] text-slate-400">
-                Galerie plats + code-barres
+                Par écrit (gratuit) + photo + EAN
               </p>
             </div>
           </button>
@@ -1117,10 +1303,66 @@ export function DashboardView({
         open={sheet === "energy"}
         onClose={() => setSheet(null)}
         title="Bilan énergétique & tendances"
-        subtitle="Calibré Mifflin-St Jeor + ANSES + dépenses réelles sans double comptage"
+        subtitle="Mifflin-St Jeor (1990) · EFSA (2013) / Henry (2005) · ANSES (2016) · OMS · NIH NIDDK"
         size="xl"
       >
         <div className="space-y-5">
+          {/* Bloc synthétique Métabolisme de Base & Déficit Scientifique */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 rounded-2xl border border-violet-400/25 bg-violet-500/10 p-3.5 text-xs">
+            <div>
+              <span className="text-[11px] text-slate-300 block">
+                Métabolisme de base (MB) <InfoTip term="bmr" />
+              </span>
+              <strong className="text-base font-extrabold text-violet-200 tabular-nums">
+                {anthro.bmrKcal.toLocaleString("fr-FR")} kcal/j
+              </strong>
+              <span className="block text-[10px] text-slate-400">
+                EFSA / Henry : {anthro.bmrHenryKcal ?? anthro.bmrKcal} kcal/j
+              </span>
+            </div>
+            <div>
+              <span className="text-[11px] text-slate-300 block">Dépense totale (DET)</span>
+              <strong className="text-base font-extrabold text-emerald-300 tabular-nums">
+                {todayBalance.totalExpenditureKcal.toLocaleString("fr-FR")} kcal/j
+              </strong>
+              <span className="block text-[10px] text-slate-400">
+                {bmrBreakdown.bmrSharePct}% MB + {bmrBreakdown.activityAboveBmrKcal} act./TEF
+              </span>
+            </div>
+            <div>
+              <span className="text-[11px] text-slate-300 block">Écart vs MB seul</span>
+              <strong
+                className={`text-base font-extrabold tabular-nums ${
+                  bmrBreakdown.balanceVsBmrKcal >= 0 ? "text-cyan-300" : "text-amber-300"
+                }`}
+              >
+                {bmrBreakdown.balanceVsBmrKcal >= 0
+                  ? `+${bmrBreakdown.balanceVsBmrKcal}`
+                  : bmrBreakdown.balanceVsBmrKcal}{" "}
+                kcal
+              </strong>
+              <span className="block text-[10px] text-slate-400">
+                Mangé ({todayBalance.intakeKcal}) − MB ({anthro.bmrKcal})
+              </span>
+            </div>
+            <div>
+              <span className="text-[11px] text-slate-300 block">Déficit réel du jour</span>
+              <strong
+                className={`text-base font-extrabold tabular-nums ${
+                  todayBalance.netBalanceKcal <= 0 ? "text-emerald-300" : "text-amber-300"
+                }`}
+              >
+                {todayBalance.netBalanceKcal > 0
+                  ? `+${todayBalance.netBalanceKcal}`
+                  : todayBalance.netBalanceKcal}{" "}
+                kcal
+              </strong>
+              <span className="block text-[10px] text-slate-400">
+                PAL observé {bmrBreakdown.palObserved.toFixed(2)} (cible NIH -300 à -600)
+              </span>
+            </div>
+          </div>
+
           <EnergyActivityChart
             balances={recentBalances}
             weightTrend={weightTrend}
@@ -1681,45 +1923,278 @@ export function DashboardView({
         />
       </DetailSheet>
 
-      {/* SHEET 6 : Assiettes, Photos & Code-barres */}
+      {/* SHEET 6 : Assiettes, Saisie écrite gratuite, Photos & Code-barres */}
       <DetailSheet
         open={sheet === "barcode_meals"}
         onClose={() => setSheet(null)}
-        title="Assiettes, Galerie Photo & Code-Barres"
-        subtitle="Appuyez sur une photo pour réviser les ingrédients ou portions"
+        title="Assiettes & Scan — Photo, Écrit (Gratuit) ou Code-barres"
+        subtitle="Estimez vos repas par écrit gratuitement avec impact immédiat sur votre métabolisme de base et déficit"
         size="lg"
       >
         <div className="space-y-4">
-          <div className="flex flex-wrap gap-2">
+          {/* 3 onglets clairs : Par écrit (Gratuit) | Photographier | Code-barres EAN */}
+          <div className="grid grid-cols-3 gap-2 rounded-2xl border border-slate-500/25 bg-slate-900/70 p-1.5">
             <button
               type="button"
-              onClick={() => {
-                setSheet(null);
-                onNavigateTab("scanner");
-              }}
-              className="inline-flex items-center gap-1.5 rounded-2xl bg-emerald-500 px-4 py-2.5 text-xs font-extrabold text-slate-950"
+              onClick={() => setAssietteModalTab("text")}
+              className={`inline-flex items-center justify-center gap-1.5 rounded-xl px-2.5 py-2 text-xs font-extrabold transition ${
+                assietteModalTab === "text"
+                  ? "bg-emerald-500 text-slate-950 shadow-sm"
+                  : "text-slate-300 hover:text-white"
+              }`}
             >
-              <Camera className="h-4 w-4" />
-              Photographier un plat
+              <PenLine className="h-3.5 w-3.5" />
+              <span className="truncate">Par écrit (Gratuit)</span>
             </button>
-            {onOpenBarcode && (
+            <button
+              type="button"
+              onClick={() => setAssietteModalTab("photo")}
+              className={`inline-flex items-center justify-center gap-1.5 rounded-xl px-2.5 py-2 text-xs font-extrabold transition ${
+                assietteModalTab === "photo"
+                  ? "bg-cyan-500 text-slate-950 shadow-sm"
+                  : "text-slate-300 hover:text-white"
+              }`}
+            >
+              <Camera className="h-3.5 w-3.5" />
+              <span className="truncate">Photo du plat</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setAssietteModalTab("barcode")}
+              className={`inline-flex items-center justify-center gap-1.5 rounded-xl px-2.5 py-2 text-xs font-extrabold transition ${
+                assietteModalTab === "barcode"
+                  ? "bg-amber-500 text-slate-950 shadow-sm"
+                  : "text-slate-300 hover:text-white"
+              }`}
+            >
+              <ScanBarcode className="h-3.5 w-3.5" />
+              <span className="truncate">Code-barres</span>
+            </button>
+          </div>
+
+          {assietteModalTab === "text" && (
+            <div className="space-y-3 rounded-2xl border border-emerald-400/25 bg-emerald-500/5 p-3.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-xs font-bold text-white">
+                  Décrivez ce que vous mangez en français courant
+                </span>
+                <span className="rounded-full bg-emerald-500/20 px-2.5 py-0.5 text-[10px] font-extrabold text-emerald-300">
+                  100 % GRATUIT · ILLIMITÉ · ANSES CIQUAL
+                </span>
+              </div>
+
+              <div className="grid grid-cols-4 gap-1.5">
+                {(
+                  [
+                    ["breakfast", "Petit-déj"],
+                    ["lunch", "Déjeuner"],
+                    ["snack", "Collation"],
+                    ["dinner", "Dîner"],
+                  ] as const
+                ).map(([k, lbl]) => (
+                  <button
+                    key={k}
+                    type="button"
+                    onClick={() => setWrittenMealType(k)}
+                    className={`rounded-xl py-1.5 text-[11px] font-bold transition ${
+                      writtenMealType === k
+                        ? "bg-emerald-500 text-slate-950"
+                        : "border border-slate-600/50 bg-slate-900/60 text-slate-300"
+                    }`}
+                  >
+                    {lbl}
+                  </button>
+                ))}
+              </div>
+
+              <textarea
+                rows={2}
+                value={writtenNotesDraft}
+                onChange={(e) => setWrittenNotesDraft(e.target.value)}
+                placeholder="Ex : deux œufs durs et des bacon en morceau (ou 150g poulet grillé, riz basmati, brocoli)"
+                className="w-full rounded-xl border border-slate-600/70 bg-slate-950 px-3 py-2.5 text-sm text-white placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none"
+              />
+
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const ex = "deux oeuf dur et des bacon en morceau";
+                    setWrittenNotesDraft(ex);
+                    void runQuickWrittenEstimate(ex);
+                  }}
+                  className="rounded-xl border border-slate-600/70 bg-slate-900/80 px-2.5 py-1.5 text-[11px] font-semibold text-slate-200 hover:border-emerald-400"
+                >
+                  Essayer : &quot;deux oeuf dur et des bacon en morceau&quot;
+                </button>
+                <div className="flex items-center gap-2 ml-auto">
+                  {onOpenWrittenMeal && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSheet(null);
+                        onOpenWrittenMeal();
+                      }}
+                      className="rounded-xl border border-slate-600/70 px-3 py-2 text-[11px] font-bold text-slate-200 hover:border-cyan-400"
+                    >
+                      Vue complète →
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    disabled={writtenLoading}
+                    onClick={() => void runQuickWrittenEstimate()}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-500 px-3.5 py-2 text-xs font-extrabold text-slate-950 hover:bg-emerald-400 disabled:opacity-60"
+                  >
+                    <Sparkles className="h-3.5 w-3.5" />
+                    {writtenLoading ? "Calcul..." : "Estimer (Gratuit)"}
+                  </button>
+                </div>
+              </div>
+
+              {writtenError && (
+                <p className="text-xs font-semibold text-rose-300">{writtenError}</p>
+              )}
+
+              {writtenEstimate && (() => {
+                const projectedIntake = todayBalance.intakeKcal + writtenEstimate.caloriesCentral;
+                const projectedBreakdown = computeBmrDeficitBreakdown({
+                  bmrKcal: anthro.bmrKcal,
+                  totalExpenditureKcal: todayBalance.totalExpenditureKcal,
+                  intakeKcal: projectedIntake,
+                });
+                return (
+                  <div className="space-y-3 rounded-2xl border border-emerald-400/35 bg-slate-950/90 p-3.5 text-xs">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <p className="font-bold text-white text-sm">{writtenEstimate.dishTitle}</p>
+                        <p className="text-[11px] text-slate-400">
+                          {writtenEstimate.items
+                            .map((i) => `${i.name} (${i.grams} g · ${i.kcal} kcal)`)
+                            .join(" · ")}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-display text-xl font-extrabold text-emerald-300 tabular-nums">
+                          {writtenEstimate.caloriesCentral} kcal
+                        </p>
+                        <p className="text-[10px] text-slate-400 tabular-nums">
+                          Fourchette {writtenEstimate.caloriesMin}–{writtenEstimate.caloriesMax} kcal
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2 text-center rounded-xl bg-slate-900/90 p-2 tabular-nums">
+                      <div>
+                        <span className="text-[10px] text-slate-400 block">Protéines</span>
+                        <strong className="text-emerald-300">{writtenEstimate.macros.proteinG} g</strong>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-400 block">Glucides</span>
+                        <strong className="text-cyan-300">{writtenEstimate.macros.carbsG} g</strong>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-400 block">Lipides</span>
+                        <strong className="text-amber-300">{writtenEstimate.macros.fatG} g</strong>
+                      </div>
+                    </div>
+
+                    {/* Impact Métabolisme de Base & Déficit */}
+                    <div className="rounded-xl border border-violet-400/25 bg-violet-500/10 p-2.5 space-y-1">
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                        <span className="font-bold text-violet-200">
+                          Impact Métabolisme de base ({anthro.bmrKcal} kcal) &amp; Déficit
+                        </span>
+                        <span className="font-extrabold text-cyan-300 tabular-nums">
+                          Déficit jour :{" "}
+                          {projectedBreakdown.netDeficitTotalKcal > 0
+                            ? `+${projectedBreakdown.netDeficitTotalKcal}`
+                            : projectedBreakdown.netDeficitTotalKcal}{" "}
+                          kcal
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-300">
+                        Total journée avec ce repas :{" "}
+                        <strong className="text-white">{projectedIntake} kcal</strong> · Écart vs MB seul :{" "}
+                        <strong className="text-violet-200">
+                          {projectedBreakdown.balanceVsBmrKcal >= 0 ? "+" : ""}
+                          {projectedBreakdown.balanceVsBmrKcal} kcal
+                        </strong>{" "}
+                        · {projectedBreakdown.zoneLabelFr}
+                      </p>
+                    </div>
+
+                    {onSaveMeal && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onSaveMeal({
+                            id: `meal-txt-${Date.now()}`,
+                            createdAt: new Date().toISOString(),
+                            dateKey: todayBalance.dateKey,
+                            mealType: writtenMealType,
+                            userNotes: writtenNotesDraft.trim(),
+                            plateDiameterCm: 26,
+                            portionEatenPct: 100,
+                            ...writtenEstimate,
+                            revisions: [],
+                          });
+                          const savedTitle = writtenEstimate.dishTitle;
+                          const savedKcal = writtenEstimate.caloriesCentral;
+                          setWrittenNotesDraft("");
+                          setWrittenEstimate(null);
+                          finishSaveAndReturnHome(`Repas ajouté gratuitement : ${savedTitle} (~${savedKcal} kcal).`);
+                        }}
+                        className="w-full rounded-xl bg-emerald-500 px-4 py-2.5 text-xs font-extrabold text-slate-950 hover:bg-emerald-400"
+                      >
+                        Ajouter ce repas au journal du jour ({writtenEstimate.caloriesCentral} kcal)
+                      </button>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+
+          {assietteModalTab === "photo" && (
+            <div className="space-y-3">
               <button
                 type="button"
                 onClick={() => {
                   setSheet(null);
-                  onOpenBarcode();
+                  onNavigateTab("scanner");
                 }}
-                className="inline-flex items-center gap-1.5 rounded-2xl bg-amber-500 px-4 py-2.5 text-xs font-extrabold text-slate-950"
+                className="w-full inline-flex items-center justify-center gap-2 rounded-2xl bg-cyan-500 px-4 py-3 text-xs font-extrabold text-slate-950 hover:bg-cyan-400"
+              >
+                <Camera className="h-4 w-4" />
+                Ouvrir l&apos;appareil photo / analyser une assiette
+              </button>
+            </div>
+          )}
+
+          {assietteModalTab === "barcode" && (
+            <div className="space-y-3 rounded-2xl border border-amber-400/25 bg-amber-500/5 p-3.5 text-xs">
+              <p className="text-slate-200">
+                La recherche manuelle par code EAN est <strong>100 % gratuite</strong>. Le scan instantané par caméra et la détection d&apos;enseigne sont inclus dans FolloWeight Plus.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setSheet(null);
+                  if (onOpenBarcode) onOpenBarcode();
+                  else onNavigateTab("scanner");
+                }}
+                className="w-full inline-flex items-center justify-center gap-2 rounded-2xl bg-amber-500 px-4 py-3 text-xs font-extrabold text-slate-950 hover:bg-amber-400"
               >
                 <ScanBarcode className="h-4 w-4" />
-                Scanner un code-barres
+                Saisir ou scanner un code-barres EAN
               </button>
-            )}
-          </div>
+            </div>
+          )}
 
           {mealsWithPhotos.length === 0 ? (
-            <p className="rounded-2xl border border-slate-500/20 bg-slate-500/10 p-4 text-xs text-slate-300">
-              Aucune photo de plat enregistrée pour le moment.
+            <p className="rounded-2xl border border-slate-500/20 bg-slate-500/10 p-3.5 text-xs text-slate-300">
+              Aucune photo de plat enregistrée pour le moment — vos repas par écrit sont comptés dans votre bilan ci-dessus.
             </p>
           ) : (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

@@ -202,7 +202,7 @@ export interface MealEntry {
   dishTitle: string;
   summaryFr: string;
   confidence: number; // 0..1
-  analysisProvider: "openai-vision" | "ciqual-deterministic";
+  analysisProvider: "openai-vision" | "openai-text" | "ciqual-deterministic";
   caloriesCentral: number;
   caloriesMin: number;
   caloriesMax: number;
@@ -370,6 +370,7 @@ export interface AnthropometricReport {
   rfmMethodLabel: string;
   athleticCoherenceNote: string | null;
   bmrKcal: number;
+  bmrHenryKcal?: number;
   estimatedMaintenanceKcal: number;
   autoTargetIntakeKcal: number;
   targetIntakeKcal: number;
@@ -412,6 +413,9 @@ export interface DailyEnergyBalance {
   tefKcal: number;
   totalExpenditureKcal: number;
   netBalanceKcal: number; // intake - expenditure (< 0 = deficit)
+  balanceVsBmrKcal?: number; // intake - bmr (< 0 = sous le métabolisme de base)
+  activityAboveBmrKcal?: number; // NEAT + pas + sport + TEF
+  bmrSharePct?: number; // part du métabolisme de base dans la dépense totale (%)
   targetIntakeKcal: number;
   remainingToTargetKcal: number;
   statusFr: string;

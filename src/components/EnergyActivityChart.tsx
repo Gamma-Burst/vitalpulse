@@ -67,10 +67,11 @@ export function EnergyActivityChart({
 
   const safeIdx = Math.min(selectedIndex, Math.max(0, balances.length - 1));
   const activeDay = balances[safeIdx];
+  const referenceBmrKcal = activeDay?.bmrKcal ?? balances[balances.length - 1]?.bmrKcal ?? 1600;
 
   const maxKcal = Math.max(
     2600,
-    ...balances.flatMap((b) => [b.intakeKcal, b.totalExpenditureKcal])
+    ...balances.flatMap((b) => [b.intakeKcal, b.totalExpenditureKcal, b.bmrKcal + 400])
   );
   const maxActivityScore = Math.max(
     10000,
@@ -157,14 +158,22 @@ export function EnergyActivityChart({
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-4 text-xs mb-3">
+        <div className="flex flex-wrap gap-3 text-xs mb-3">
           <span className="inline-flex items-center gap-1.5 text-amber-300">
             <span className="w-2.5 h-2.5 rounded-sm bg-amber-400 inline-block" />
             Calories mangées
           </span>
+          <span className="inline-flex items-center gap-1.5 text-violet-300">
+            <span className="w-2.5 h-2.5 rounded-sm bg-violet-500 inline-block" />
+            Métabolisme de base (MB)
+          </span>
           <span className="inline-flex items-center gap-1.5 text-emerald-300">
             <span className="w-2.5 h-2.5 rounded-sm bg-emerald-500 inline-block" />
-            Calories brûlées (total)
+            Activité + Sport + TEF
+          </span>
+          <span className="inline-flex items-center gap-1.5 text-violet-200">
+            <span className="w-4 border-t-2 border-dashed border-violet-400 inline-block" />
+            Seuil vital MB ({referenceBmrKcal} kcal)
           </span>
           <span className="inline-flex items-center gap-1.5 text-sky-300">
             <span className="w-4 h-0.5 bg-sky-400 inline-block" />
@@ -207,10 +216,40 @@ export function EnergyActivityChart({
               );
             })}
 
+            {(() => {
+              const bmrLineY = padT + plotH - (referenceBmrKcal / maxKcal) * plotH;
+              return (
+                <g>
+                  <line
+                    x1={padL}
+                    x2={chartW - padR}
+                    y1={bmrLineY}
+                    y2={bmrLineY}
+                    stroke="#a78bfa"
+                    strokeWidth="1.5"
+                    strokeDasharray="6 4"
+                    opacity={0.85}
+                  />
+                  <text
+                    x={chartW - padR - 4}
+                    y={Math.max(padT + 10, bmrLineY - 5)}
+                    fill="#c4b5fd"
+                    fontSize="10"
+                    fontWeight="700"
+                    textAnchor="end"
+                  >
+                    MB {referenceBmrKcal} kcal
+                  </text>
+                </g>
+              );
+            })()}
+
             {balances.map((b, i) => {
               const cx = padL + i * slotW + slotW / 2;
               const hIn = (b.intakeKcal / maxKcal) * plotH;
               const hOut = (b.totalExpenditureKcal / maxKcal) * plotH;
+              const hBmr = Math.min(hOut, (b.bmrKcal / maxKcal) * plotH);
+              const hAct = Math.max(0, hOut - hBmr);
               const isSel = i === safeIdx;
               const label = b.dateKey.slice(5);
               return (
@@ -236,15 +275,28 @@ export function EnergyActivityChart({
                     fill="#f59e0b"
                     opacity={isSel ? 1 : 0.8}
                   />
+                  {/* Socle Métabolisme de Base (MB) */}
                   <rect
                     x={cx + 1.5}
-                    y={padT + plotH - hOut}
+                    y={padT + plotH - hBmr}
                     width={barW}
-                    height={Math.max(2, hOut)}
-                    rx={3}
-                    fill="#10b981"
-                    opacity={isSel ? 1 : 0.8}
+                    height={Math.max(2, hBmr)}
+                    rx={hAct <= 1 ? 3 : 2}
+                    fill="#8b5cf6"
+                    opacity={isSel ? 0.95 : 0.72}
                   />
+                  {/* Activité + Pas + Sport + Digestion au-dessus du MB */}
+                  {hAct > 1 && (
+                    <rect
+                      x={cx + 1.5}
+                      y={padT + plotH - hOut}
+                      width={barW}
+                      height={Math.max(1, hAct)}
+                      rx={3}
+                      fill="#10b981"
+                      opacity={isSel ? 1 : 0.82}
+                    />
+                  )}
                   {(rangeDays <= 14 || i % 3 === 0 || isSel) && (
                     <text
                       x={cx}
@@ -308,17 +360,19 @@ export function EnergyActivityChart({
               </span>
             </div>
             <div>
-              <span className="text-slate-400 block">Dépense totale</span>
+              <span className="text-slate-400 block">
+                Dépense totale (MB + Act.) <InfoTip term="bmr" />
+              </span>
               <strong className="text-emerald-300 text-sm tabular-nums">
                 {activeDay.totalExpenditureKcal} kcal
               </strong>
               <span className="block text-[11px] text-slate-400">
-                Repos {activeDay.bmrKcal} + Act. {activeDay.netStepsKcal + activeDay.netWorkoutsKcal + activeDay.nonAmbulatoryNeatKcal} + TEF {activeDay.tefKcal}
+                MB {activeDay.bmrKcal} ({activeDay.bmrSharePct ?? Math.round((activeDay.bmrKcal / Math.max(1, activeDay.totalExpenditureKcal)) * 100)}%) + Act. {activeDay.netStepsKcal + activeDay.netWorkoutsKcal + activeDay.nonAmbulatoryNeatKcal} + TEF {activeDay.tefKcal}
               </span>
             </div>
             <div>
               <span className="text-slate-400 block">
-                Bilan Net du Jour <InfoTip term="net_balance" />
+                Bilan Net &amp; Déficit vs MB <InfoTip term="net_balance" />
               </span>
               <strong
                 className={`text-sm tabular-nums inline-flex items-center gap-1 ${
@@ -333,7 +387,9 @@ export function EnergyActivityChart({
                 {activeDay.netBalanceKcal > 0 ? `+${activeDay.netBalanceKcal}` : activeDay.netBalanceKcal} kcal
               </strong>
               <span className="block text-[11px] text-slate-400">
-                {activeDay.netBalanceKcal <= 0 ? "Déficit énergétique" : "Surplus énergétique"}
+                {activeDay.intakeKcal > 0
+                  ? `vs MB seul : ${activeDay.intakeKcal - activeDay.bmrKcal >= 0 ? "+" : ""}${activeDay.intakeKcal - activeDay.bmrKcal} kcal`
+                  : `MB seul : −${activeDay.bmrKcal} kcal`}
               </span>
             </div>
             <div>

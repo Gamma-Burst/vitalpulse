@@ -38,6 +38,9 @@ export async function POST(req: NextRequest) {
     const apiKey = process.env.OPENAI_API_KEY;
     const model = process.env.OPENAI_VISION_MODEL || "gpt-4o-mini";
 
+    const hasRasterImage = isRasterImageDataUrl(imageBase64);
+    const isTextMode = body.entryMode === "text" || (!hasRasterImage && userNotes.length >= 2);
+
     const rawLicenseToken =
       typeof body.licenseToken === "string" ? body.licenseToken.trim() : "";
     const verifiedToken = rawLicenseToken
@@ -47,16 +50,34 @@ export async function POST(req: NextRequest) {
       verifiedToken.valid &&
       isTierEntitledToPaidQuota(verifiedToken.payload?.tier);
     const allowVisionByClient = body.allowVisionAi !== false;
-    const allowCloudVision = allowVisionByClient || hasVerifiedPlusToken;
+    // L'analyse par écrit (sans photo) est 100 % gratuite et illimitée ; seule la Vision photo IA est décomptée.
+    const allowCloudVision = hasRasterImage ? allowVisionByClient || hasVerifiedPlusToken : false;
+    const allowFreeTextAi = Boolean(apiKey && !hasRasterImage && userNotes.length >= 2);
+
+    const ciqualBaseline = analyzeMealDeterministically({
+      userNotes: userNotes || "Plat équilibré standard",
+      mealType,
+      plateDiameterCm,
+      portionEatenPct,
+      oilLevel: requestedOilLevel,
+    });
 
     if (
       apiKey &&
-      allowCloudVision &&
-      (isRasterImageDataUrl(imageBase64) || userNotes.length >= 4)
+      ((allowCloudVision && hasRasterImage) || allowFreeTextAi)
     ) {
       try {
+        const baselineSummary =
+          !hasRasterImage && ciqualBaseline.items.length > 0
+            ? `Repère préliminaire ANSES Ciqual : ${ciqualBaseline.items
+                .map((it) => `${it.name} (~${it.grams} g, ~${it.kcal} kcal)`)
+                .join(" + ")} (total indicatif ${ciqualBaseline.caloriesCentral} kcal). Affine ou complète si un aliment saisi n'est pas listé ou si la quantité diffère.`
+            : "";
+
         const userPrompt = [
-          `Analyse ce repas pour un suivi médical et nutritionnel de précision (référentiel ANSES Ciqual & Inserm NOVA).`,
+          hasRasterImage
+            ? `Analyse ce repas à partir de la photo pour un suivi médical et nutritionnel de précision (référentiel ANSES Ciqual & Inserm NOVA).`
+            : `Analyse ce repas DÉCRIT PAR ÉCRIT par l'utilisateur pour un suivi nutritionnel de précision (référentiel ANSES Ciqual & Inserm NOVA).`,
           `Type de repas : ${mealType}.`,
           `Diamètre de l'assiette déclaré : ${plateDiameterCm} cm (repère d'échelle).`,
           `Pourcentage effectivement consommé : ${portionEatenPct}% (applique ce ratio sur TOUS les résultats !).`,
@@ -73,6 +94,7 @@ export async function POST(req: NextRequest) {
           userNotes
             ? `PRÉCISIONS PRIORITAIRES DE L'UTILISATEUR (priment sur l'image en cas d'ambiguïté) : "${userNotes}"`
             : "Aucune précision textuelle fournie.",
+          baselineSummary,
           `Réponds STRICTEMENT en JSON valide (en français) avec la structure exacte :`,
           `{
             "dishTitle": "string court",
@@ -110,7 +132,7 @@ export async function POST(req: NextRequest) {
         const contentParts: Array<Record<string, unknown>> = [
           { type: "text", text: userPrompt },
         ];
-        if (isRasterImageDataUrl(imageBase64)) {
+        if (hasRasterImage) {
           contentParts.push({
             type: "image_url",
             image_url: { url: imageBase64, detail: "high" },
@@ -181,13 +203,18 @@ export async function POST(req: NextRequest) {
               novaRaw === 1 || novaRaw === 2 || novaRaw === 3 || novaRaw === 4 ? novaRaw : 2;
 
             return NextResponse.json({
-              dishTitle: String(parsed.dishTitle || "Plat analysé par Vision IA"),
+              dishTitle: String(
+                parsed.dishTitle ||
+                  (hasRasterImage ? "Plat analysé par Vision IA" : "Repas estimé par écrit")
+              ),
               summaryFr: String(
                 parsed.summaryFr ||
-                  "Analyse multimodale croisant votre photo, vos précisions textuelles et la table ANSES Ciqual."
+                  (hasRasterImage
+                    ? "Analyse multimodale croisant votre photo, vos précisions textuelles et la table ANSES Ciqual."
+                    : "Estimation nutritionnelle gratuite par écrit ancrée sur les tables ANSES Ciqual et EFSA.")
               ),
               confidence: Math.min(0.99, Math.max(0.4, Number(parsed.confidence) || 0.85)),
-              analysisProvider: "openai-vision",
+              analysisProvider: hasRasterImage ? "openai-vision" : "openai-text",
               caloriesCentral: calCentral,
               caloriesMin: calMin,
               caloriesMax: calMax,
@@ -226,7 +253,9 @@ export async function POST(req: NextRequest) {
               clinicalSources: Array.isArray(parsed.clinicalSources) && parsed.clinicalSources.length
                 ? parsed.clinicalSources.map(String)
                 : [
-                    "OpenAI Vision + Consignes utilisateur prioritaires",
+                    isTextMode
+                      ? "Estimation texte gratuite + Table ANSES Ciqual"
+                      : "OpenAI Vision + Consignes utilisateur prioritaires",
                     "ANSES — Table de composition Ciqual",
                     "Inserm — Classification NOVA 1–4",
                   ],
@@ -238,15 +267,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const fallback = analyzeMealDeterministically({
-      userNotes: userNotes || "Plat équilibré standard",
-      mealType,
-      plateDiameterCm,
-      portionEatenPct,
-      oilLevel: requestedOilLevel,
-    });
-
-    return NextResponse.json(fallback);
+    return NextResponse.json(ciqualBaseline);
   } catch (error) {
     console.error("analyze-meal error:", error);
     return NextResponse.json(

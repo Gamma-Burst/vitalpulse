@@ -30,9 +30,10 @@ export const FOLLOWEIGHT_PLANS: FolloWeightPlanSpec[] = [
     subPriceLabelFr: "Zéro publicité · Données privées locales",
     channelFr: "Web & Android inclus",
     highlightsFr: [
+      "Estimation calorique par écrit (texte libre Ciqual) 100 % gratuite & illimitée",
       "Recherche manuelle par code EAN (OpenFoodFacts) gratuite",
       "Minuteur Jeûne & OMAD (23:1) + notifications fenêtre",
-      "Courbe poids lissé EMA, mensurations US Navy & photos 100 % locales",
+      "Courbe poids lissé EMA, métabolisme de base & déficit scientifique",
       "44 exercices & 10 sports + ravitaillement ISSN + montres connectées",
       "Analyse bilan sanguin déterministe + Lexique Santé (?)",
       "5 questions Coach FW AI / jour + Pack découverte de 5 scans photo IA offerts",

@@ -12,6 +12,7 @@ import {
   Footprints,
   BookOpen,
   HelpCircle,
+  PenLine,
   Trophy,
 } from "lucide-react";
 import { DetailSheet } from "@/components/ui/DetailSheet";
@@ -21,6 +22,7 @@ export interface QuickActionSheetProps {
   open: boolean;
   onClose: () => void;
   onScanMeal: () => void;
+  onWriteMeal?: () => void;
   onScanBarcode: () => void;
   onOpenFridge: () => void;
   onOpenFasting: () => void;
@@ -38,6 +40,7 @@ export function QuickActionSheet({
   open,
   onClose,
   onScanMeal,
+  onWriteMeal,
   onScanBarcode,
   onOpenFridge,
   onOpenFasting,
@@ -77,6 +80,21 @@ export function QuickActionSheet({
         onScanMeal();
       },
     },
+    ...(onWriteMeal
+      ? [
+          {
+            id: "write_meal",
+            title: "Repas écrit",
+            subtitle: "Gratuit · ANSES Ciqual",
+            icon: PenLine,
+            color: "bg-emerald-500/15 text-emerald-200 border-emerald-400/35",
+            run: () => {
+              onClose();
+              onWriteMeal();
+            },
+          },
+        ]
+      : []),
     {
       id: "barcode",
       title: "Code-barres",

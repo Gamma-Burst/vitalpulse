@@ -131,6 +131,7 @@ const TABS: {
 export default function VitalPulseApp() {
   const [state, setState] = useState<VitalPulseState | null>(null);
   const [activeTab, setActiveTab] = useState<TabId>("dashboard");
+  const [scannerEntryMode, setScannerEntryMode] = useState<"photo" | "text">("photo");
   const [bodyLabSubTab, setBodyLabSubTab] = useState<BodyLabSubTab>("measurements");
   const [rangeDays, setRangeDays] = useState<7 | 14 | 30>(7);
   const [highlightedMealId, setHighlightedMealId] = useState<string | null>(null);
@@ -959,12 +960,29 @@ export default function VitalPulseApp() {
           {/* Segmented Sub-Nav mobile quand sur Scanner / Frigo */}
           {isPlateTab && (
             <div className="lg:hidden px-4 pt-3">
-              <div className="grid grid-cols-3 gap-1.5 rounded-2xl border border-slate-500/20 bg-slate-500/10 p-1 text-xs font-bold">
+              <div className="grid grid-cols-4 gap-1 rounded-2xl border border-slate-500/20 bg-slate-500/10 p-1 text-[11px] font-bold">
                 <button
                   type="button"
-                  onClick={() => setActiveTab("scanner")}
-                  className={`rounded-xl py-2 transition ${
-                    activeTab === "scanner"
+                  onClick={() => {
+                    setScannerEntryMode("text");
+                    setActiveTab("scanner");
+                  }}
+                  className={`rounded-xl py-2 px-1 transition ${
+                    activeTab === "scanner" && scannerEntryMode === "text"
+                      ? "bg-emerald-500 text-slate-950"
+                      : "text-emerald-300"
+                  }`}
+                >
+                  Par écrit
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setScannerEntryMode("photo");
+                    setActiveTab("scanner");
+                  }}
+                  className={`rounded-xl py-2 px-1 transition ${
+                    activeTab === "scanner" && scannerEntryMode === "photo"
                       ? "bg-emerald-500 text-slate-950"
                       : "text-slate-300"
                   }`}
@@ -974,18 +992,18 @@ export default function VitalPulseApp() {
                 <button
                   type="button"
                   onClick={() => setActiveTab("fridge")}
-                  className={`rounded-xl py-2 transition ${
+                  className={`rounded-xl py-2 px-1 transition ${
                     activeTab === "fridge"
                       ? "bg-emerald-500 text-slate-950"
                       : "text-slate-300"
                   }`}
                 >
-                  Photo Frigo
+                  Frigo
                 </button>
                 <button
                   type="button"
                   onClick={() => setBarcodeOpen(true)}
-                  className="inline-flex items-center justify-center gap-1 rounded-xl py-2 text-amber-300 hover:bg-amber-500/15"
+                  className="inline-flex items-center justify-center gap-1 rounded-xl py-2 px-1 text-amber-300 hover:bg-amber-500/15"
                 >
                   <ScanBarcode className="h-3.5 w-3.5" />
                   EAN
@@ -1178,6 +1196,13 @@ export default function VitalPulseApp() {
                 goalEvaluations={goalReconciliation?.evaluationsById}
                 onOpenGoalsModal={() => setGoalsModalOpen(true)}
                 onToggleChallengeToday={toggleChallengeToday}
+                onSaveMeal={(meal: MealEntry) =>
+                  commitState((prev) => ({ ...prev, meals: [meal, ...prev.meals] }))
+                }
+                onOpenWrittenMeal={() => {
+                  setScannerEntryMode("text");
+                  setActiveTab("scanner");
+                }}
               />
             )}
 
@@ -1188,6 +1213,10 @@ export default function VitalPulseApp() {
                 specialMode={state.profile.specialMode}
                 primaryGoal={state.profile.primaryGoal}
                 highlightedMealId={highlightedMealId}
+                entryMode={scannerEntryMode}
+                bmrKcal={anthro.bmrKcal}
+                todayIntakeKcal={todayBalance.intakeKcal}
+                totalExpenditureKcal={todayBalance.totalExpenditureKcal}
                 subscription={state.subscription}
                 onRecordVisionScan={() =>
                   commitState((prev) => ({
@@ -1548,7 +1577,14 @@ export default function VitalPulseApp() {
         <QuickActionSheet
           open={quickActionsOpen}
           onClose={() => setQuickActionsOpen(false)}
-          onScanMeal={() => setActiveTab("scanner")}
+          onScanMeal={() => {
+            setScannerEntryMode("photo");
+            setActiveTab("scanner");
+          }}
+          onWriteMeal={() => {
+            setScannerEntryMode("text");
+            setActiveTab("scanner");
+          }}
           onScanBarcode={() => setBarcodeOpen(true)}
           onOpenFridge={() => setActiveTab("fridge")}
           onOpenFasting={() => setActiveTab("fasting")}

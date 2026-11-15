@@ -82,6 +82,28 @@ async function main() {
   results.analyze_meal_kcal = mealJson.caloriesCentral;
   results.analyze_meal_range_valid = mealJson.caloriesMin < mealJson.caloriesCentral && mealJson.caloriesCentral < mealJson.caloriesMax;
 
+  // 2b. Free written meal entry (no image, allowVisionAi: false)
+  const textMealRes = await fetch(`${BASE}/api/analyze-meal`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      entryMode: "text",
+      userNotes: "deux oeuf dur et des bacon en morceau",
+      plateDiameterCm: 26,
+      portionEatenPct: 100,
+      mealType: "breakfast",
+      specialMode: "standard",
+      allowVisionAi: false,
+    }),
+  });
+  const textMealJson = await textMealRes.json();
+  results.analyze_text_status = textMealRes.status;
+  results.analyze_text_provider = textMealJson.analysisProvider;
+  results.analyze_text_kcal = textMealJson.caloriesCentral;
+  results.analyze_text_range_valid =
+    textMealJson.caloriesMin < textMealJson.caloriesCentral &&
+    textMealJson.caloriesCentral < textMealJson.caloriesMax;
+
   // 3. Analyze fridge
   const fridgeRes = await fetch(`${BASE}/api/analyze-fridge`, {
     method: "POST",
@@ -202,6 +224,11 @@ async function main() {
     results.analyze_meal_status === 200 &&
     results.analyze_meal_kcal > 0 &&
     results.analyze_meal_range_valid &&
+    results.analyze_text_status === 200 &&
+    results.analyze_text_provider !== "openai-vision" &&
+    results.analyze_text_kcal >= 180 &&
+    results.analyze_text_kcal <= 420 &&
+    results.analyze_text_range_valid &&
     results.analyze_fridge_status === 200 &&
     results.fridge_recipes_count === 3 &&
     results.fridge_first_recipe_steps >= 3 &&

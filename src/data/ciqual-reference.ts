@@ -27,6 +27,7 @@ export interface CiqualEntry {
     vitDUg: number;
   };
   defaultServingG: number;
+  unitWeightG?: number; // poids moyen d'1 pièce/tranche/tasse/bol pour quantités en français
   gi: number; // Glycemic index 0..100
   novaGroup: 1 | 2 | 3 | 4;
 }
@@ -108,13 +109,27 @@ export const CIQUAL_REFERENCE: CiqualEntry[] = [
   },
   {
     id: "ciq-oeuf",
-    name: "Œuf entier cuit (omelette / dur / mollet)",
-    aliases: ["oeuf", "œuf", "oeufs", "œufs", "omelette", "egg"],
+    name: "Œuf entier cuit (dur / mollet / au plat / omelette)",
+    aliases: [
+      "oeufs durs",
+      "oeuf dur",
+      "oeufs mollets",
+      "oeuf mollet",
+      "oeufs au plat",
+      "oeuf au plat",
+      "oeufs brouilles",
+      "oeuf brouille",
+      "omelette",
+      "oeufs",
+      "oeuf",
+      "eggs",
+      "egg",
+    ],
     per100g: {
       kcal: 145, proteinG: 12.6, carbsG: 0.7, fatG: 10.3, fiberG: 0, sugarG: 0.5, satFatG: 3.1, sodiumMg: 126,
       ironMg: 1.8, magnesiumMg: 12, calciumMg: 52, potassiumMg: 130, vitCMg: 0, vitDUg: 2.0,
     },
-    defaultServingG: 120, gi: 0, novaGroup: 1,
+    defaultServingG: 110, unitWeightG: 55, gi: 0, novaGroup: 1,
   },
   {
     id: "ciq-tofu",
@@ -527,6 +542,236 @@ export const CIQUAL_REFERENCE: CiqualEntry[] = [
     defaultServingG: 20, gi: 23, novaGroup: 3,
   },
   {
+    id: "ciq-bacon",
+    name: "Bacon cuit / en morceaux (poitrine fumée grillée)",
+    aliases: [
+      "bacon en morceaux",
+      "bacon en morceau",
+      "morceaux de bacon",
+      "morceau de bacon",
+      "bacon grille",
+      "bacon fume",
+      "poitrine fumee",
+      "bacons",
+      "bacon",
+    ],
+    per100g: {
+      kcal: 220, proteinG: 18.0, carbsG: 0.6, fatG: 16.0, fiberG: 0, sugarG: 0.4, satFatG: 5.5, sodiumMg: 780,
+      ironMg: 0.8, magnesiumMg: 18, calciumMg: 10, potassiumMg: 310, vitCMg: 0, vitDUg: 0.4,
+    },
+    defaultServingG: 45, unitWeightG: 20, gi: 0, novaGroup: 3,
+  },
+  {
+    id: "ciq-filet-bacon-maigre",
+    name: "Filet de bacon fumé maigre",
+    aliases: ["filet de bacon", "bacon maigre", "tranche de bacon maigre"],
+    per100g: {
+      kcal: 125, proteinG: 21.0, carbsG: 0.6, fatG: 3.5, fiberG: 0, sugarG: 0.4, satFatG: 1.2, sodiumMg: 820,
+      ironMg: 0.9, magnesiumMg: 21, calciumMg: 8, potassiumMg: 340, vitCMg: 0, vitDUg: 0.2,
+    },
+    defaultServingG: 50, unitWeightG: 25, gi: 0, novaGroup: 3,
+  },
+  {
+    id: "ciq-lardons",
+    name: "Lardons ou allumettes fumés / nature",
+    aliases: ["allumettes de bacon", "allumettes fumees", "lardons", "lardon"],
+    per100g: {
+      kcal: 269, proteinG: 16.6, carbsG: 0.8, fatG: 22.1, fiberG: 0, sugarG: 0.5, satFatG: 8.2, sodiumMg: 890,
+      ironMg: 0.8, magnesiumMg: 16, calciumMg: 10, potassiumMg: 270, vitCMg: 0, vitDUg: 0.5,
+    },
+    defaultServingG: 60, gi: 0, novaGroup: 3,
+  },
+  {
+    id: "ciq-jambon-blanc",
+    name: "Jambon blanc cuit dégraissé",
+    aliases: ["jambon blanc", "jambon cuit", "jambon de dinde", "jambon de poulet", "jambon"],
+    per100g: {
+      kcal: 115, proteinG: 20.5, carbsG: 0.9, fatG: 3.0, fiberG: 0, sugarG: 0.5, satFatG: 1.0, sodiumMg: 780,
+      ironMg: 0.9, magnesiumMg: 20, calciumMg: 10, potassiumMg: 320, vitCMg: 0, vitDUg: 0.2,
+    },
+    defaultServingG: 80, unitWeightG: 40, gi: 0, novaGroup: 3,
+  },
+  {
+    id: "ciq-boeuf-hache",
+    name: "Steak haché / Viande hachée 5–15% MG",
+    aliases: ["steak hache", "viande hachee", "boulettes de boeuf", "boulettes"],
+    per100g: {
+      kcal: 185, proteinG: 20.2, carbsG: 0, fatG: 11.4, fiberG: 0, sugarG: 0, satFatG: 4.8, sodiumMg: 75,
+      ironMg: 2.5, magnesiumMg: 21, calciumMg: 12, potassiumMg: 325, vitCMg: 0, vitDUg: 0.2,
+    },
+    defaultServingG: 125, unitWeightG: 125, gi: 0, novaGroup: 1,
+  },
+  {
+    id: "ciq-fromage-blanc",
+    name: "Fromage blanc ou Skyr (0–3%)",
+    aliases: ["fromage blanc", "skyr", "faisselle", "petit suisse"],
+    per100g: {
+      kcal: 62, proteinG: 8.5, carbsG: 3.8, fatG: 1.2, fiberG: 0, sugarG: 3.8, satFatG: 0.8, sodiumMg: 42,
+      ironMg: 0.1, magnesiumMg: 11, calciumMg: 125, potassiumMg: 150, vitCMg: 0, vitDUg: 0.1,
+    },
+    defaultServingG: 150, unitWeightG: 150, gi: 25, novaGroup: 1,
+  },
+  {
+    id: "ciq-mozzarella",
+    name: "Mozzarella / Burrata",
+    aliases: ["mozzarella", "mozza", "burrata"],
+    per100g: {
+      kcal: 254, proteinG: 18.0, carbsG: 2.2, fatG: 19.5, fiberG: 0, sugarG: 1.0, satFatG: 13.0, sodiumMg: 520,
+      ironMg: 0.3, magnesiumMg: 20, calciumMg: 505, potassiumMg: 76, vitCMg: 0, vitDUg: 0.4,
+    },
+    defaultServingG: 100, unitWeightG: 125, gi: 0, novaGroup: 2,
+  },
+  {
+    id: "ciq-comte-fromage",
+    name: "Fromage à pâte dure (Comté / Emmental / Cheddar)",
+    aliases: ["comte", "emmental", "gruyere", "cheddar", "parmesan", "fromage"],
+    per100g: {
+      kcal: 380, proteinG: 26.0, carbsG: 0.8, fatG: 30.0, fiberG: 0, sugarG: 0.4, satFatG: 19.0, sodiumMg: 680,
+      ironMg: 0.3, magnesiumMg: 34, calciumMg: 850, potassiumMg: 110, vitCMg: 0, vitDUg: 0.5,
+    },
+    defaultServingG: 40, unitWeightG: 30, gi: 0, novaGroup: 2,
+  },
+  {
+    id: "ciq-yaourt-nature",
+    name: "Yaourt nature ou brassé",
+    aliases: ["yaourt nature", "yogourt", "yaourt"],
+    per100g: {
+      kcal: 58, proteinG: 4.3, carbsG: 4.8, fatG: 2.2, fiberG: 0, sugarG: 4.8, satFatG: 1.4, sodiumMg: 52,
+      ironMg: 0.1, magnesiumMg: 12, calciumMg: 140, potassiumMg: 170, vitCMg: 0, vitDUg: 0.1,
+    },
+    defaultServingG: 125, unitWeightG: 125, gi: 35, novaGroup: 1,
+  },
+  {
+    id: "ciq-lait",
+    name: "Lait demi-écrémé",
+    aliases: ["lait demi ecreme", "lait entier", "lait ecreme", "verre de lait", "lait"],
+    per100g: {
+      kcal: 47, proteinG: 3.3, carbsG: 4.8, fatG: 1.6, fiberG: 0, sugarG: 4.8, satFatG: 1.0, sodiumMg: 44,
+      ironMg: 0.1, magnesiumMg: 11, calciumMg: 118, potassiumMg: 155, vitCMg: 1, vitDUg: 0.1,
+    },
+    defaultServingG: 200, unitWeightG: 200, gi: 31, novaGroup: 1,
+  },
+  {
+    id: "ciq-cafe-the",
+    name: "Café noir / Thé / Tisane (sans sucre)",
+    aliases: ["cafe noir", "expresso", "espresso", "cafe", "the vert", "the noir", "infusion", "tisane", "the"],
+    per100g: {
+      kcal: 2, proteinG: 0.2, carbsG: 0.2, fatG: 0, fiberG: 0, sugarG: 0, satFatG: 0, sodiumMg: 2,
+      ironMg: 0.1, magnesiumMg: 5, calciumMg: 3, potassiumMg: 60, vitCMg: 0, vitDUg: 0,
+    },
+    defaultServingG: 150, unitWeightG: 150, gi: 0, novaGroup: 1,
+  },
+  {
+    id: "ciq-cappuccino-latte",
+    name: "Cappuccino / Café au lait / Latte",
+    aliases: ["cappuccino", "cafe au lait", "cafe latte", "cafe creme", "latte"],
+    per100g: {
+      kcal: 42, proteinG: 2.4, carbsG: 3.8, fatG: 1.8, fiberG: 0, sugarG: 3.6, satFatG: 1.1, sodiumMg: 35,
+      ironMg: 0.1, magnesiumMg: 10, calciumMg: 85, potassiumMg: 140, vitCMg: 0, vitDUg: 0.1,
+    },
+    defaultServingG: 200, unitWeightG: 200, gi: 25, novaGroup: 2,
+  },
+  {
+    id: "ciq-croissant",
+    name: "Croissant / Viennoiserie au beurre",
+    aliases: ["pain au chocolat", "chocolatine", "croissant", "brioche"],
+    per100g: {
+      kcal: 406, proteinG: 8.2, carbsG: 45.0, fatG: 21.0, fiberG: 2.4, sugarG: 11.0, satFatG: 12.5, sodiumMg: 380,
+      ironMg: 1.4, magnesiumMg: 22, calciumMg: 38, potassiumMg: 120, vitCMg: 0, vitDUg: 0.2,
+    },
+    defaultServingG: 55, unitWeightG: 55, gi: 67, novaGroup: 3,
+  },
+  {
+    id: "ciq-pain-mie",
+    name: "Pain de mie / Toast",
+    aliases: ["pain de mie", "toasts", "toast", "biscotte", "biscottes"],
+    per100g: {
+      kcal: 265, proteinG: 8.5, carbsG: 49.0, fatG: 3.5, fiberG: 3.2, sugarG: 5.5, satFatG: 0.9, sodiumMg: 460,
+      ironMg: 1.4, magnesiumMg: 28, calciumMg: 75, potassiumMg: 135, vitCMg: 0, vitDUg: 0,
+    },
+    defaultServingG: 70, unitWeightG: 35, gi: 68, novaGroup: 3,
+  },
+  {
+    id: "ciq-creme-fraiche",
+    name: "Crème fraîche / Crème cuisine",
+    aliases: ["creme fraiche", "creme liquide", "creme legere", "creme"],
+    per100g: {
+      kcal: 240, proteinG: 2.5, carbsG: 3.2, fatG: 24.0, fiberG: 0, sugarG: 3.2, satFatG: 16.0, sodiumMg: 38,
+      ironMg: 0.1, magnesiumMg: 8, calciumMg: 80, potassiumMg: 110, vitCMg: 0, vitDUg: 0.3,
+    },
+    defaultServingG: 30, unitWeightG: 15, gi: 0, novaGroup: 2,
+  },
+  {
+    id: "ciq-miel-confiture",
+    name: "Miel ou Confiture",
+    aliases: ["confiture", "sirop d erable", "miel"],
+    per100g: {
+      kcal: 295, proteinG: 0.3, carbsG: 74.0, fatG: 0, fiberG: 0.4, sugarG: 72.0, satFatG: 0, sodiumMg: 8,
+      ironMg: 0.4, magnesiumMg: 4, calciumMg: 12, potassiumMg: 55, vitCMg: 2, vitDUg: 0,
+    },
+    defaultServingG: 20, unitWeightG: 15, gi: 61, novaGroup: 2,
+  },
+  {
+    id: "ciq-noix",
+    name: "Noix, Noisettes ou Cacahuètes",
+    aliases: ["beurre de cacahuete", "noix de cajou", "cacahuetes", "pistaches", "noisettes", "noix"],
+    per100g: {
+      kcal: 635, proteinG: 18.0, carbsG: 11.0, fatG: 56.0, fiberG: 7.5, sugarG: 4.0, satFatG: 7.0, sodiumMg: 12,
+      ironMg: 3.2, magnesiumMg: 165, calciumMg: 85, potassiumMg: 560, vitCMg: 1, vitDUg: 0,
+    },
+    defaultServingG: 30, unitWeightG: 30, gi: 15, novaGroup: 1,
+  },
+  {
+    id: "ciq-pates-carbo-bolognaise",
+    name: "Sauce bolognaise / Carbonara / Pesto",
+    aliases: ["bolognaise", "carbonara", "pesto"],
+    per100g: {
+      kcal: 165, proteinG: 7.5, carbsG: 8.5, fatG: 11.0, fiberG: 1.5, sugarG: 3.5, satFatG: 4.5, sodiumMg: 520,
+      ironMg: 1.1, magnesiumMg: 18, calciumMg: 55, potassiumMg: 260, vitCMg: 8, vitDUg: 0.1,
+    },
+    defaultServingG: 120, unitWeightG: 100, gi: 30, novaGroup: 3,
+  },
+  {
+    id: "ciq-soupe-legumes",
+    name: "Soupe ou Velouté de légumes",
+    aliases: ["veloute", "potage", "soupe"],
+    per100g: {
+      kcal: 45, proteinG: 1.6, carbsG: 5.8, fatG: 1.5, fiberG: 1.8, sugarG: 2.5, satFatG: 0.4, sodiumMg: 260,
+      ironMg: 0.5, magnesiumMg: 14, calciumMg: 24, potassiumMg: 210, vitCMg: 7, vitDUg: 0,
+    },
+    defaultServingG: 300, unitWeightG: 300, gi: 40, novaGroup: 2,
+  },
+  {
+    id: "ciq-orange-clementine",
+    name: "Orange, Clémentine ou Mandarine",
+    aliases: ["clementine", "mandarine", "pamplemousse", "orange"],
+    per100g: {
+      kcal: 47, proteinG: 0.9, carbsG: 9.8, fatG: 0.2, fiberG: 2.2, sugarG: 8.5, satFatG: 0, sodiumMg: 2,
+      ironMg: 0.2, magnesiumMg: 11, calciumMg: 38, potassiumMg: 175, vitCMg: 53, vitDUg: 0,
+    },
+    defaultServingG: 150, unitWeightG: 130, gi: 35, novaGroup: 1,
+  },
+  {
+    id: "ciq-mayonnaise-vinaigrette",
+    name: "Mayonnaise ou Vinaigrette",
+    aliases: ["mayonnaise", "vinaigrette", "mayo"],
+    per100g: {
+      kcal: 560, proteinG: 1.2, carbsG: 2.5, fatG: 60.0, fiberG: 0, sugarG: 1.5, satFatG: 8.5, sodiumMg: 620,
+      ironMg: 0.3, magnesiumMg: 2, calciumMg: 12, potassiumMg: 35, vitCMg: 0, vitDUg: 0.3,
+    },
+    defaultServingG: 20, unitWeightG: 15, gi: 0, novaGroup: 3,
+  },
+  {
+    id: "ciq-whey-shaker",
+    name: "Shaker protéiné (Whey / Caséine)",
+    aliases: ["proteine en poudre", "scoop whey", "shaker", "whey"],
+    per100g: {
+      kcal: 385, proteinG: 78.0, carbsG: 6.5, fatG: 4.5, fiberG: 1.0, sugarG: 3.5, satFatG: 2.5, sodiumMg: 220,
+      ironMg: 1.0, magnesiumMg: 75, calciumMg: 480, potassiumMg: 520, vitCMg: 0, vitDUg: 0,
+    },
+    defaultServingG: 30, unitWeightG: 30, gi: 20, novaGroup: 3,
+  },
+  {
     id: "ciq-plat-prepare-generique",
     name: "Plat préparé équilibré (viande/poisson + féculent + légumes)",
     aliases: ["plat", "repas", "assiette", "bowl"],
@@ -542,7 +787,63 @@ function normalizeText(s: string): string {
   return s
     .toLowerCase()
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/['’\-/]/g, " ")
+    .replace(/\bc\s*\.\s*a\s*\.\s*s\.?\b/g, "cas")
+    .replace(/\bc\s*\.\s*a\s*\.\s*c\.?\b/g, "cac")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+const FRENCH_NUMBER_WORDS: Record<string, number> = {
+  un: 1,
+  une: 1,
+  deux: 2,
+  trois: 3,
+  quatre: 4,
+  cinq: 5,
+  six: 6,
+  sept: 7,
+  huit: 8,
+  neuf: 9,
+  dix: 10,
+  onze: 11,
+  douze: 12,
+  demi: 0.5,
+  moitie: 0.5,
+  quart: 0.25,
+};
+
+const DEFAULT_UNIT_WEIGHT_BY_ID: Record<string, number> = {
+  "ciq-oeuf": 55,
+  "ciq-pomme": 150,
+  "ciq-banane": 120,
+  "ciq-avocat": 150,
+  "ciq-tomate": 120,
+  "ciq-baguette": 120,
+  "ciq-pain-complet": 40,
+  "ciq-feta": 40,
+  "ciq-amandes": 30,
+  "ciq-chocolat-noir": 10,
+  "ciq-huile-olive": 12,
+  "ciq-beurre": 12,
+  "ciq-burger-maison": 260,
+};
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function parseFrenchCountToken(token: string): number | null {
+  const clean = token.trim().replace(",", ".");
+  if (clean in FRENCH_NUMBER_WORDS) {
+    return FRENCH_NUMBER_WORDS[clean];
+  }
+  const num = Number(clean);
+  if (Number.isFinite(num) && num > 0 && num <= 30) {
+    return num;
+  }
+  return null;
 }
 
 export function matchCiqualFood(query: string): CiqualEntry | null {
@@ -579,35 +880,145 @@ export function analyzeMealDeterministically(params: {
   const plateScale = Math.max(0.75, Math.min(1.25, params.plateDiameterCm / 26));
   const eatenScale = Math.max(0.25, Math.min(1.5, params.portionEatenPct / 100));
 
-  const matchedEntries: { entry: CiqualEntry; grams: number }[] = [];
+  const matchedMap = new Map<string, { entry: CiqualEntry; grams: number }>();
   const usedIds = new Set<string>();
 
-  for (const entry of CIQUAL_REFERENCE) {
-    if (entry.id === "ciq-plat-prepare-generique") continue;
-    const hit = entry.aliases.some((alias) => {
-      const a = normalizeText(alias);
-      return notesNorm.includes(a);
-    });
-    if (hit && !usedIds.has(entry.id)) {
-      usedIds.add(entry.id);
-      // Detect explicit gram quantities near alias if specified (e.g., "150g poulet" or "poulet 150 g")
-      let explicitGrams: number | null = null;
-      for (const alias of entry.aliases) {
-        const a = normalizeText(alias).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        const r1 = new RegExp(`(\\d{2,4})\\s*g[^a-z0-9]{0,12}${a}`);
-        const r2 = new RegExp(`${a}[^0-9]{0,12}(\\d{2,4})\\s*g`);
-        const m = notesNorm.match(r1) || notesNorm.match(r2);
-        if (m) {
-          explicitGrams = Number(m[1]);
-          break;
+  // Candidats triés par longueur d'alias décroissante pour éviter les doubles détections
+  // ("pomme de terre" ne déclenche pas "pomme", "filet de bacon" ne déclenche pas "bacon")
+  const sortedCandidates = CIQUAL_REFERENCE.filter(
+    (entry) => entry.id !== "ciq-plat-prepare-generique"
+  )
+    .flatMap((entry) =>
+      entry.aliases.map((alias) => ({
+        entry,
+        aliasNorm: normalizeText(alias),
+      }))
+    )
+    .filter((item) => item.aliasNorm.length >= 2)
+    .sort((a, b) => b.aliasNorm.length - a.aliasNorm.length);
+
+  const clauses = notesNorm
+    .split(/\s*(?:[,;\n+]|\b(?:et|avec|accompagne de|puis)\b)\s*/)
+    .map((c) => c.trim())
+    .filter(Boolean);
+
+  const countTokenPattern = Object.keys(FRENCH_NUMBER_WORDS).join("|");
+  const preCountRegex = new RegExp(
+    `(?:^|\\s)(${countTokenPattern}|\\d+(?:[.,]\\d+)?)\\s*(?:grosses?|petites?|belles?|grandes?|moyennes?|tranches?\\s+d[e']?\\s*|morceaux?\\s+d[e']?\\s*|cuilleres?\\s+a\\s+(?:soupe|cafe)\\s+d[e']?\\s*|cas\\s+d[e']?\\s*|cac\\s+d[e']?\\s*|verres?\\s+d[e']?\\s*|bols?\\s+d[e']?\\s*|tasses?\\s+d[e']?\\s*|poignees?\\s+d[e']?\\s*|d[e']?\\s*)?$`
+  );
+
+  for (const clause of clauses.length > 0 ? clauses : [notesNorm]) {
+    let workingClause = clause;
+    for (const candidate of sortedCandidates) {
+      const aEscaped = escapeRegex(candidate.aliasNorm);
+      const matchRe = new RegExp(
+        `(?:^|[^a-z0-9])(${aEscaped}(?:s|x)?)(?=$|[^a-z0-9])`
+      );
+      const match = matchRe.exec(workingClause);
+      if (!match || typeof match.index !== "number") continue;
+
+      const matchedWord = match[1];
+      const prefixOffset = match[0].length - matchedWord.length;
+      const start = match.index + prefixOffset;
+      const end = start + matchedWord.length;
+      const before = workingClause.slice(Math.max(0, start - 38), start).trim();
+      const after = workingClause.slice(end, Math.min(workingClause.length, end + 24)).trim();
+
+      let grams: number | null = null;
+      const gramPre = before.match(
+        /(\d+(?:[.,]\d+)?)\s*(g|gr|grammes?|ml|cl)(?:\s+d[eu']?)?\s*$/
+      );
+      const gramPost = after.match(/^[:\s]*(\d+(?:[.,]\d+)?)\s*(g|gr|grammes?|ml|cl)\b/);
+      if (gramPre || gramPost) {
+        const gMatch = gramPre ?? gramPost!;
+        const val = Number(gMatch[1].replace(",", "."));
+        const unit = gMatch[2];
+        if (Number.isFinite(val) && val > 0) {
+          grams = unit === "cl" ? val * 10 : val;
         }
       }
-      const grams = explicitGrams
-        ? Math.max(10, Math.min(1000, explicitGrams))
-        : Math.round(entry.defaultServingG * plateScale);
-      matchedEntries.push({ entry, grams });
+
+      if (grams === null) {
+        const spoonMatch = before.match(
+          new RegExp(
+            `(${countTokenPattern}|\\d+(?:[.,]\\d+)?)\\s*(?:cas|cuilleres?\\s+a\\s+soupe|cac|cuilleres?\\s+a\\s+cafe)(?:\\s+d[eu']?)?$`
+          )
+        );
+        if (spoonMatch) {
+          const count = parseFrenchCountToken(spoonMatch[1]) ?? 1;
+          const isTeaspoon = /cac|cafe/.test(spoonMatch[0]);
+          const spoonG = isTeaspoon ? 5 : candidate.entry.id === "ciq-miel-confiture" ? 15 : 12;
+          grams = count * spoonG;
+        }
+      }
+
+      if (grams === null) {
+        const containerMatch = before.match(
+          new RegExp(
+            `(${countTokenPattern}|\\d+(?:[.,]\\d+)?)?\\s*(bol|verre|tasse|poignee|tranche|tranches)(?:\\s+d[eu']?)?$`
+          )
+        );
+        if (containerMatch) {
+          const count = containerMatch[1] ? (parseFrenchCountToken(containerMatch[1]) ?? 1) : 1;
+          const unitKind = containerMatch[2];
+          const unitBase =
+            unitKind === "bol"
+              ? Math.max(200, candidate.entry.defaultServingG)
+              : unitKind === "verre"
+                ? 200
+                : unitKind === "tasse"
+                  ? 150
+                  : unitKind === "poignee"
+                    ? 30
+                    : candidate.entry.unitWeightG ??
+                      DEFAULT_UNIT_WEIGHT_BY_ID[candidate.entry.id] ??
+                      30;
+          grams = count * unitBase;
+        }
+      }
+
+      if (grams === null) {
+        const countMatch = before.match(preCountRegex);
+        const unitG =
+          candidate.entry.unitWeightG ?? DEFAULT_UNIT_WEIGHT_BY_ID[candidate.entry.id];
+        if (countMatch && unitG) {
+          const count = parseFrenchCountToken(countMatch[1]);
+          if (count !== null) {
+            grams = count * unitG;
+          }
+        } else if (countMatch && !unitG) {
+          const count = parseFrenchCountToken(countMatch[1]);
+          if (count !== null && count >= 0.25 && count <= 5) {
+            grams = count * candidate.entry.defaultServingG;
+          }
+        }
+      }
+
+      if (grams === null) {
+        const smallMod = /\b(un peu|quelques|petite portion|mini)\b/.test(before + " " + after);
+        const bigMod = /\b(grosse|grande portion|double|beaucoup)\b/.test(before + " " + after);
+        const modScale = smallMod ? 0.65 : bigMod ? 1.45 : 1;
+        grams = candidate.entry.defaultServingG * plateScale * modScale;
+      }
+
+      const clampedGrams = Math.max(5, Math.min(1200, Math.round(grams)));
+      const existing = matchedMap.get(candidate.entry.id);
+      if (existing) {
+        existing.grams = Math.min(1500, existing.grams + clampedGrams);
+      } else {
+        matchedMap.set(candidate.entry.id, { entry: candidate.entry, grams: clampedGrams });
+      }
+      usedIds.add(candidate.entry.id);
+
+      // Masquer la tranche consommée pour empêcher les faux matchs sur des sous-mots
+      workingClause =
+        workingClause.slice(0, start) +
+        " ".repeat(matchedWord.length) +
+        workingClause.slice(end);
     }
   }
+
+  const matchedEntries = Array.from(matchedMap.values());
 
   if (matchedEntries.length === 0) {
     const fallback = CIQUAL_REFERENCE.find((e) => e.id === "ciq-plat-prepare-generique")!;
@@ -619,9 +1030,7 @@ export function analyzeMealDeterministically(params: {
 
   const detectedOilLevel: OilLevel =
     params.oilLevel ??
-    (notesNorm.includes("huile") || notesNorm.includes("beurre") || notesNorm.includes("sauce")
-      ? "light_1tbsp"
-      : "none");
+    (/\b(huile|beurre|friture|sauce)\b/.test(notesNorm) ? "light_1tbsp" : "none");
 
   const oilExplicitlyMatched = usedIds.has("ciq-huile-olive") || usedIds.has("ciq-beurre");
   const oilDeltaKcal = oilExplicitlyMatched ? 0 : applyOilClarifierDelta(detectedOilLevel);

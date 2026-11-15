@@ -181,10 +181,11 @@ export function computeAnthropometrics(profile: UserProfile): AnthropometricRepo
       "Profil musclé / athlétique détecté : votre IMC dépasse 25 mais votre ratio tour de taille / taille (< 0,50) prouve une faible graisse viscérale.";
   }
 
-  // Mifflin-St Jeor (1990)
+  // Mifflin-St Jeor (1990) + contre-vérification Henry / Oxford (2005, adoptée par EFSA 2013)
   const bmrRaw =
     10 * weightKg + 6.25 * safeHeightCm - 5 * age + (profile.sex === "male" ? 5 : -161);
   const bmrKcal = Math.max(950, Math.round(bmrRaw));
+  const bmrHenryKcal = computeHenryOxfordBmr(profile.sex, weightKg, safeHeightCm, age);
   const estimatedMaintenanceKcal = Math.round(
     bmrKcal * ACTIVITY_MAINTENANCE_MULTIPLIERS[profile.activityProfile]
   );
@@ -328,11 +329,13 @@ export function computeAnthropometrics(profile: UserProfile): AnthropometricRepo
     (profile.primaryGoal === "muscle_gain" || profile.primaryGoal === "athletic_performance");
 
   const sources = [
-    "OMS — Classification IMC & Sodium (< 2 000 mg/j)",
+    "OMS / FAO / UNU — Classification IMC, Sodium (< 2 000 mg/j) & Bilan énergétique factoriel",
+    "Academy of Nutrition & Dietetics — Équation Mifflin-St Jeor (1990) du métabolisme de base",
+    "EFSA (2013) & Henry (Oxford, 2005) — Valeurs de référence énergie (REE × PAL 1,4–2,0)",
     "NICE CG189 (2022) & HAS — Ratio Tour de Taille / Taille (< 0,50)",
     "JAMA Network Open (2024) — Body Roundness Index (BRI)",
-    "ANSES & ESPEN — Apports Protéiques & Fibres (30 g/j)",
-    "EFSA — Hydratation ajustée & Mifflin-St Jeor",
+    "ANSES (2016) & ESPEN — Apports Protéiques, Fibres (30 g/j) & Repères nutritionnels",
+    "NIH NIDDK (Hall et al.) — Déficit énergétique sain sans perte musculaire excessive",
   ];
   if (
     profile.primaryGoal === "muscle_gain" ||
@@ -355,6 +358,7 @@ export function computeAnthropometrics(profile: UserProfile): AnthropometricRepo
     rfmMethodLabel,
     athleticCoherenceNote,
     bmrKcal,
+    bmrHenryKcal,
     estimatedMaintenanceKcal,
     autoTargetIntakeKcal,
     targetIntakeKcal,
@@ -373,6 +377,182 @@ export function computeAnthropometrics(profile: UserProfile): AnthropometricRepo
       sodiumMaxMg,
     },
     sources,
+  };
+}
+
+/**
+ * Équations d'Oxford (Henry, 2005) adoptées par l'EFSA (2013, Dietary Reference Values for Energy),
+ * utilisant le poids (kg) et la taille (m). Complète Mifflin-St Jeor à titre comparatif.
+ */
+export function computeHenryOxfordBmr(
+  sex: UserProfile["sex"],
+  weightKg: number,
+  heightCm: number,
+  age: number
+): number {
+  const w = Math.max(30, Math.min(300, weightKg));
+  const hM = Math.max(1.2, Math.min(2.3, heightCm / 100));
+  let raw: number;
+  if (sex === "male") {
+    if (age < 30) {
+      raw = 14.4 * w + 313 * hM + 113;
+    } else if (age <= 60) {
+      raw = 11.4 * w + 541 * hM - 137;
+    } else {
+      raw = 11.4 * w + 541 * hM - 256;
+    }
+  } else {
+    if (age < 30) {
+      raw = 10.4 * w + 615 * hM - 282;
+    } else if (age <= 60) {
+      raw = 8.18 * w + 502 * hM - 11.6;
+    } else {
+      raw = 8.52 * w + 421 * hM + 10.7;
+    }
+  }
+  return Math.max(950, Math.round(raw));
+}
+
+export interface BmrDeficitBreakdown {
+  bmrKcal: number;
+  activityAboveBmrKcal: number;
+  totalExpenditureKcal: number;
+  intakeKcal: number;
+  balanceVsBmrKcal: number; // intake - bmr (< 0 => sous le métabolisme de base)
+  netDeficitTotalKcal: number; // intake - totalExpenditure (< 0 => déficit réel total)
+  bmrSharePct: number; // part du métabolisme de base dans la dépense totale (EFSA : ~60-75%)
+  palObserved: number; // ratio DET / BMR (PAL EFSA 1.4 = sédentaire, 1.6 = modéré, 1.8 = actif)
+  zoneId: "no_intake" | "below_bmr" | "sweet_spot_deficit" | "mild_deficit" | "maintenance" | "surplus";
+  zoneLabelFr: string;
+  scientificNoteFr: string;
+}
+
+/**
+ * Décompose le déficit journalier par rapport au métabolisme de base (MB) et à la dépense totale (DET),
+ * selon les repères ANSES, EFSA (2013), OMS/FAO/UNU et NIH NIDDK (Hall).
+ */
+export function computeBmrDeficitBreakdown(params: {
+  bmrKcal: number;
+  totalExpenditureKcal: number;
+  intakeKcal: number;
+}): BmrDeficitBreakdown {
+  const bmr = Math.max(950, Math.round(params.bmrKcal));
+  const expenditure = Math.max(bmr, Math.round(params.totalExpenditureKcal));
+  const intake = Math.max(0, Math.round(params.intakeKcal));
+  const activityAboveBmrKcal = Math.max(0, expenditure - bmr);
+  const balanceVsBmrKcal = intake - bmr;
+  const netDeficitTotalKcal = intake - expenditure;
+  const bmrSharePct = Math.round((bmr / expenditure) * 100);
+  const palObserved = +(expenditure / bmr).toFixed(2);
+
+  if (intake === 0) {
+    return {
+      bmrKcal: bmr,
+      activityAboveBmrKcal,
+      totalExpenditureKcal: expenditure,
+      intakeKcal: 0,
+      balanceVsBmrKcal: -bmr,
+      netDeficitTotalKcal: -expenditure,
+      bmrSharePct,
+      palObserved,
+      zoneId: "no_intake",
+      zoneLabelFr: "En attente du 1er repas (MB seul)",
+      scientificNoteFr: `Votre corps brûle déjà ${bmr.toLocaleString("fr-FR")} kcal au repos complet (MB) + ${activityAboveBmrKcal.toLocaleString("fr-FR")} kcal d'activité (PAL ${palObserved.toFixed(2)}).`,
+    };
+  }
+
+  if (intake < bmr) {
+    return {
+      bmrKcal: bmr,
+      activityAboveBmrKcal,
+      totalExpenditureKcal: expenditure,
+      intakeKcal: intake,
+      balanceVsBmrKcal,
+      netDeficitTotalKcal,
+      bmrSharePct,
+      palObserved,
+      zoneId: "below_bmr",
+      zoneLabelFr: "Sous le métabolisme de base",
+      scientificNoteFr: `Apport ${Math.abs(balanceVsBmrKcal).toLocaleString("fr-FR")} kcal sous le MB (${bmr} kcal). Déficit total : ${netDeficitTotalKcal} kcal (normal si journée en cours ; à éviter durablement selon ANSES/NIH).`,
+    };
+  }
+
+  if (netDeficitTotalKcal <= -300 && netDeficitTotalKcal >= -700) {
+    return {
+      bmrKcal: bmr,
+      activityAboveBmrKcal,
+      totalExpenditureKcal: expenditure,
+      intakeKcal: intake,
+      balanceVsBmrKcal,
+      netDeficitTotalKcal,
+      bmrSharePct,
+      palObserved,
+      zoneId: "sweet_spot_deficit",
+      zoneLabelFr: "Zone déficit idéal (au-dessus du MB)",
+      scientificNoteFr: `MB vital couvert (+${balanceVsBmrKcal.toLocaleString("fr-FR")} kcal au-dessus du MB) tout en gardant un déficit réel de ${Math.abs(netDeficitTotalKcal).toLocaleString("fr-FR")} kcal sur la dépense totale (NIH / ANSES).`,
+    };
+  }
+
+  if (netDeficitTotalKcal < -700) {
+    return {
+      bmrKcal: bmr,
+      activityAboveBmrKcal,
+      totalExpenditureKcal: expenditure,
+      intakeKcal: intake,
+      balanceVsBmrKcal,
+      netDeficitTotalKcal,
+      bmrSharePct,
+      palObserved,
+      zoneId: "sweet_spot_deficit",
+      zoneLabelFr: "Déficit marqué (MB couvert)",
+      scientificNoteFr: `Le MB (${bmr.toLocaleString("fr-FR")} kcal) est couvert (+${balanceVsBmrKcal} kcal) et le déficit total atteint ${Math.abs(netDeficitTotalKcal).toLocaleString("fr-FR")} kcal — assurez un apport protéique élevé.`,
+    };
+  }
+
+  if (netDeficitTotalKcal < -80) {
+    return {
+      bmrKcal: bmr,
+      activityAboveBmrKcal,
+      totalExpenditureKcal: expenditure,
+      intakeKcal: intake,
+      balanceVsBmrKcal,
+      netDeficitTotalKcal,
+      bmrSharePct,
+      palObserved,
+      zoneId: "mild_deficit",
+      zoneLabelFr: "Déficit doux durable",
+      scientificNoteFr: `Déficit progressif de ${Math.abs(netDeficitTotalKcal).toLocaleString("fr-FR")} kcal avec métabolisme de base protégé (+${balanceVsBmrKcal} kcal vs MB).`,
+    };
+  }
+
+  if (netDeficitTotalKcal <= 120) {
+    return {
+      bmrKcal: bmr,
+      activityAboveBmrKcal,
+      totalExpenditureKcal: expenditure,
+      intakeKcal: intake,
+      balanceVsBmrKcal,
+      netDeficitTotalKcal,
+      bmrSharePct,
+      palObserved,
+      zoneId: "maintenance",
+      zoneLabelFr: "Équilibre / Maintien",
+      scientificNoteFr: `Apports alignés sur la dépense totale (${expenditure.toLocaleString("fr-FR")} kcal, PAL ${palObserved.toFixed(2)}).`,
+    };
+  }
+
+  return {
+    bmrKcal: bmr,
+    activityAboveBmrKcal,
+    totalExpenditureKcal: expenditure,
+    intakeKcal: intake,
+    balanceVsBmrKcal,
+    netDeficitTotalKcal,
+    bmrSharePct,
+    palObserved,
+    zoneId: "surplus",
+    zoneLabelFr: "Surplus énergétique",
+    scientificNoteFr: `+${netDeficitTotalKcal.toLocaleString("fr-FR")} kcal au-dessus de la dépense totale (${expenditure.toLocaleString("fr-FR")} kcal).`,
   };
 }
 
@@ -508,6 +688,11 @@ export function computeDailyEnergyBalance(params: {
     tefKcal;
 
   const netBalanceKcal = intakeKcal - totalExpenditureKcal;
+  const activityAboveBmrKcal = Math.max(0, totalExpenditureKcal - anthro.bmrKcal);
+  const balanceVsBmrKcal = intakeKcal - anthro.bmrKcal;
+  const bmrSharePct = totalExpenditureKcal > 0
+    ? Math.round((anthro.bmrKcal / totalExpenditureKcal) * 100)
+    : 70;
   const sportRefuelKcal = anthro.workoutRefuelEligible ? netWorkoutsKcal : 0;
   const effectiveTargetIntakeKcal = Math.min(5500, anthro.targetIntakeKcal + sportRefuelKcal);
   const remainingToTargetKcal = effectiveTargetIntakeKcal - intakeKcal;
@@ -565,6 +750,9 @@ export function computeDailyEnergyBalance(params: {
     tefKcal,
     totalExpenditureKcal,
     netBalanceKcal,
+    balanceVsBmrKcal,
+    activityAboveBmrKcal,
+    bmrSharePct,
     targetIntakeKcal: effectiveTargetIntakeKcal,
     remainingToTargetKcal,
     statusFr,

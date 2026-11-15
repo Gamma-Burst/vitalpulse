@@ -8,7 +8,9 @@ import {
   Crown,
   Edit3,
   History,
+  PenLine,
   RefreshCw,
+  ScanBarcode,
   Sparkles,
   Trash2,
   Upload,
@@ -25,6 +27,7 @@ import {
 import { canRunVisionScan } from "@/lib/billing-bridge";
 import { compressImageFile } from "@/lib/native-bridge";
 import { applyOilClarifierDelta } from "@/data/ciqual-reference";
+import { computeBmrDeficitBreakdown } from "@/lib/metabolic-engine";
 import { InfoTip } from "@/components/ui/InfoTip";
 
 interface MealScannerViewProps {
@@ -33,6 +36,10 @@ interface MealScannerViewProps {
   specialMode: SpecialMode;
   primaryGoal?: PrimaryGoal;
   highlightedMealId?: string | null;
+  entryMode?: "photo" | "text";
+  bmrKcal?: number;
+  todayIntakeKcal?: number;
+  totalExpenditureKcal?: number;
   subscription: SubscriptionState;
   onRecordVisionScan: () => void;
   onOpenSubscriptionModal: (reason?: string) => void;
@@ -126,8 +133,12 @@ export function MealScannerView({
   meals,
   todayDateKey,
   specialMode,
-  primaryGoal,
+  primaryGoal = "fat_loss",
   highlightedMealId,
+  entryMode = "photo",
+  bmrKcal,
+  todayIntakeKcal = 0,
+  totalExpenditureKcal,
   subscription,
   onRecordVisionScan,
   onOpenSubscriptionModal,
@@ -144,6 +155,7 @@ export function MealScannerView({
     [subscription, todayDateKey]
   );
 
+  const [scannerTab, setScannerTab] = useState<"photo" | "text">(entryMode);
   const [photoDataUrl, setPhotoDataUrl] = useState<string>("");
   const [userNotes, setUserNotes] = useState<string>("");
   const [mealType, setMealType] = useState<MealType>("lunch");
@@ -167,6 +179,10 @@ export function MealScannerView({
   const draftDishTitle = draftResult?.dishTitle ?? "";
 
   useEffect(() => {
+    setScannerTab(entryMode);
+  }, [entryMode]);
+
+  useEffect(() => {
     setItemGramDrafts({});
   }, [hasDraftResult, draftDishTitle]);
 
@@ -188,17 +204,23 @@ export function MealScannerView({
     setPhotoDataUrl(compressed);
   }
 
-  async function runAnalysis(overrideOil?: OilLevel) {
-    if (!photoDataUrl && !userNotes.trim()) {
-      setErrorMsg("Ajoutez une photo de votre plat ou décrivez-le dans la zone de texte en dessous.");
+  async function runAnalysis(overrideOil?: OilLevel, notesOverride?: string) {
+    const activeNotes = (notesOverride ?? userNotes).trim();
+    const effectivePhoto = scannerTab === "photo" ? photoDataUrl : "";
+    if (!effectivePhoto && !activeNotes) {
+      setErrorMsg(
+        scannerTab === "text"
+          ? "Décrivez ce que vous avez mangé (ex : deux oeuf dur et des bacon en morceau)."
+          : "Ajoutez une photo de votre plat ou décrivez-le dans la zone de texte en dessous."
+      );
       return;
     }
-    const hasPhoto = Boolean(photoDataUrl);
+    const hasPhoto = Boolean(effectivePhoto);
     if (hasPhoto && !visionQuota.allowed) {
       onOpenSubscriptionModal(
         visionQuota.isPlus
           ? "Limite quotidienne de sécurité atteinte pour aujourd'hui."
-          : "Vos 5 scans photo IA de découverte ont été utilisés ! Activez vos 7 jours d'essai gratuit FolloWeight Plus (FW+) pour scanner vos assiettes, votre frigo et vos codes-barres en caméra (avec détection du magasin) en illimité — la saisie manuelle code EAN et la saisie texte restent 100 % gratuites et sans pub."
+          : "Vos 5 scans photo IA de découverte ont été utilisés ! Activez vos 7 jours d'essai gratuit FolloWeight Plus (FW+) pour scanner vos assiettes, votre frigo et vos codes-barres en caméra (avec détection du magasin) en illimité — la saisie manuelle code EAN et la saisie par écrit restent 100 % gratuites et sans pub."
       );
       return;
     }
@@ -209,15 +231,16 @@ export function MealScannerView({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          imageBase64: photoDataUrl || undefined,
-          userNotes,
+          entryMode: hasPhoto ? "photo" : "text",
+          imageBase64: effectivePhoto || undefined,
+          userNotes: activeNotes,
           plateDiameterCm,
           portionEatenPct,
           mealType,
           specialMode,
           primaryGoal,
           oilLevel: overrideOil,
-          allowVisionAi: hasPhoto ? visionQuota.allowed : visionQuota.isPlus,
+          allowVisionAi: hasPhoto ? visionQuota.allowed : false,
           licenseToken: subscription.licenseToken,
         }),
       });
@@ -228,8 +251,8 @@ export function MealScannerView({
       }
       setDraftResult({
         mealType,
-        photoDataUrl: photoDataUrl || undefined,
-        userNotes,
+        photoDataUrl: effectivePhoto || undefined,
+        userNotes: activeNotes,
         plateDiameterCm,
         portionEatenPct,
         ...json,
@@ -417,44 +440,45 @@ export function MealScannerView({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h2 className="text-lg sm:text-xl font-bold text-white flex items-center gap-2">
-              <Camera className="w-5 h-5 text-emerald-400" />
-              Scanner un plat préparé (Photo + Précisions texte)
+              {scannerTab === "text" ? (
+                <PenLine className="w-5 h-5 text-emerald-400" />
+              ) : (
+                <Camera className="w-5 h-5 text-emerald-400" />
+              )}
+              {scannerTab === "text"
+                ? "Repas par écrit (100 % Gratuit & Illimité)"
+                : "Scanner un plat préparé (Photo + Précisions texte)"}
             </h2>
             <p className="text-xs text-slate-300 mt-0.5">
-              La Vision détecte les aliments et votre zone de texte juste en dessous corrige les huiles, sauces, poids et cuissons invisibles.
+              {scannerTab === "text"
+                ? "Décrivez simplement ce que vous avez mangé (ex : deux œufs durs et des bacon en morceaux) : estimation instantanée gratuite sans compter dans vos scans photo."
+                : "La Vision détecte les aliments et votre zone de texte juste en dessous corrige les huiles, sauces, poids et cuissons invisibles."}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => onOpenSubscriptionModal()}
-              className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-bold transition ${
-                visionQuota.isPlus
-                  ? "border-amber-400/40 bg-amber-500/15 text-amber-200"
-                  : visionQuota.allowed
-                    ? "border-emerald-400/35 bg-emerald-500/15 text-emerald-200 hover:bg-emerald-500/25"
-                    : "border-rose-400/40 bg-rose-500/15 text-rose-200 hover:bg-rose-500/25"
-              }`}
-            >
-              {visionQuota.isPlus ? (
-                <>
-                  <Crown className="w-3.5 h-3.5" />
-                  FW+ Scans Illimités
-                </>
-              ) : (
-                <>
-                  <Sparkles className="w-3.5 h-3.5" />
-                  Découverte : {visionQuota.remaining}/{visionQuota.limit} scans photo · FW+
-                </>
-              )}
-            </button>
-            {onOpenBarcode && (
+            {scannerTab === "photo" && (
               <button
                 type="button"
-                onClick={onOpenBarcode}
-                className="px-3 py-1.5 rounded-xl bg-amber-500/20 border border-amber-400/40 text-amber-300 text-xs font-bold hover:bg-amber-500/30"
+                onClick={() => onOpenSubscriptionModal()}
+                className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-bold transition ${
+                  visionQuota.isPlus
+                    ? "border-amber-400/40 bg-amber-500/15 text-amber-200"
+                    : visionQuota.allowed
+                      ? "border-emerald-400/35 bg-emerald-500/15 text-emerald-200 hover:bg-emerald-500/25"
+                      : "border-rose-400/40 bg-rose-500/15 text-rose-200 hover:bg-rose-500/25"
+                }`}
               >
-                Code-barres EAN
+                {visionQuota.isPlus ? (
+                  <>
+                    <Crown className="w-3.5 h-3.5" />
+                    FW+ Scans Illimités
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-3.5 h-3.5" />
+                    Découverte : {visionQuota.remaining}/{visionQuota.limit} scans photo · FW+
+                  </>
+                )}
               </button>
             )}
             <button
@@ -467,7 +491,51 @@ export function MealScannerView({
           </div>
         </div>
 
-        {!visionQuota.isPlus && !visionQuota.allowed && (
+        {/* Onglets : Photo du plat | Par écrit (Gratuit) | Code-barres EAN */}
+        <div className="grid grid-cols-3 gap-1.5 rounded-2xl border border-slate-500/25 bg-slate-900/75 p-1.5 text-xs font-extrabold">
+          <button
+            type="button"
+            onClick={() => {
+              setScannerTab("photo");
+              setErrorMsg(null);
+            }}
+            className={`inline-flex items-center justify-center gap-1.5 rounded-xl py-2 px-2 transition ${
+              scannerTab === "photo"
+                ? "bg-emerald-500 text-slate-950"
+                : "text-slate-300 hover:text-white"
+            }`}
+          >
+            <Camera className="w-3.5 h-3.5" />
+            <span className="truncate">Photo plat</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setScannerTab("text");
+              setErrorMsg(null);
+            }}
+            className={`inline-flex items-center justify-center gap-1.5 rounded-xl py-2 px-2 transition ${
+              scannerTab === "text"
+                ? "bg-emerald-500 text-slate-950"
+                : "text-slate-300 hover:text-white"
+            }`}
+          >
+            <PenLine className="w-3.5 h-3.5" />
+            <span className="truncate">Par écrit (Gratuit)</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (onOpenBarcode) onOpenBarcode();
+            }}
+            className="inline-flex items-center justify-center gap-1.5 rounded-xl py-2 px-2 text-amber-300 hover:bg-amber-500/15 transition"
+          >
+            <ScanBarcode className="w-3.5 h-3.5" />
+            <span className="truncate">Code-barres EAN</span>
+          </button>
+        </div>
+
+        {scannerTab === "photo" && !visionQuota.isPlus && !visionQuota.allowed && (
           <div className="rounded-xl border border-emerald-400/35 bg-emerald-500/10 p-3 flex flex-wrap items-center justify-between gap-2.5 text-xs">
             <div className="text-slate-200">
               <strong className="text-emerald-300">
@@ -540,67 +608,90 @@ export function MealScannerView({
           onChange={handleFileSelect}
         />
 
-        <div className="rounded-2xl border border-dashed border-emerald-400/35 bg-slate-950/60 p-4 flex flex-col items-center justify-center gap-3">
-          {photoDataUrl ? (
-            <div className="w-full max-w-md space-y-2">
-              <img
-                src={photoDataUrl}
-                alt="Aperçu du plat à analyser"
-                className="w-full max-h-64 object-cover rounded-xl border border-slate-700"
-              />
-              <div className="flex justify-center gap-2">
+        {scannerTab === "photo" && (
+          <div className="rounded-2xl border border-dashed border-emerald-400/35 bg-slate-950/60 p-4 flex flex-col items-center justify-center gap-3">
+            {photoDataUrl ? (
+              <div className="w-full max-w-md space-y-2">
+                <img
+                  src={photoDataUrl}
+                  alt="Aperçu du plat à analyser"
+                  className="w-full max-h-64 object-cover rounded-xl border border-slate-700"
+                />
+                <div className="flex justify-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => cameraInputRef.current?.click()}
+                    className="px-3 py-1.5 rounded-lg bg-slate-800 text-xs text-white"
+                  >
+                    Reprendre photo
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPhotoDataUrl("")}
+                    className="px-3 py-1.5 rounded-lg bg-slate-900 text-xs text-slate-400"
+                  >
+                    Retirer l&apos;image
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center justify-center gap-3 py-3">
                 <button
                   type="button"
                   onClick={() => cameraInputRef.current?.click()}
-                  className="px-3 py-1.5 rounded-lg bg-slate-800 text-xs text-white"
+                  className="inline-flex items-center gap-2 px-4 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold text-xs sm:text-sm transition"
                 >
-                  Reprendre photo
+                  <Camera className="w-4 h-4" />
+                  Prendre une photo du plat
                 </button>
                 <button
                   type="button"
-                  onClick={() => setPhotoDataUrl("")}
-                  className="px-3 py-1.5 rounded-lg bg-slate-900 text-xs text-slate-400"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="inline-flex items-center gap-2 px-4 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-medium text-xs sm:text-sm border border-slate-700 transition"
                 >
-                  Retirer l&apos;image
+                  <Upload className="w-4 h-4" />
+                  Importer depuis galerie
                 </button>
               </div>
-            </div>
-          ) : (
-            <div className="flex flex-wrap items-center justify-center gap-3 py-3">
-              <button
-                type="button"
-                onClick={() => cameraInputRef.current?.click()}
-                className="inline-flex items-center gap-2 px-4 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold text-xs sm:text-sm transition"
-              >
-                <Camera className="w-4 h-4" />
-                Prendre une photo du plat
-              </button>
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="inline-flex items-center gap-2 px-4 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-medium text-xs sm:text-sm border border-slate-700 transition"
-              >
-                <Upload className="w-4 h-4" />
-                Importer depuis galerie
-              </button>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
 
-        {/* TEXTBOX EN DESSOUS DE LA PHOTO */}
+        {/* TEXTBOX EN DESSOUS DE LA PHOTO OU EN MODE ÉCRIT GRATUIT */}
         <div className="space-y-1.5">
-          <label
-            htmlFor="meal-user-notes"
-            className="block text-xs font-semibold text-emerald-300"
-          >
-            Informations supplémentaires sur le plat (en dessous de la photo) :
-          </label>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <label
+              htmlFor="meal-user-notes"
+              className="block text-xs font-semibold text-emerald-300"
+            >
+              {scannerTab === "text"
+                ? "Décrivez votre repas par écrit (100 % gratuit, illimité) :"
+                : "Informations supplémentaires sur le plat (en dessous de la photo) :"}
+            </label>
+            {scannerTab === "text" && (
+              <button
+                type="button"
+                onClick={() => {
+                  const sample = "deux oeuf dur et des bacon en morceau";
+                  setUserNotes(sample);
+                  void runAnalysis(undefined, sample);
+                }}
+                className="rounded-lg border border-emerald-400/35 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-200 hover:bg-emerald-500/20"
+              >
+                Exemple : &quot;deux oeuf dur et des bacon en morceau&quot;
+              </button>
+            )}
+          </div>
           <textarea
             id="meal-user-notes"
-            rows={3}
+            rows={scannerTab === "text" ? 4 : 3}
             value={userNotes}
             onChange={(e) => setUserNotes(e.target.value)}
-            placeholder="Ex : cuit avec 1 c.à.s d'huile d'olive, crème légère dans la sauce, 150 g de poulet, j'ai mangé les 3/4 de l'assiette..."
+            placeholder={
+              scannerTab === "text"
+                ? "Ex : deux oeuf dur et des bacon en morceau, ou 150g poulet grillé, 160g riz basmati, brocoli..."
+                : "Ex : cuit avec 1 c.à.s d'huile d'olive, crème légère dans la sauce, 150 g de poulet, j'ai mangé les 3/4 de l'assiette..."
+            }
             className="w-full rounded-xl bg-slate-950/90 border border-slate-700 focus:border-emerald-400 outline-none p-3 text-sm text-white placeholder:text-slate-500"
           />
         </div>
@@ -668,7 +759,13 @@ export function MealScannerView({
           className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-sm transition disabled:opacity-60"
         >
           <Sparkles className={`w-4 h-4 ${analyzing ? "animate-spin" : ""}`} />
-          {analyzing ? "Analyse Vision + Ciqual en cours..." : "Analyser les calories, macros & santé"}
+          {analyzing
+            ? scannerTab === "text"
+              ? "Estimation Ciqual gratuite en cours..."
+              : "Analyse Vision + Ciqual en cours..."
+            : scannerTab === "text"
+              ? "Estimer gratuitement les calories & macros"
+              : "Analyser les calories, macros & santé"}
         </button>
       </div>
 
@@ -680,7 +777,9 @@ export function MealScannerView({
               <span className="text-[11px] uppercase tracking-wide text-emerald-300 font-semibold">
                 {draftResult.analysisProvider === "openai-vision"
                   ? "OpenAI Vision + Ancrage ANSES Ciqual"
-                  : "Calcul déterministe ANSES Ciqual"} · Confiance {Math.round(draftResult.confidence * 100)}%
+                  : draftResult.analysisProvider === "openai-text"
+                    ? "Estimation gratuite par écrit + ANSES Ciqual"
+                    : "Calcul gratuit ANSES Ciqual"} · Confiance {Math.round(draftResult.confidence * 100)}%
               </span>
               <h3 className="text-xl font-bold text-white mt-0.5">{draftResult.dishTitle}</h3>
               <p className="text-xs text-slate-300 mt-1">{draftResult.summaryFr}</p>
@@ -694,6 +793,39 @@ export function MealScannerView({
               </div>
             </div>
           </div>
+
+          {bmrKcal !== undefined && totalExpenditureKcal !== undefined && (() => {
+            const proj = computeBmrDeficitBreakdown({
+              bmrKcal,
+              totalExpenditureKcal,
+              intakeKcal: todayIntakeKcal + draftResult.caloriesCentral,
+            });
+            return (
+              <div className="rounded-xl border border-violet-400/30 bg-violet-500/10 p-3 text-xs space-y-1">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-bold text-violet-200">
+                    Impact Métabolisme de Base ({bmrKcal} kcal) &amp; Déficit
+                  </span>
+                  <span className="font-extrabold text-cyan-300 tabular-nums">
+                    Déficit total jour :{" "}
+                    {proj.netDeficitTotalKcal > 0
+                      ? `+${proj.netDeficitTotalKcal}`
+                      : proj.netDeficitTotalKcal}{" "}
+                    kcal
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-300">
+                  Total journée si ajouté :{" "}
+                  <strong className="text-white">{todayIntakeKcal + draftResult.caloriesCentral} kcal</strong> · Écart vs MB seul :{" "}
+                  <strong className="text-violet-200">
+                    {proj.balanceVsBmrKcal >= 0 ? "+" : ""}
+                    {proj.balanceVsBmrKcal} kcal
+                  </strong>{" "}
+                  · {proj.zoneLabelFr}
+                </p>
+              </div>
+            );
+          })()}
 
           {/* Clarificateur rapide 1-clic (Huiles & Sauces invisibles) */}
           <div className="rounded-xl bg-slate-900/90 border border-slate-800 p-3 space-y-2">
@@ -886,7 +1018,7 @@ export function MealScannerView({
             className="text-base sm:text-lg font-semibold text-white flex items-center gap-2 text-left"
           >
             <History className="w-5 h-5 text-emerald-400" />
-            <span>Historique permanent des photos ({photoMeals.length})</span>
+            <span>Historique des plats &amp; saisies écrites ({photoMeals.length})</span>
             <span className="text-xs font-medium text-emerald-300">
               {showHistory || comparedMeals.length > 0 ? "▲ Réduire" : "▾ Déplier"}
             </span>
@@ -908,7 +1040,7 @@ export function MealScannerView({
                 }`}
               >
                 <div>
-                  {meal.photoDataUrl && (
+                  {meal.photoDataUrl ? (
                     <img
                       src={meal.photoDataUrl}
                       alt={meal.dishTitle}
@@ -918,6 +1050,20 @@ export function MealScannerView({
                       }}
                       className="w-full h-36 object-cover cursor-pointer"
                     />
+                  ) : (
+                    <div
+                      onClick={() => {
+                        setSelectedMeal(meal);
+                        setEditNotes(meal.userNotes || "");
+                      }}
+                      className="flex items-center justify-between px-3 py-2 bg-emerald-500/10 border-b border-emerald-400/20 text-[11px] font-bold text-emerald-300 cursor-pointer"
+                    >
+                      <span className="inline-flex items-center gap-1">
+                        <PenLine className="w-3.5 h-3.5" />
+                        Saisie par écrit (Gratuit)
+                      </span>
+                      <span>Ciqual</span>
+                    </div>
                   )}
                   <div className="p-3 text-xs space-y-1.5">
                     <div className="flex items-start justify-between gap-2">
