@@ -261,28 +261,83 @@ export function migrateVitalPulseState(raw: Partial<VitalPulseState>): VitalPuls
     milliliters: clampNum(w?.milliliters, 0, 10000, 0),
   }));
 
+  const todayKey = formatDateKey();
+  const VALID_CHALLENGE_METRICS = new Set([
+    "steps",
+    "protein",
+    "fiber",
+    "water",
+    "workout_minutes",
+    "workouts_week",
+    "fasting_hours",
+    "calories_target",
+    "weight_target",
+    "waist_target",
+    "no_nova4",
+    "custom",
+  ]);
+
   const sanitizedChallenges: CustomChallenge[] = (
     Array.isArray(raw.challenges) ? raw.challenges : []
-  ).map((c) => {
-    if (c.metric === "water" && (!Number.isFinite(c.targetValue) || c.targetValue > 4500 || c.targetValue < 500)) {
-      return {
+  )
+    .filter((c) => Boolean(c && typeof c === "object"))
+    .map((c) => {
+      const safeMetric = VALID_CHALLENGE_METRICS.has(String(c.metric))
+        ? c.metric
+        : "custom";
+      const completedDates = Array.isArray(c.completedDates)
+        ? Array.from(new Set(c.completedDates.filter((d) => typeof d === "string"))).slice(-180)
+        : [];
+      // Évite de déclencher une vieille notification sur une fiche pré-existante déjà validée aujourd'hui avant la mise à jour
+      const notifiedKeys = Array.isArray(c.notifiedKeys)
+        ? Array.from(new Set(c.notifiedKeys.filter((k) => typeof k === "string"))).slice(-120)
+        : completedDates.includes(todayKey)
+          ? [`goal:${c.id}:daily:${todayKey}`]
+          : [];
+      const baseChallenge: CustomChallenge = {
         ...c,
-        targetValue: anthro.targets.waterMl,
-        unit: "mL",
-        title: c.title.replace(/8\s?000\s*ml/gi, `${anthro.targets.waterMl} mL`),
+        metric: safeMetric,
+        completedDates,
+        notifiedKeys,
+        celebrateNotifications: c.celebrateNotifications !== false,
+        personalWhy:
+          typeof c.personalWhy === "string" && c.personalWhy.trim()
+            ? c.personalWhy.trim().slice(0, 180)
+            : undefined,
+        direction:
+          c.direction === "at_least" || c.direction === "at_most"
+            ? c.direction
+            : undefined,
+        startValue:
+          typeof c.startValue === "number" && Number.isFinite(c.startValue)
+            ? c.startValue
+            : undefined,
       };
-    }
-    if (c.metric === "steps" && (!Number.isFinite(c.targetValue) || c.targetValue > 50000 || c.targetValue < 500)) {
-      return {
-        ...c,
-        targetValue: profile.dailyStepGoal,
-        unit: c.unit || "pas",
-      };
-    }
-    return c;
-  });
 
-  const todayKey = formatDateKey();
+      if (
+        safeMetric === "water" &&
+        (!Number.isFinite(c.targetValue) || c.targetValue > 4500 || c.targetValue < 500)
+      ) {
+        return {
+          ...baseChallenge,
+          targetValue: anthro.targets.waterMl,
+          unit: "mL",
+          title: c.title.replace(/8\s?000\s*ml/gi, `${anthro.targets.waterMl} mL`),
+        };
+      }
+      if (
+        safeMetric === "steps" &&
+        (!Number.isFinite(c.targetValue) || c.targetValue > 50000 || c.targetValue < 500)
+      ) {
+        return {
+          ...baseChallenge,
+          targetValue: profile.dailyStepGoal,
+          unit: c.unit || "pas",
+        };
+      }
+      return baseChallenge;
+    });
+
   const defaultFwAiWelcome: FwAiMessage = {
     id: "fw-ai-welcome",
     role: "assistant",

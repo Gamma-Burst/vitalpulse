@@ -332,6 +332,11 @@ export type ChallengeMetric =
   | "fiber"
   | "water"
   | "workout_minutes"
+  | "workouts_week"
+  | "fasting_hours"
+  | "calories_target"
+  | "weight_target"
+  | "waist_target"
   | "no_nova4"
   | "custom";
 
@@ -347,6 +352,11 @@ export interface CustomChallenge {
   active: boolean;
   completedDates: string[];
   createdAt: string;
+  direction?: "at_least" | "at_most";
+  startValue?: number;
+  personalWhy?: string;
+  celebrateNotifications?: boolean;
+  notifiedKeys?: string[];
 }
 
 export interface AnthropometricReport {

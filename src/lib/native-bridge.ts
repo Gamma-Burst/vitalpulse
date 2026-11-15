@@ -354,3 +354,37 @@ export function scheduleServiceWorkerFastingAlert(params: {
   }
 }
 
+export function triggerCelebrationHaptic(): void {
+  triggerLightHaptic();
+  if (typeof window === "undefined") return;
+  if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+    try {
+      navigator.vibrate([80, 50, 140]);
+    } catch {
+      // Ignorer si navigateur bloque la vibration sans geste utilisateur
+    }
+  }
+}
+
+export function getNotificationPermissionState():
+  | "granted"
+  | "denied"
+  | "default"
+  | "unsupported" {
+  if (typeof window === "undefined" || typeof Notification === "undefined") {
+    return "unsupported";
+  }
+  return Notification.permission;
+}
+
+export async function sendGoalCelebrationNotification(payload: {
+  key: string;
+  title: string;
+  body: string;
+}): Promise<boolean> {
+  triggerCelebrationHaptic();
+  const res = await sendFastingTransitionAlert(payload);
+  return res.deliveredVia !== "in-app-only";
+}
+
+

@@ -11,16 +11,19 @@ import {
   Droplets,
   FlaskConical,
   Image as ImageIcon,
+  Plus,
   Ruler,
   ScanBarcode,
   SlidersHorizontal,
   Sparkles,
+  Trophy,
   Watch,
 } from "lucide-react";
 import {
   AnthropometricReport,
   BloodPanelEntry,
   BodyMeasurementEntry,
+  CustomChallenge,
   DailyEnergyBalance,
   DashboardWidgetId,
   FastingConfig,
@@ -30,6 +33,7 @@ import {
   WearableSyncState,
   WeightTrendPoint,
 } from "@/types/vitalpulse";
+import type { GoalEvaluationSnapshot } from "@/lib/goals-celebration-engine";
 import type { BodyLabSubTab } from "@/components/BodyLabView";
 import { EnergyActivityChart } from "@/components/EnergyActivityChart";
 import { DetailSheet } from "@/components/ui/DetailSheet";
@@ -91,6 +95,10 @@ export interface DashboardViewProps {
   onUpdateProfilePatch?: (patch: Partial<UserProfile>) => void;
   onUpdateTodaySteps?: (steps: number) => void;
   onNotifySaved?: (messageFr: string) => void;
+  challenges?: CustomChallenge[];
+  goalEvaluations?: Record<string, GoalEvaluationSnapshot>;
+  onOpenGoalsModal?: () => void;
+  onToggleChallengeToday?: (id: string) => void;
 }
 
 type ActiveSheetKind =
@@ -162,6 +170,10 @@ export function DashboardView({
   onUpdateProfilePatch,
   onUpdateTodaySteps,
   onNotifySaved,
+  challenges = [],
+  goalEvaluations = {},
+  onOpenGoalsModal,
+  onToggleChallengeToday,
 }: DashboardViewProps) {
   const shouldReduceMotion = useReducedMotion();
   const [sheet, setSheet] = useState<ActiveSheetKind>(null);
@@ -663,6 +675,140 @@ export function DashboardView({
           <span className="truncate">Photo Frigo</span>
         </button>
       </div>
+
+      {/* MES OBJECTIFS PERSONNELS & FÉLICITATIONS (1 clic depuis l'Accueil) */}
+      {(onOpenGoalsModal || challenges.length > 0) && (() => {
+        const activeGoals = challenges.filter((c) => c.active);
+        const reachedTodayCount = activeGoals.filter(
+          (c) => goalEvaluations[c.id]?.reachedToday
+        ).length;
+        const topGoals = activeGoals.slice(0, 3);
+
+        return (
+          <section className="vp-card rounded-3xl p-4 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Trophy className="h-4 w-4 text-amber-300" />
+                <h2 className="text-sm font-extrabold text-white">
+                  Mes Objectifs
+                </h2>
+                {activeGoals.length > 0 && (
+                  <span className="rounded-full border border-emerald-400/35 bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-300 tabular-nums">
+                    {reachedTodayCount}/{activeGoals.length} atteints
+                  </span>
+                )}
+              </div>
+              {onOpenGoalsModal && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerLightHaptic();
+                    onOpenGoalsModal();
+                  }}
+                  className="inline-flex items-center gap-1 rounded-xl border border-emerald-400/35 bg-emerald-500/15 px-2.5 py-1 text-[11px] font-bold text-emerald-200 hover:bg-emerald-500/25"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Ajouter / Gérer
+                </button>
+              )}
+            </div>
+
+            {topGoals.length === 0 ? (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-slate-500/20 bg-slate-500/5 px-3 py-2.5 text-xs text-slate-300">
+                <span>
+                  Définissez vos propres objectifs (pas, eau, poids cible, habitude perso) pour recevoir des encouragements !
+                </span>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                {topGoals.map((goal) => {
+                  const snap = goalEvaluations[goal.id];
+                  const reached = snap?.reachedToday ?? false;
+                  const pct = snap?.progressPct ?? (reached ? 100 : 0);
+                  const isManual =
+                    goal.metric === "custom" || goal.metric === "no_nova4";
+
+                  return (
+                    <div
+                      key={goal.id}
+                      className={`flex flex-col justify-between gap-2 rounded-2xl border p-3 text-xs ${
+                        reached
+                          ? "border-emerald-400/45 bg-emerald-500/10"
+                          : "border-slate-500/20 bg-slate-500/5"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="truncate font-bold text-white">
+                            {goal.title}
+                          </p>
+                          <p className="mt-0.5 truncate text-[11px] text-slate-400 tabular-nums">
+                            {snap?.currentLabelFr ?? `${goal.targetValue} ${goal.unit}`}
+                          </p>
+                        </div>
+                        <span
+                          className={`shrink-0 text-[11px] font-extrabold tabular-nums ${
+                            reached ? "text-emerald-300" : "text-amber-300"
+                          }`}
+                        >
+                          {pct} %
+                        </span>
+                      </div>
+
+                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-800/80">
+                        <div
+                          className={`h-full rounded-full transition-all duration-300 ${
+                            reached ? "bg-emerald-400" : "bg-amber-400"
+                          }`}
+                          style={{ width: `${Math.max(4, Math.min(100, pct))}%` }}
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[10px] text-slate-400 tabular-nums">
+                          {snap && snap.streakDays > 0
+                            ? `🔥 Série ${snap.streakDays} j`
+                            : `${goal.completedDates.length}/${goal.durationDays} j`}
+                        </span>
+                        {isManual && onToggleChallengeToday ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              triggerLightHaptic();
+                              onToggleChallengeToday(goal.id);
+                            }}
+                            className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-bold ${
+                              reached
+                                ? "bg-emerald-500 text-slate-950"
+                                : "border border-slate-500/35 bg-slate-500/15 text-slate-200 hover:border-emerald-400"
+                            }`}
+                          >
+                            <Check className="h-3 w-3" />
+                            {reached ? "Atteint" : "Valider"}
+                          </button>
+                        ) : (
+                          onOpenGoalsModal && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                triggerLightHaptic();
+                                onOpenGoalsModal();
+                              }}
+                              className="text-[10px] font-bold text-emerald-300 hover:underline"
+                            >
+                              {reached ? "Validé ✓" : "Détails"}
+                            </button>
+                          )
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        );
+      })()}
 
       {/* GRILLE BENTO DES WIDGETS PERSONNALISABLES (Lean : 1 icône animée + 1 chiffre clé) */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">

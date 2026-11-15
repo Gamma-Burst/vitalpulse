@@ -19,6 +19,7 @@ import {
   ScanBarcode,
   Sparkles,
   Sun,
+  Trophy,
   UserCheck,
   Watch,
 } from "lucide-react";
@@ -46,10 +47,18 @@ import {
   getProtocolSpec,
 } from "@/lib/fasting-engine";
 import {
+  getNotificationPermissionState,
+  requestFastingNotificationPermission,
   scheduleServiceWorkerFastingAlert,
   sendFastingTransitionAlert,
+  sendGoalCelebrationNotification,
   triggerLightHaptic,
 } from "@/lib/native-bridge";
+import {
+  GoalCelebrationEvent,
+  reconcileGoalsAndCelebrations,
+} from "@/lib/goals-celebration-engine";
+import { GoalsManagerModal } from "@/components/GoalsManagerModal";
 import { DashboardView, DashboardTabTarget } from "@/components/DashboardView";
 import { MealScannerView } from "@/components/MealScannerView";
 import { FridgeChefView } from "@/components/FridgeChefView";
@@ -130,6 +139,10 @@ export default function VitalPulseApp() {
   const [quickActionsOpen, setQuickActionsOpen] = useState(false);
   const [barcodeOpen, setBarcodeOpen] = useState(false);
   const [wearablesOpen, setWearablesOpen] = useState(false);
+  const [goalsModalOpen, setGoalsModalOpen] = useState(false);
+  const [goalCelebrationBanner, setGoalCelebrationBanner] =
+    useState<GoalCelebrationEvent | null>(null);
+  const dispatchedGoalAlertKeysRef = useRef<Set<string>>(new Set());
   const [subscriptionOpen, setSubscriptionOpen] = useState(false);
   const [subscriptionReasonFr, setSubscriptionReasonFr] = useState<string | null>(null);
   const [savedNotice, setSavedNotice] = useState<string | null>(null);
@@ -476,6 +489,52 @@ export default function VitalPulseApp() {
     };
   }, [fastingCfg]);
 
+  const goalReconciliation = useMemo(() => {
+    if (!state || !todayBalance) return null;
+    return reconcileGoalsAndCelebrations(state.challenges, {
+      profile: state.profile,
+      todayKey,
+      todayBalance,
+      meals: state.meals,
+      workouts: state.workouts,
+      weights: state.weights,
+      measurements: state.measurements,
+      fasting: state.fasting,
+    });
+  }, [state, todayBalance, todayKey]);
+
+  useEffect(() => {
+    if (!goalReconciliation || !goalReconciliation.hasStateChanges) return;
+
+    const freshEvents = goalReconciliation.newlyUnlockedEvents.filter(
+      (ev) => !dispatchedGoalAlertKeysRef.current.has(ev.key)
+    );
+    for (const ev of freshEvents) {
+      dispatchedGoalAlertKeysRef.current.add(ev.key);
+      void sendGoalCelebrationNotification({
+        key: ev.key,
+        title: ev.titleFr,
+        body: ev.bodyFr,
+      });
+    }
+    if (freshEvents.length > 0) {
+      setGoalCelebrationBanner(freshEvents[freshEvents.length - 1]);
+    }
+
+    setState((prev) => {
+      if (!prev) return prev;
+      const updatesById = new Map(
+        goalReconciliation.updatedChallenges.map((c) => [c.id, c])
+      );
+      const nextChallenges = prev.challenges.map((c) => updatesById.get(c.id) ?? c);
+      const changed = nextChallenges.some((c, i) => c !== prev.challenges[i]);
+      if (!changed) return prev;
+      const next = { ...prev, challenges: nextChallenges };
+      void saveVitalPulseState(next);
+      return next;
+    });
+  }, [goalReconciliation]);
+
   if (!state || !anthro || !todayBalance) {
     return (
       <div className="min-h-screen bg-[var(--vp-bg)] flex items-center justify-center p-6">
@@ -562,6 +621,36 @@ export default function VitalPulseApp() {
           ];
       return { ...prev, waters: nextWaters };
     });
+  }
+
+  function toggleChallengeToday(id: string) {
+    commitState((prev) => ({
+      ...prev,
+      challenges: prev.challenges.map((c) => {
+        if (c.id !== id) return c;
+        const exists = c.completedDates.includes(todayKey);
+        return {
+          ...c,
+          completedDates: exists
+            ? c.completedDates.filter((d) => d !== todayKey)
+            : [...c.completedDates, todayKey],
+        };
+      }),
+    }));
+  }
+
+  function toggleChallengeNotification(id: string) {
+    commitState((prev) => ({
+      ...prev,
+      challenges: prev.challenges.map((c) =>
+        c.id === id
+          ? {
+              ...c,
+              celebrateNotifications: c.celebrateNotifications === false,
+            }
+          : c
+      ),
+    }));
   }
 
   function handleOnboardingCompleteFresh(payload: {
@@ -696,6 +785,17 @@ export default function VitalPulseApp() {
               >
                 <Plus className="h-4 w-4" />
                 Action rapide
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  triggerLightHaptic();
+                  setGoalsModalOpen(true);
+                }}
+                className="w-full flex items-center justify-center gap-2 rounded-xl border border-amber-400/35 bg-amber-500/10 px-3 py-2 text-xs font-bold text-amber-200 hover:bg-amber-500/20"
+              >
+                <Trophy className="h-4 w-4 text-amber-300" />
+                Mes Objectifs
               </button>
               <button
                 type="button"
@@ -883,6 +983,58 @@ export default function VitalPulseApp() {
                 </button>
               </div>
             )}
+            {goalCelebrationBanner && (
+              <div
+                role="status"
+                aria-live="polite"
+                className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-400/55 bg-gradient-to-r from-emerald-500/20 via-amber-500/15 to-emerald-500/20 px-4 py-3.5 text-xs shadow-lg"
+              >
+                <div className="flex min-w-0 flex-1 items-start gap-3">
+                  <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-400/20 text-amber-300 border border-amber-400/40">
+                    <Trophy className="h-5 w-5" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <span className="inline-block rounded-full border border-emerald-400/40 bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-200">
+                      {goalCelebrationBanner.badgeFr}
+                    </span>
+                    <p className="mt-1 font-extrabold text-white text-sm">
+                      {goalCelebrationBanner.titleFr}
+                    </p>
+                    <p className="mt-0.5 text-slate-100 leading-relaxed">
+                      {goalCelebrationBanner.bodyFr}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {getNotificationPermissionState() === "default" && (
+                    <button
+                      type="button"
+                      onClick={() => void requestFastingNotificationPermission()}
+                      className="rounded-xl border border-emerald-400/45 bg-emerald-500/20 px-3 py-1.5 font-bold text-emerald-200 hover:bg-emerald-500/30"
+                    >
+                      Activer notifs 🔔
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setGoalsModalOpen(true);
+                      setGoalCelebrationBanner(null);
+                    }}
+                    className="rounded-xl bg-amber-400 px-3 py-1.5 font-extrabold text-slate-950 hover:bg-amber-300"
+                  >
+                    Mes objectifs
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setGoalCelebrationBanner(null)}
+                    className="rounded-xl border border-white/20 px-2.5 py-1.5 font-semibold text-slate-200 hover:bg-white/10"
+                  >
+                    Merci !
+                  </button>
+                </div>
+              </div>
+            )}
             {fastingBannerAlert && (
               <div
                 role="status"
@@ -991,6 +1143,10 @@ export default function VitalPulseApp() {
                 onUpdateProfilePatch={updateProfilePatch}
                 onUpdateTodaySteps={(steps: number) => updateTodaySteps(steps, "manual")}
                 onNotifySaved={notifySavedAndScrollHome}
+                challenges={state.challenges}
+                goalEvaluations={goalReconciliation?.evaluationsById}
+                onOpenGoalsModal={() => setGoalsModalOpen(true)}
+                onToggleChallengeToday={toggleChallengeToday}
               />
             )}
 
@@ -1110,6 +1266,8 @@ export default function VitalPulseApp() {
                 anthro={anthro}
                 todayBalance={todayBalance}
                 challenges={state.challenges}
+                goalEvaluations={goalReconciliation?.evaluationsById}
+                onOpenGoalsModal={() => setGoalsModalOpen(true)}
                 theme={theme}
                 onChangeTheme={setTheme}
                 onReopenOnboarding={() => setShowOnboardingOverride(true)}
@@ -1121,21 +1279,7 @@ export default function VitalPulseApp() {
                 onAddChallenge={(c: CustomChallenge) =>
                   commitState((prev) => ({ ...prev, challenges: [c, ...prev.challenges] }))
                 }
-                onToggleChallengeToday={(id: string) =>
-                  commitState((prev) => ({
-                    ...prev,
-                    challenges: prev.challenges.map((c) => {
-                      if (c.id !== id) return c;
-                      const exists = c.completedDates.includes(todayKey);
-                      return {
-                        ...c,
-                        completedDates: exists
-                          ? c.completedDates.filter((d) => d !== todayKey)
-                          : [...c.completedDates, todayKey],
-                      };
-                    }),
-                  }))
-                }
+                onToggleChallengeToday={toggleChallengeToday}
                 onDeleteChallenge={(id: string) =>
                   commitState((prev) => ({
                     ...prev,
@@ -1379,11 +1523,33 @@ export default function VitalPulseApp() {
           onOpenFasting={() => setActiveTab("fasting")}
           onAddWater250={() => addWaterMl(250)}
           onOpenWearables={() => setWearablesOpen(true)}
+          onOpenGoals={() => setGoalsModalOpen(true)}
           onOpenFwAi={() => setActiveTab("fw_ai")}
           onOpenActivity={() => setActiveTab("activity")}
           onOpenMedical={() => setActiveTab("medical")}
           onOpenGlossary={() => openGlossaryCatalog()}
           waterTodayMl={todayBalance.waterMl}
+        />
+
+        <GoalsManagerModal
+          open={goalsModalOpen}
+          onClose={() => setGoalsModalOpen(false)}
+          profile={state.profile}
+          anthro={anthro}
+          challenges={state.challenges}
+          evaluationsById={goalReconciliation?.evaluationsById ?? {}}
+          onAddGoal={(goal) =>
+            commitState((prev) => ({ ...prev, challenges: [goal, ...prev.challenges] }))
+          }
+          onToggleGoalToday={toggleChallengeToday}
+          onToggleGoalNotification={toggleChallengeNotification}
+          onDeleteGoal={(id) =>
+            commitState((prev) => ({
+              ...prev,
+              challenges: prev.challenges.filter((c) => c.id !== id),
+            }))
+          }
+          onPreviewCelebration={(ev) => setGoalCelebrationBanner(ev)}
         />
 
         <BarcodeScannerModal

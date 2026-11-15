@@ -12,6 +12,7 @@ import {
   Footprints,
   BookOpen,
   HelpCircle,
+  Trophy,
 } from "lucide-react";
 import { DetailSheet } from "@/components/ui/DetailSheet";
 import { triggerLightHaptic } from "@/lib/native-bridge";
@@ -25,6 +26,7 @@ export interface QuickActionSheetProps {
   onOpenFasting: () => void;
   onAddWater250: () => void;
   onOpenWearables: () => void;
+  onOpenGoals?: () => void;
   onOpenFwAi?: () => void;
   onOpenActivity?: () => void;
   onOpenMedical?: () => void;
@@ -41,6 +43,7 @@ export function QuickActionSheet({
   onOpenFasting,
   onAddWater250,
   onOpenWearables,
+  onOpenGoals,
   onOpenFwAi,
   onOpenActivity,
   onOpenMedical,
@@ -48,6 +51,21 @@ export function QuickActionSheet({
   waterTodayMl,
 }: QuickActionSheetProps) {
   const actions = [
+    ...(onOpenGoals
+      ? [
+          {
+            id: "goals",
+            title: "Mes Objectifs",
+            subtitle: "Défis perso & félicitations",
+            icon: Trophy,
+            color: "bg-amber-500/15 text-amber-300 border-amber-500/30",
+            run: () => {
+              onClose();
+              onOpenGoals();
+            },
+          },
+        ]
+      : []),
     {
       id: "meal",
       title: "Photo Plat",

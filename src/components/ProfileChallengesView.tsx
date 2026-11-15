@@ -29,7 +29,8 @@ import {
   UserProfile,
 } from "@/types/vitalpulse";
 import { SPORT_DISCIPLINES_CATALOG } from "@/data/exercises-compendium";
-import { subscribeBrowserToPush } from "@/lib/native-bridge";
+import { subscribeBrowserToPush, requestFastingNotificationPermission } from "@/lib/native-bridge";
+import { GOAL_METRIC_CATALOG, GoalEvaluationSnapshot } from "@/lib/goals-celebration-engine";
 import { DetailSheet } from "@/components/ui/DetailSheet";
 import { InfoTip } from "@/components/ui/InfoTip";
 import { BirthDateField } from "@/components/ui/BirthDateField";
@@ -44,6 +45,8 @@ interface ProfileChallengesViewProps {
   anthro: AnthropometricReport;
   todayBalance: DailyEnergyBalance;
   challenges: CustomChallenge[];
+  goalEvaluations?: Record<string, GoalEvaluationSnapshot>;
+  onOpenGoalsModal?: () => void;
   onSaveProfile: (next: UserProfile) => void;
   onAddChallenge: (c: CustomChallenge) => void;
   onToggleChallengeToday: (challengeId: string) => void;
@@ -61,6 +64,8 @@ export function ProfileChallengesView({
   anthro,
   todayBalance,
   challenges,
+  goalEvaluations = {},
+  onOpenGoalsModal,
   onSaveProfile,
   onAddChallenge,
   onToggleChallengeToday,
@@ -317,18 +322,32 @@ export function ProfileChallengesView({
   function handleCreateChallenge(e: React.FormEvent) {
     e.preventDefault();
     if (!chTitle.trim()) return;
+    void requestFastingNotificationPermission();
+    const spec = GOAL_METRIC_CATALOG[chMetric] ?? GOAL_METRIC_CATALOG.custom;
     const item: CustomChallenge = {
       id: `chal-${Date.now()}`,
       title: chTitle.trim(),
-      description: chDesc.trim() || `Objectif quotidien : ${chTarget} ${chUnit}`,
+      description: chDesc.trim() || `Objectif : ${chTarget} ${chUnit}`,
       metric: chMetric,
       targetValue: Math.max(1, chTarget),
-      unit: chUnit || "unité",
+      unit: chUnit || spec.defaultUnit,
       durationDays: Math.max(1, chDays),
       reminderTime: chTime,
       active: true,
       completedDates: [],
       createdAt: new Date().toISOString(),
+      personalWhy: chDesc.trim() || undefined,
+      celebrateNotifications: true,
+      notifiedKeys: [],
+      startValue: chMetric === "weight_target" ? form.weightKg : undefined,
+      direction:
+        chMetric === "weight_target"
+          ? chTarget <= form.weightKg
+            ? "at_most"
+            : "at_least"
+          : chMetric === "waist_target" || chMetric === "calories_target"
+            ? "at_most"
+            : undefined,
     };
     onAddChallenge(item);
     setChTitle("");
@@ -992,6 +1011,16 @@ export function ProfileChallengesView({
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+            {onOpenGoalsModal && (
+              <button
+                type="button"
+                onClick={onOpenGoalsModal}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs"
+              >
+                <PlusCircle className="w-3.5 h-3.5" />
+                Gérer objectifs &amp; félicitations
+              </button>
+            )}
             <button
               type="button"
               onClick={() => void handleEnablePush()}
@@ -1019,6 +1048,7 @@ export function ProfileChallengesView({
         {/* Liste des challenges */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {challenges.map((ch) => {
+            const evalSnap = goalEvaluations[ch.id];
             const doneToday = ch.completedDates.includes(todayBalance.dateKey);
             let currentTodayVal = 0;
             if (ch.metric === "steps") currentTodayVal = todayBalance.rawSteps;
@@ -1027,8 +1057,11 @@ export function ProfileChallengesView({
             else if (ch.metric === "water") currentTodayVal = todayBalance.waterMl;
             else if (ch.metric === "workout_minutes") currentTodayVal = todayBalance.workoutMinutes;
 
-            const autoReached = ch.metric !== "custom" && ch.metric !== "no_nova4" && currentTodayVal >= ch.targetValue;
-            const isDone = doneToday || autoReached;
+            const autoReached =
+              ch.metric !== "custom" &&
+              ch.metric !== "no_nova4" &&
+              currentTodayVal >= ch.targetValue;
+            const isDone = evalSnap?.reachedToday ?? (doneToday || autoReached);
 
             return (
               <div
@@ -1059,9 +1092,11 @@ export function ProfileChallengesView({
 
                 <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
                   <span className="text-slate-300 tabular-nums">
-                    {ch.metric !== "custom" && ch.metric !== "no_nova4"
-                      ? `Aujourd'hui : ${currentTodayVal} / ${ch.targetValue} ${ch.unit}`
-                      : `Cible : ${ch.targetValue} ${ch.unit}`}{" "}
+                    {evalSnap
+                      ? evalSnap.currentLabelFr
+                      : ch.metric !== "custom" && ch.metric !== "no_nova4"
+                        ? `Aujourd'hui : ${currentTodayVal} / ${ch.targetValue} ${ch.unit}`
+                        : `Cible : ${ch.targetValue} ${ch.unit}`}{" "}
                     · Rappel {ch.reminderTime} · {ch.completedDates.length}/{ch.durationDays} j
                   </span>
                   <button
@@ -1127,36 +1162,27 @@ export function ProfileChallengesView({
               onChange={(e) => {
                 const m = e.target.value as ChallengeMetric;
                 setChMetric(m);
-                let nextVal = 1;
-                let nextUnit = "validation";
-                if (m === "steps") {
-                  nextVal = form.dailyStepGoal || 8000;
-                  nextUnit = "pas";
-                } else if (m === "water") {
-                  nextVal = anthro.targets.waterMl;
-                  nextUnit = "mL";
-                } else if (m === "protein") {
-                  nextVal = anthro.targets.proteinG;
-                  nextUnit = "g";
-                } else if (m === "fiber") {
-                  nextVal = anthro.targets.fiberG;
-                  nextUnit = "g";
-                } else if (m === "workout_minutes") {
-                  nextVal = 15;
-                  nextUnit = "min";
-                }
+                const spec = GOAL_METRIC_CATALOG[m] ?? GOAL_METRIC_CATALOG.custom;
+                let nextVal = spec.defaultTarget;
+                const nextUnit = spec.defaultUnit;
+                if (m === "steps") nextVal = form.dailyStepGoal || 8000;
+                else if (m === "water") nextVal = anthro.targets.waterMl;
+                else if (m === "protein") nextVal = anthro.targets.proteinG;
+                else if (m === "fiber") nextVal = anthro.targets.fiberG;
+                else if (m === "calories_target") nextVal = anthro.targetIntakeKcal;
+                else if (m === "weight_target") nextVal = form.targetWeightKg;
+                else if (m === "workout_minutes") nextVal = 15;
                 setChTarget(nextVal);
                 setChTargetDraft(String(nextVal));
                 setChUnit(nextUnit);
               }}
               className="rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-white"
             >
-              <option value="steps">Suivi automatique : Pas</option>
-              <option value="protein">Suivi automatique : Protéines</option>
-              <option value="fiber">Suivi automatique : Fibres</option>
-              <option value="water">Suivi automatique : Eau</option>
-              <option value="workout_minutes">Suivi automatique : Minutes exercice</option>
-              <option value="custom">Challenge libre à cocher</option>
+              {(Object.keys(GOAL_METRIC_CATALOG) as ChallengeMetric[]).map((k) => (
+                <option key={k} value={k}>
+                  {GOAL_METRIC_CATALOG[k].labelFr}
+                </option>
+              ))}
             </select>
           </div>
           <div className="flex flex-wrap items-center gap-2.5 text-xs">
@@ -1164,21 +1190,13 @@ export function ProfileChallengesView({
               Cible :
               <input
                 type="text"
-                inputMode="numeric"
+                inputMode={GOAL_METRIC_CATALOG[chMetric].decimal ? "decimal" : "numeric"}
                 value={chTargetDraft}
                 {...bindNumericDraft(
                   setChTargetDraft,
-                  1,
-                  chMetric === "water"
-                    ? 4500
-                    : chMetric === "steps"
-                      ? 50000
-                      : chMetric === "workout_minutes"
-                        ? 300
-                        : chMetric === "protein" || chMetric === "fiber"
-                          ? 400
-                          : 1000,
-                  false,
+                  GOAL_METRIC_CATALOG[chMetric].min,
+                  GOAL_METRIC_CATALOG[chMetric].max,
+                  Boolean(GOAL_METRIC_CATALOG[chMetric].decimal),
                   setChTarget,
                   chTarget
                 )}
